@@ -28,9 +28,11 @@ public class BuscarUsuarioService {
             "ADMINISTRADOR", "VENDEDOR", "RESPONSABLE_PRODUCCION", "REPARTIDOR", "PROVEEDOR");
 
     private final NamedParameterJdbcTemplate sql;
+    private final AutorizacionSesionInterna autorizacion;
 
-    public BuscarUsuarioService(NamedParameterJdbcTemplate sql) {
+    public BuscarUsuarioService(NamedParameterJdbcTemplate sql, AutorizacionSesionInterna autorizacion) {
         this.sql = sql;
+        this.autorizacion = autorizacion;
     }
 
     @Transactional(readOnly = true)
@@ -38,7 +40,7 @@ public class BuscarUsuarioService {
         if (idSesionUsuario == null || criterios == null) {
             throw new IllegalArgumentException("Sesión y criterios requeridos");
         }
-        comprobarAdministradorVigente(idSesionUsuario);
+        autorizacion.exigirRoles(idSesionUsuario, Set.of("ADMINISTRADOR"));
 
         var parametros = new MapSqlParameterSource();
         var consulta = new StringBuilder("""
@@ -94,25 +96,6 @@ public class BuscarUsuarioService {
                         roles(rs.getString("roles")),
                         (Long) rs.getObject("idProveedor"),
                         rs.getLong("pedidosPendientes")));
-    }
-
-    private void comprobarAdministradorVigente(UUID idSesionUsuario) {
-        Integer permitido = sql.queryForObject("""
-                SELECT count(*) FROM "SESION_USUARIO" s
-                  JOIN "USUARIO" u ON u."idUsuario" = s."idUsuario"
-                  JOIN "USUARIO_ROL" ur ON ur."idUsuario" = u."idUsuario"
-                 WHERE s."idSesionUsuario" = :sesion
-                   AND s."fechaHoraInicio" <= clock_timestamp()
-                   AND s."fechaHoraExpiracion" > clock_timestamp()
-                   AND s."fechaHoraRevocacion" IS NULL
-                   AND u."estado" = 'HABILITADO'
-                   AND u."cambioCredencialPendiente" = false
-                   AND ur."codigoRol" = 'ADMINISTRADOR'
-                """, Map.of("sesion", idSesionUsuario), Integer.class);
-        if (permitido == null || permitido != 1) {
-            // No se revela si el actor, la sesión o el rol existe.
-            throw new SecurityException("Operación no autorizada");
-        }
     }
 
     private static List<String> roles(String csv) {
