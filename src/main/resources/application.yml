@@ -7,9 +7,15 @@ spring:
     password: ${ALE_DB_PASSWORD}
     hikari:
       maximum-pool-size: 5
+      schema: ale_gestion
   flyway:
-    # B1: no se crea ni ejecuta ningún DDL sin el cotejo y migraciones B2/MR5/MR6/F01.
-    enabled: false
+    enabled: true
+    create-schemas: true
+    default-schema: ale_gestion
+    schemas:
+      - ale_gestion
+    locations:
+      - classpath:db/migration
   sql:
     init:
       mode: never

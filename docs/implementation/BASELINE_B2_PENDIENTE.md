@@ -13,3 +13,9 @@ En B1 la aplicación incluye JDBC PostgreSQL y los artefactos de Flyway. **`spri
 5. Recién entonces habilitar Flyway por ADR/PR de B2 con evidencia de test físico.
 
 **Ningún CU se declara implementado en B1.**
+
+---
+
+## Actualización posterior: B2 ya tiene migraciones versionadas en PR (29/10/2026)
+
+El título y estado anterior de este archivo eran correctos durante B1. En la rama de **B2** existe ahora [ADR-IMP-002](../architecture/ADR-IMP-002_BASELINE_MR5_F01.md) con V1 y V2 derivados del G0 y una workflow de ensayo. **Flyway está habilitado solo en la rama B2 mientras se valida CI**. Sigue prohibido usar una DB con datos o una baseline histórica sin precheck/CR. La equivalencia de huella MR6 y la aprobación de PR determinan si se integra en main.

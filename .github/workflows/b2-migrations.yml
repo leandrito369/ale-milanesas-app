@@ -1,0 +1,68 @@
+name: B2 - PostgreSQL MR5/F01 - Flyway y cotejo MR6
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'pom.xml'
+      - 'scripts/b2/**'
+      - '.github/workflows/b2-migrations.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ensayo-mr5-f01:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      postgres:
+        image: postgres:17.11
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 15
+    steps:
+      - name: Checkout código de implementación
+        uses: actions/checkout@v4
+      - name: Checkout fuente canónica G0 INMUTABLE
+        uses: actions/checkout@v4
+        with:
+          repository: leandrito369/ale-milanesas
+          ref: 1263ffc17bd0eb7f3c69faaa9ff5ae556cf9de7e
+          path: g0-source
+          persist-credentials: false
+      - name: Configurar Java 21 y cache Maven
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Verificar Docker y PostgreSQL
+        run: |
+          docker info --format '{{.ServerVersion}}'
+          psql --version
+          PGPASSWORD=postgres pg_isready -h 127.0.0.1 -U postgres -d postgres
+      - name: Cotejar contenido exacto de V1/V2 con G0
+        run: python3 scripts/b2/check_sql_provenance.py
+      - name: Ejecutar tests reales de bootstrap y migración Flyway
+        run: mvn -B -ntp clean verify
+      - name: Ejecutar y comparar DDL de MR6 por tres rutas
+        run: bash scripts/b2/compare_mr6.sh
+      - name: Adjuntar evidencia incluso si falla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b2-postgresql-f01-evidence
+          path: |
+            b2-logs/**
+            target/surefire-reports/**
+          if-no-files-found: warn

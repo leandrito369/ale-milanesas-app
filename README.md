@@ -33,3 +33,7 @@ Una vez iniciado: `http://localhost:8080/` (informativo) y `/actuator/health` (d
 - [Límites de migraciones](docs/implementation/BASELINE_B2_PENDIENTE.md): no agregar DDL sin cotejo formal B2.
 
 **La documentación de requisitos, CU, DSS/DS, RD/RP/CR y modelo conceptual/relacional canónico vive exclusivamente en `ale-milanesas`.** Los cambios funcionales deben aprobarse allí antes de propagarse a esta aplicación.
+
+## B2 — Migraciones físicas en revisión (29/10/2026)
+
+Se prepararon en la **PR de B2** las migraciones `V1__baseline_mr5.sql` y `V2__f01_cobro_estados.sql`, extraídas de G0 con cambios mecánicos limitados a delimitadores transaccionales y directiva psql. `spring.flyway.enabled=true` **únicamente en esta rama pendiente de merge**. [ADR-IMP-002](docs/architecture/ADR-IMP-002_BASELINE_MR5_F01.md) · [ensayo y límites](docs/implementation/B2_MIGRACIONES_MR5_F01.md). El esquema de aplicación es `ale_gestion` y la metadata de Flyway **no** se cuenta dentro de las 60 tablas de negocio. Si CI no verifica equivalencia triple de MR6 y F01, NO fusionar; aplicación real y BC-06 continúan pendientes.
