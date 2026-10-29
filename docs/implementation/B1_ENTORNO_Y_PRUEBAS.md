@@ -50,3 +50,9 @@ El contenedor PostgreSQL arranca vacío. **Flyway está intencionalmente deshabi
 - I1/B3–B5: Usuarios/Roles y maestros, luego recorrido Pedido/Preparación/Entrega/Cobro.
 - B6/B7: adaptadores externos y Android offline; sincronización F04 pendiente de CR.
 - B8: regresión BC06 **0/18** pruebas aún no ejecutadas.
+
+---
+
+## Complemento B2 (posterior a B1)
+
+Los comandos de la guía B1 siguen aplicando para probar el entorno, pero el comportamiento de persistencia **cambia en la rama B2**: Flyway administra las migraciones de MR5 consolidado y F01 bajo schema `ale_gestion`. Ver [guía B2](B2_MIGRACIONES_MR5_F01.md), evitar reusar un volumen de desarrollo que contenga tablas previas, y ejecutar solo sobre bases vacías de laboratorio. La sección histórica «Flyway deshabilitado» corresponde al corte B1, **no** describe la rama B2.
