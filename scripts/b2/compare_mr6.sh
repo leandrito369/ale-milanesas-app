@@ -19,9 +19,13 @@ psql -X -v ON_ERROR_STOP=1 -d ale_mr5_referencia_ci \
   -c 'SET search_path TO ale_gestion, public;' \
   -f g0-source/docs/05-modelo-relacional/sql/f01/F01_PATCH_POST_MR5.sql \
   > b2-logs/referencia-f01.log 2>&1
+# La batería F01 original fija mr5_validacion; solo la copia de ensayo usa ale_gestion.
+python3 scripts/b2/adapt_f01_test_schema.py \
+  g0-source/docs/05-modelo-relacional/sql/f01/F01_PRUEBAS_POSTGRESQL.sql \
+  b2-logs/f01-pruebas-schema-app.sql
 psql -X -v ON_ERROR_STOP=1 -d ale_mr5_referencia_ci \
   -c 'SET search_path TO ale_gestion, public;' \
-  -f g0-source/docs/05-modelo-relacional/sql/f01/F01_PRUEBAS_POSTGRESQL.sql \
+  -f b2-logs/f01-pruebas-schema-app.sql \
   > b2-logs/referencia-f01-pruebas.log 2>&1
 grep -q 'F01 PASS' b2-logs/referencia-f01-pruebas.log
 
