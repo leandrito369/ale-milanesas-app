@@ -100,10 +100,19 @@ psql -X -v ON_ERROR_STOP=1 -d ale_mr5_restaurada_ci -At -c \
   | grep -qx '1'
 psql -X -v ON_ERROR_STOP=1 -At -d ale_mr5_restaurada_ci \
   -f b2-logs/huella-b2.sql > b2-logs/ale_mr5_restaurada_ci.huella
+# PostgreSQL reserializa algunos CHECK ANY(ARRAY) al restaurar: diff informativo.
 diff -u b2-logs/ale_mr5_referencia_ci.huella b2-logs/ale_mr5_restaurada_ci.huella \
-  > b2-logs/diff-directa-restaurada.txt
+  > b2-logs/diff-directa-restaurada.txt || true
+python3 scripts/b2/compare_restored_fingerprint.py \
+  b2-logs/ale_mr5_referencia_ci.huella b2-logs/ale_mr5_restaurada_ci.huella \
+  | tee b2-logs/restore-comparison.txt
+# Validar reglas F01 sobre la base RESTAURADA, además de los datos de prueba.
+psql -X -v ON_ERROR_STOP=1 -d ale_mr5_restaurada_ci \
+  -f b2-logs/f01-pruebas-schema-app.sql \
+  > b2-logs/restaurada-f01-pruebas.log 2>&1
+grep -q 'F01 PASS' b2-logs/restaurada-f01-pruebas.log
 psql -X -v ON_ERROR_STOP=1 -d ale_mr5_restaurada_ci -At -c \
   "SELECT count(*) FROM ale_gestion.flyway_schema_history WHERE success=true AND type='SQL';" \
   | grep -qx '2'
-echo "PASS B2 backup/restore: huella MR6 idéntica y dato sintético preservado."
+echo "PASS B2 backup/restore: objetos/columnas invariantes, CHECK normalizados, F01 y dato sintético preservados."
 
