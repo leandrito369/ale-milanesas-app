@@ -43,6 +43,8 @@ La equivalencia SQL no comprueba el tratamiento completo de 67 operaciones, segu
 
 ## Ensayo adicional de backup/restauración (base descartable)
 
-La workflow B2 también prueba un respaldo `pg_dump -Fc` del esquema Flyway con un dato **sintético** de `UNIDAD_MEDIDA`, restaurándolo en una **cuarta** base nueva con `pg_restore`. Se exige el mismo SHA de huella MR6 entre referencia y restaurada, preservación del dato sintético y las dos versiones registradas en `flyway_schema_history`.
+La workflow B2 también prueba un respaldo **completo de la base descartable** mediante `pg_dump -Fc` (incluye extensiones como `btree_gist`) con un dato **sintético** de `UNIDAD_MEDIDA`, restaurándolo en una **cuarta** base nueva con `pg_restore`. Se exige el mismo SHA de huella MR6 entre referencia y restaurada, preservación del dato sintético y las dos versiones registradas en `flyway_schema_history`.
 
 Esto verifica una restauración **de laboratorio**, no el diseño de recuperación operativa, continuidad de servicio ni migración de datos reales. La evidencia queda en el run de GitHub Actions (no atribuir éxito hasta CI verde).
+
+**Incidencia del primer ensayo de recuperación:** el respaldo filtrado con `pg_dump -n ale_gestion` no incluyó todos los objetos de extensión que requiere la reconstrucción GiST de índices de exclusión. Se conserva el registro del fallo de CI como evidencia; se corrigió **el alcance del backup de prueba**, no las reglas ni el SQL del modelo. El ensayo completo debe superar su nueva CI antes de aprobar B2.
