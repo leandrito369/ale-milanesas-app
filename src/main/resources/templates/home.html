@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Ale Milanesas · B1</title>
+    <style>
+      body { font-family: system-ui, sans-serif; color: #253042; background: #f5f7fb; margin: 0; }
+      main { max-width: 660px; margin: 12vh auto; padding: 32px; background: white; border: 1px solid #dbe2ea; border-radius: 14px; }
+      h1 { font-size: 1.8rem; }
+      .caption { color: #526177; }
+      code { background: #eef2f7; padding: 2px 5px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+<main>
+    <p class="caption" th:text="${etapa}">B1 · Arquitectura ejecutable</p>
+    <h1>Sistema de Gestión para Ale Milanesas</h1>
+    <p>Entorno técnico iniciado. Esta pantalla no representa un caso de uso implementado.</p>
+    <p>Diagnóstico técnico: <code>GET /actuator/health</code>.</p>
+    <p class="caption">Las operaciones comerciales, financieras y de reparto continúan deshabilitadas hasta implementar autenticación, autorización y contratos.</p>
+</main>
+</body>
+</html>

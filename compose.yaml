@@ -1,0 +1,18 @@
+services:
+  postgres:
+    image: postgres:17.11-alpine
+    environment:
+      POSTGRES_DB: ${ALE_DB_NAME:-ale_milanesas_dev}
+      POSTGRES_USER: ${ALE_DB_USER:-ale_app}
+      POSTGRES_PASSWORD: ${ALE_DB_PASSWORD:?Definir ALE_DB_PASSWORD en .env}
+    ports:
+      - "127.0.0.1:${ALE_DB_PORT:-5432}:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${ALE_DB_USER:-ale_app} -d ${ALE_DB_NAME:-ale_milanesas_dev}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+volumes:
+  postgres_dev_data:

@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: ale-milanesas-app
+  datasource:
+    url: jdbc:postgresql://${ALE_DB_HOST:localhost}:${ALE_DB_PORT:5432}/${ALE_DB_NAME:ale_milanesas_dev}
+    username: ${ALE_DB_USER:ale_app}
+    password: ${ALE_DB_PASSWORD}
+    hikari:
+      maximum-pool-size: 5
+  flyway:
+    # B1: no se crea ni ejecuta ningún DDL sin el cotejo y migraciones B2/MR5/MR6/F01.
+    enabled: false
+  sql:
+    init:
+      mode: never
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+server:
+  port: ${ALE_HTTP_PORT:8080}
