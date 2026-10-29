@@ -6,6 +6,8 @@ on:
       - 'src/**'
       - 'pom.xml'
       - 'scripts/b2/**'
+      - 'docs/implementation/B2_*'
+      - 'docs/architecture/ADR-IMP-002*'
       - '.github/workflows/b2-migrations.yml'
   workflow_dispatch:
 
