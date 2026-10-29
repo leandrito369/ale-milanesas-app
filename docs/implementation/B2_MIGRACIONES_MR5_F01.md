@@ -40,3 +40,9 @@ Para validar la fidelidad textual: `python3 scripts/b2/check_sql_provenance.py` 
 ## Límites de aceptación
 
 La equivalencia SQL no comprueba el tratamiento completo de 67 operaciones, seguridad HTTP RBAC, compra, contabilidad de caja ni sincronización offline. El esquema está listo para nuevas implementaciones solo en el sentido estructural ensayado. Las 18 pruebas BC-06 siguen pendientes. Para una base heredada con datos, preparar una **CR/plan de migración de datos** antes de usar V1/V2.
+
+## Ensayo adicional de backup/restauración (base descartable)
+
+La workflow B2 también prueba un respaldo `pg_dump -Fc` del esquema Flyway con un dato **sintético** de `UNIDAD_MEDIDA`, restaurándolo en una **cuarta** base nueva con `pg_restore`. Se exige el mismo SHA de huella MR6 entre referencia y restaurada, preservación del dato sintético y las dos versiones registradas en `flyway_schema_history`.
+
+Esto verifica una restauración **de laboratorio**, no el diseño de recuperación operativa, continuidad de servicio ni migración de datos reales. La evidencia queda en el run de GitHub Actions (no atribuir éxito hasta CI verde).

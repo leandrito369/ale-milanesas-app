@@ -87,3 +87,23 @@ diff -u b2-logs/ale_mr5_referencia_ci.huella b2-logs/ale_mr5_incremental_ci.huel
 diff -u b2-logs/ale_mr5_referencia_ci.huella b2-logs/ale_mr5_flyway_ci.huella \
   > b2-logs/diff-directa-flyway.txt
 echo "PASS B2: Flyway V1/V2 = MR5+F01 directa = 59→MR3→MR5+F01 (huella MR6)."
+
+# Ensayo de backup/restore en cuarto DB DESCARTABLE; preserva un dato sintético.
+psql -X -v ON_ERROR_STOP=1 -d ale_mr5_flyway_ci \
+  -c "INSERT INTO ale_gestion.\"UNIDAD_MEDIDA\"(\"codigoUnidad\",\"nombre\") VALUES ('B2_PRUEBA','Unidad sintética de respaldo');"
+pg_dump -Fc -n ale_gestion -d ale_mr5_flyway_ci -f b2-logs/ale_mr5_backup.dump
+psql -X -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE ale_mr5_restaurada_ci;'
+pg_restore --no-owner --no-privileges -d ale_mr5_restaurada_ci \
+  b2-logs/ale_mr5_backup.dump > b2-logs/restore.log 2>&1
+psql -X -v ON_ERROR_STOP=1 -d ale_mr5_restaurada_ci -At -c \
+  "SELECT count(*) FROM ale_gestion.\"UNIDAD_MEDIDA\" WHERE \"codigoUnidad\"='B2_PRUEBA' AND \"nombre\"='Unidad sintética de respaldo';" \
+  | grep -qx '1'
+psql -X -v ON_ERROR_STOP=1 -At -d ale_mr5_restaurada_ci \
+  -f b2-logs/huella-b2.sql > b2-logs/ale_mr5_restaurada_ci.huella
+diff -u b2-logs/ale_mr5_referencia_ci.huella b2-logs/ale_mr5_restaurada_ci.huella \
+  > b2-logs/diff-directa-restaurada.txt
+psql -X -v ON_ERROR_STOP=1 -d ale_mr5_restaurada_ci -At -c \
+  "SELECT count(*) FROM ale_gestion.flyway_schema_history WHERE success=true AND type='SQL';" \
+  | grep -qx '2'
+echo "PASS B2 backup/restore: huella MR6 idéntica y dato sintético preservado."
+
