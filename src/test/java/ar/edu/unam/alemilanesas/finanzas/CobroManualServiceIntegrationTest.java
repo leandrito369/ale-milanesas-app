@@ -197,44 +197,52 @@ class CobroManualServiceIntegrationTest {
                 VENDEDOR,29011,null,new BigDecimal("12.00"),"EFECTIVO",UUID.randomUUID()));
         assertEquals(0,n("COBRO"));
     }
-    @Test void uc15MoraSeEvaluaConDiasCompletosEnPostgresql() {
-        // La zona de sesion difiere de UTC: el parametro JDBC debe conservar
-        // TIMESTAMPTZ y no reinterpretar una fecha local como un instante nuevo.
+    @Test void uc15MoraSieteDiasRespetaIgualdadEnPostgresql() {
+        // Asientos inmutables: dos Clientes y dos deudas sinteticas,
+        // sin UPDATE/DELETE sobre MOVIMIENTO_CUENTA (MR5 F02).
         jdbc.execute("SET LOCAL TIME ZONE 'America/Argentina/Cordoba'");
-        // El instante de evaluacion se obtiene en el servicio desde el reloj DB.
-        // Un AJUSTE_DEBITO sin origen externo permite ensayar el umbral temporal.
+        jdbc.update("""
+            INSERT INTO "CLIENTE" ("idCliente","nombres","telefonoPrincipal",
+                "estado","categoriaComercial","fechaHoraAlta")
+            VALUES (29012,'Cliente UC15 umbral 8','3764000012','ACTIVO','CUMPLIDOR',now())
+            """);
         jdbc.update("""
             INSERT INTO "MOVIMIENTO_CUENTA" ("idMovimientoCuenta","idCliente",
                 "numeroSecuenciaCliente","tipoMovimiento","importe",
                 "fechaHoraMovimiento","saldoResultante")
             VALUES (29201,29011,1,'AJUSTE_DEBITO',100.00,
-                clock_timestamp()-interval '7 days 1 hour',100.00)
+                     clock_timestamp()-interval '7 days 1 hour',100.00),
+                   (29202,29012,1,'AJUSTE_DEBITO',100.00,
+                     clock_timestamp()-interval '8 days 1 hour',100.00)
             """);
         assertEquals("CUMPLIDOR",evaluador.reevaluar(29011));
+        assertEquals("EN_MORA",evaluador.reevaluar(29012));
+    }
 
+    @Test void uc15MoraCeroDiasNoSeActivaEnDiaCero() {
+        jdbc.execute("SET LOCAL TIME ZONE 'America/Argentina/Cordoba'");
+        // Configuracion solo de fixture, ANTES de crear los movimientos;
+        // la aplicacion no reescribe asientos ni historial de politicas.
         jdbc.update("""
-            UPDATE "MOVIMIENTO_CUENTA"
-               SET "fechaHoraMovimiento"=clock_timestamp()-interval '8 days 1 hour'
-             WHERE "idMovimientoCuenta"=29201
-            """);
-        assertEquals("EN_MORA",evaluador.reevaluar(29011));
-
-        jdbc.update("""
-            UPDATE "POLITICA_CATEGORIA_COMERCIAL" SET "diasToleranciaMora"=0
-             WHERE "idPoliticaComercial"=29021
+            UPDATE "POLITICA_CATEGORIA_COMERCIAL"
+               SET "diasToleranciaMora"=0 WHERE "idPoliticaComercial"=29021
             """);
         jdbc.update("""
-            UPDATE "MOVIMIENTO_CUENTA"
-               SET "fechaHoraMovimiento"=clock_timestamp()-interval '1 hour'
-             WHERE "idMovimientoCuenta"=29201
+            INSERT INTO "CLIENTE" ("idCliente","nombres","telefonoPrincipal",
+                "estado","categoriaComercial","fechaHoraAlta")
+            VALUES (29013,'Cliente UC15 dia 0','3764000013','ACTIVO','CUMPLIDOR',now())
+            """);
+        jdbc.update("""
+            INSERT INTO "MOVIMIENTO_CUENTA" ("idMovimientoCuenta","idCliente",
+                "numeroSecuenciaCliente","tipoMovimiento","importe",
+                "fechaHoraMovimiento","saldoResultante")
+            VALUES (29203,29011,1,'AJUSTE_DEBITO',100.00,
+                     clock_timestamp()-interval '1 hour',100.00),
+                   (29204,29013,1,'AJUSTE_DEBITO',100.00,
+                     clock_timestamp()-interval '1 day 1 hour',100.00)
             """);
         assertEquals("CUMPLIDOR",evaluador.reevaluar(29011));
-        jdbc.update("""
-            UPDATE "MOVIMIENTO_CUENTA"
-               SET "fechaHoraMovimiento"=clock_timestamp()-interval '1 day 1 hour'
-             WHERE "idMovimientoCuenta"=29201
-            """);
-        assertEquals("EN_MORA",evaluador.reevaluar(29011));
+        assertEquals("EN_MORA",evaluador.reevaluar(29013));
     }
 
 }
