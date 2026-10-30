@@ -66,3 +66,9 @@ La PR queda en borrador hasta verificar **B1 + B2 SUCCESS en el SHA final**, res
 ### Próxima secuencia según backlog G0-D03 — sin adelantar B4
 
 El orden rector ratificado sigue **I1-01 → I1-02 → I1-03 → I1-04 → I1-05 → I1-06** antes del recorrido vertical I2/I3 completo; esta implementación parcial de UC29 es una excepción acotada a los ensayos BC06. El próximo trabajo de implementación deberá recuperar lo pendiente de I1 (particularmente operaciones de seguridad/maestros todavía sin servicio B3), revisar dependencias y pruebas por CU, y no abrir UI/endpoints HTTP B4 hasta finalizar iteración 1. Los **18 BC06** y los **cuatro E2E UC54** seguirán sin acreditación E2E mientras no exista B4, independientemente de los PASS de las pruebas B3.
+
+### Incidencia de pruebas detectada y resuelta en la preparación
+
+El primer CI del ajuste temporal falló con el trigger **MR5/F02: «No se permite modificar asientos históricos de MOVIMIENTO_CUENTA»**. La prueba pretendía simular envejecimiento cambiando `fechaHoraMovimiento` con `UPDATE`; esa operación es ilícita incluso en una BD descartable con triggers activos. Se cambió el diseño del fixture: se insertan **clientes y asientos de prueba distintos**, ya fechados en el pasado, para contrastar ambos lados de la frontera sin mutar ni borrar movimientos. La restricción F02 permanece habilitada. La incidencia se registra como evidencia de que MR5 protege la inmutabilidad, no como defecto funcional del servicio.
+
+Los resultados de esta corrección se tomarán del CI del último commit de la PR, no del ensayo anterior fallido.
