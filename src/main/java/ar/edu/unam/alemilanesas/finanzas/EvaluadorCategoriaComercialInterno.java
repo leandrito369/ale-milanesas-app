@@ -1,7 +1,7 @@
 package ar.edu.unam.alemilanesas.finanzas;
 
 import java.math.BigDecimal;
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
@@ -29,8 +29,9 @@ public class EvaluadorCategoriaComercialInterno {
     public String reevaluar(long idCliente) {
         // Un unico reloj de PostgreSQL para vigencia y antiguedad:
         // no mezclar clock_timestamp() con el reloj de la JVM.
-        Timestamp instanteDb = sql.getJdbcTemplate().queryForObject(
-                "SELECT clock_timestamp()", Timestamp.class);
+        OffsetDateTime instanteDb = sql.getJdbcTemplate().queryForObject(
+                "SELECT clock_timestamp()",
+                (rs, rowNum) -> rs.getObject(1, OffsetDateTime.class));
         if (instanteDb == null) {
             throw new IllegalStateException("No se pudo obtener reloj PostgreSQL");
         }
