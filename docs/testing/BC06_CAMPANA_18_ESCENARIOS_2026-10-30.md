@@ -53,3 +53,17 @@ El script produce `bc06-evidence/bc06-resultados.{csv,json}`, `bc06-skip-report.
 Para marcar cada caso `PASS` es indispensable registrar: referencia CU/RD, autorización de actor, entorno PostgreSQL real o sandbox conforme al tipo, datos sintéticos, estímulo invocado, resultado observado y comparado con esperado, before/after de tablas y estados, rollback/concurrencia cuando aplique, SHA de código, URL de run y logs anonimizados. `FAIL` requiere prueba realmente ejecutada y diferencia observada; ausencia de servicio se declara `NO_EJECUTADO`, no `FAIL` ficticio.
 
 **Reservas:** no se usan datos reales ni credenciales externas; no se amplía RBAC, no se toca MR5, no se fusionan PR ajenas, no se ejecutan migraciones sobre datos productivos ni se resuelve CR F04 tácitamente. La suite es incremental y debe pasar a implementaciones verificables por cada escenario.
+
+## Evidencia real del primer run de preparación (30/10/2026 UTC)
+
+**[GitHub Actions #41054479634](https://github.com/leandrito369/ale-milanesas-app/actions/runs/41054479634)** — commit `3689e9608d2bb1e060e401de48e3a97336fe1f18`; job `inventario-y-regresion`: **SUCCESS**.
+
+- Fuente G0 confirmada por checkout al commit `1263ffc17bd0eb7f3c69faaa9ff5ae556cf9de7e` y blob `77c3343bd5b7af49b76a05880e812fd73986cb9e`.
+- Control Python: **6/6 PASS**. El generador devolvió en el log: **18/18 catalogados; 0/18 funcionales ejecutados; 18/18 NO_EJECUTADO**.
+- Regresión del backend existente con Testcontainers/PostgreSQL: **41/41 PASS**, 0 fallos, 0 errores, 0 omitidos; `BUILD SUCCESS`. **No son 41 casos BC06.**
+- Cobertura JaCoCo del código de aplicación disponible: **91,7 % líneas (289/315)** y **73,3 % ramas (148/202)**. Ámbito acceso: 92,5 % (235/254) y 73,1 % (133/182). No confundir cobertura del código actual con cobertura funcional BC06.
+- Artefacto de GitHub: `bc06-readiness-not-functional-execution`, id **12976261861**, digest `sha256:88ab5beccc602a4f48c93f2d0e07dbe4e42c6945dd47c0dc67e599e25de6dc7c`, con informes BC06, Surefire y JaCoCo.
+
+Este primer run acredita que la **preparación y la regresión existentes son reproducibles**; **NO ejecuta ninguno de los 18 escenarios de negocio**, ni cambia el estado E2E de UC54. Si la PR recibe commits posteriores, debe repetirse el control del último SHA antes del merge.
+
+**Seguimiento de implementación funcional:** [issue #13](https://github.com/leandrito369/ale-milanesas-app/issues/13).
