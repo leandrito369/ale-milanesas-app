@@ -6,7 +6,6 @@ Sin un driver funcional real por escenario, todos quedan NO_EJECUTADO.
 """
 import argparse
 import csv
-import hashlib
 import json
 import os
 import subprocess
@@ -116,8 +115,8 @@ def write_evidence(results: list[dict], dest: Path, app_sha: str) -> dict:
                              xml_declaration=True)
     summary = (
         "# BC-06: evaluacion de preparacion (no prueba funcional)\n\n"
-        f"- Matriz G0 fijada: \`{SOURCE_COMMIT}\`\n"
-        f"- SHA aplicacion analizada: \`{app_sha or 'no informado'}\`\n"
+        f"- Matriz G0 fijada: `{SOURCE_COMMIT}`\n"
+        f"- SHA aplicacion analizada: `{app_sha or 'no informado'}`\n"
         f"- Casos cargados: **{len(results)}/18**\n"
         "- Escenarios funcionales ejecutados: **0/18**\n"
         f"- Escenarios bloqueados/no ejecutados: **{len(results)}/18**\n"
