@@ -33,6 +33,7 @@ class CobroManualServiceIntegrationTest {
 
     @Autowired JdbcTemplate jdbc;
     @Autowired CobroManualService servicio;
+    @Autowired EvaluadorCategoriaComercialInterno evaluador;
 
     private static final UUID ADMIN = UUID.fromString("29000000-0000-4000-8000-000000000001");
     private static final UUID VENDEDOR = UUID.fromString("29000000-0000-4000-8000-000000000002");
@@ -196,4 +197,41 @@ class CobroManualServiceIntegrationTest {
                 VENDEDOR,29011,null,new BigDecimal("12.00"),"EFECTIVO",UUID.randomUUID()));
         assertEquals(0,n("COBRO"));
     }
+    @Test void uc15MoraSeEvaluaConDiasCompletosEnPostgresql() {
+        // El instante de evaluacion se obtiene en el servicio desde el reloj DB.
+        // Un AJUSTE_DEBITO sin origen externo permite ensayar el umbral temporal.
+        jdbc.update("""
+            INSERT INTO "MOVIMIENTO_CUENTA" ("idMovimientoCuenta","idCliente",
+                "numeroSecuenciaCliente","tipoMovimiento","importe",
+                "fechaHoraMovimiento","saldoResultante")
+            VALUES (29201,29011,1,'AJUSTE_DEBITO',100.00,
+                clock_timestamp()-interval '7 days 1 hour',100.00)
+            """);
+        assertEquals("CUMPLIDOR",evaluador.reevaluar(29011));
+
+        jdbc.update("""
+            UPDATE "MOVIMIENTO_CUENTA"
+               SET "fechaHoraMovimiento"=clock_timestamp()-interval '8 days 1 hour'
+             WHERE "idMovimientoCuenta"=29201
+            """);
+        assertEquals("EN_MORA",evaluador.reevaluar(29011));
+
+        jdbc.update("""
+            UPDATE "POLITICA_CATEGORIA_COMERCIAL" SET "diasToleranciaMora"=0
+             WHERE "idPoliticaComercial"=29021
+            """);
+        jdbc.update("""
+            UPDATE "MOVIMIENTO_CUENTA"
+               SET "fechaHoraMovimiento"=clock_timestamp()-interval '1 hour'
+             WHERE "idMovimientoCuenta"=29201
+            """);
+        assertEquals("CUMPLIDOR",evaluador.reevaluar(29011));
+        jdbc.update("""
+            UPDATE "MOVIMIENTO_CUENTA"
+               SET "fechaHoraMovimiento"=clock_timestamp()-interval '1 day 1 hour'
+             WHERE "idMovimientoCuenta"=29201
+            """);
+        assertEquals("EN_MORA",evaluador.reevaluar(29011));
+    }
+
 }
