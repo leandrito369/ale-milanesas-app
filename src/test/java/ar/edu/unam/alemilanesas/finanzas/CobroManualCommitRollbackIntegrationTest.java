@@ -7,6 +7,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.junit.jupiter.Container;
@@ -31,9 +33,11 @@ class CobroManualCommitRollbackIntegrationTest {
     }
     @Autowired JdbcTemplate jdbc;
     @Autowired CobroManualService servicio;
+    @Autowired PlatformTransactionManager transactionManager;
 
     @Test void faltaPoliticaRevierteTresTablasYConfirmacionEjecutaContraasientos() {
         UUID sesion = UUID.fromString("29110000-0000-4000-8000-000000000001");
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
         jdbc.update("""
             INSERT INTO "ROL" ("codigoRol","nombreMostrado")
             VALUES ('ADMINISTRADOR','Administrador BC06 commit')
@@ -58,6 +62,7 @@ class CobroManualCommitRollbackIntegrationTest {
                 "estado","categoriaComercial","fechaHoraAlta")
             VALUES (29112,'Cliente Cobro commit','3764001111','INACTIVO','CUMPLIDOR',now())
             """);
+        });
         UUID clave = UUID.fromString("29110000-0000-4000-8000-000000000002");
 
         // Este fallo ocurre DESPUES de insertar las 4 filas de Cobro/Cuenta/Origen/Caja.
@@ -69,6 +74,7 @@ class CobroManualCommitRollbackIntegrationTest {
         assertEquals(0,contar("ORIGEN_MOVIMIENTO_CUENTA"));
         assertEquals(0,contar("MOVIMIENTO_CAJA"));
 
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
         jdbc.update("""
             INSERT INTO "POLITICA_CATEGORIA_COMERCIAL" ("idPoliticaComercial",
                 "diasToleranciaMora","vigenteDesde","fechaHoraRegistro","idUsuarioRegistro")
@@ -80,6 +86,7 @@ class CobroManualCommitRollbackIntegrationTest {
             VALUES (29113,'CUMPLIDOR','SIN_AJUSTE',0),
                    (29113,'EN_MORA','SIN_AJUSTE',0)
             """);
+        });
         var cobro = servicio.registrarCobro(sesion,29112,null,
                 new BigDecimal("10.00"),"EFECTIVO",clave);
         assertEquals("CONFIRMADO",cobro.estado());
