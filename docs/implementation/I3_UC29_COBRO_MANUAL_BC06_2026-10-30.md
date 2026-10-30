@@ -40,3 +40,25 @@
 8. **Sin migraciones nuevas**. MR5 y F01 se mantienen inmutables. Toda diferencia con Fase4/RD requiere nueva RP/CR en repositorio documental, no resolución silenciosa.
 
 **Puerta técnica:** B1/B2 verdes para el SHA final, reporte de tests real, trazabilidad con G0, revisión del algoritmo FIFO y de asientos/casos de error, aceptación humana antes de merge. Seguimiento general [BC06 issue #13](https://github.com/leandrito369/ale-milanesas-app/issues/13).
+
+## Revisión técnica posterior del 30/10/2026 — correcciones dirigidas al gate
+
+Se incorpora el dictamen recibido sobre **UC15 y concurrencia** sin cambiar los contratos de G0, MR5/F01 ni extender F04 o B4.
+
+### Política temporal (implementada en código y bajo prueba)
+
+- La categoría EN_MORA exige `antiguedadDeudaMasAntigua > diasToleranciaMora`. La antigüedad pasa a calcularse como `ChronoUnit.DAYS.between(fechaDeuda, instanteDb)`: **días COMPLETOS transcurridos**, con comparación estricta. Por tanto, tolerancia 0 no genera mora con apenas segundos/horas, mientras que a las 24 horas completas pasa a 1 día y puede generar mora. Con tolerancia 7, 7 días y 1 segundo sigue contando 7; recién con 8 días completos corresponde mora.
+- `instanteDb` proviene de **un único `SELECT clock_timestamp()` de PostgreSQL** y se reutiliza tanto para vigencia de `POLITICA_CATEGORIA_COMERCIAL` como para el cálculo de antigüedad; se elimina `Instant.now()`. Los INSERT siguen usando reloj BD; su evaluación toma una instantánea temporal por invocación.
+- Esta definición significa días **transcurridos de 24 h**, NO diferencia entre fechas de calendario local. Si Fase 4 o el responsable exige contar días calendario, se requiere precisión normativa adicional; no implementar silenciosamente `current_date - fecha::date` ni introducir zona horaria implícita.
+- Se añaden **5 tests unitarios de frontera** (0 días, igualdad a 7, instante futuro, parámetros inválidos) y **un test de integración PostgreSQL** que modifica fechas efectivas, verifica tolerancias 0 y 7 y observa las dos categorías.
+- **Reserva UC26/UC49:** al implementar reembolsos, un `AJUSTE_DEBITO` que efectivamente revierta un `PAGO` electrónico (correlacionado por `idReembolso/idCobro`) deberá reducir el pool de créditos en vez de convertirse automáticamente en nueva deuda con fecha reciente. No cambiar **todos** los `AJUSTE_DEBITO` aquí: existen ajustes de débito genuinos y requiere discriminación verificada del origen. Exigir pruebas de FIFO/deuda antigua y reversión de crédito en el futuro incremento financiero.
+
+### Concurrencia y garantía transaccional (implementadas bajo prueba)
+
+- `anularCobroManual` bloquea explícitamente `CLIENTE FOR UPDATE` **después** de localizar/bloquear `COBRO` y **antes** de ejecutar `fn_mr3_anular_cobro_manual` y `UC15`. Cumple la precondición de bloqueo del evaluador, además de la cerradura financiera compartida de este servicio.
+- Se amplía el test **sin `@Transactional` en JUnit**, con dos hilos de transacciones reales que inician en paralelo un `registrarCobro` con la **misma** clave técnica. Ambos deben recibir el mismo `idCobro` y producir solo un Cobro, un PAGO y un INGRESO; continúa verificando rollback real por falta de política y commit de anulación con contraasientos.
+- El `pg_advisory_xact_lock(2929001)` y los IDs `MAX+1` constituyen **protocolo interno del módulo**, no protección para otros escritores independientes. Al implementar UC05/22/26/49, centralizar generadores/locks y acordar **un orden total de locks por tabla/objeto** para evitar interbloqueos (`COBRO` → `CLIENTE` de esta anulación frente a `CLIENTE` → `COBRO` de otros flujos). Evaluar la necesidad de identificadores centralizados antes de escritura concurrente entre módulos.
+
+### Puerta de integración
+
+La PR queda en borrador hasta verificar **B1 + B2 SUCCESS en el SHA final**, resultados cuantitativos, logs de carrera/rollback y revisión del orden de bloqueo. El dictamen de esta revisión **no autoriza fusionar automáticamente**. Continuar la iteración 1 con servicios B3 y posponer B4/aceptación E2E hasta finalizar I1, como instrucción explícita del responsable.
