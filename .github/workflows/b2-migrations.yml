@@ -39,7 +39,6 @@ jobs:
           ref: 1263ffc17bd0eb7f3c69faaa9ff5ae556cf9de7e
           persist-credentials: false
           path: g0-source
-          persist-credentials: false
       - name: Configurar Java 21 y cache Maven
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
