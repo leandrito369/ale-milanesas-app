@@ -212,10 +212,10 @@ public class GestionClientesService {
 
     private void asegurarSinDuplicado(Normalizados n, Long excluirId) {
         var args=new MapSqlParameterSource().addValue("nombre",n.nombre())
-            .addValue("tel",n.telefono()).addValue("excluir",excluirId);
+            .addValue("tel",n.telefono()).addValue("excluir",excluirId==null?0L:excluirId);
         List<Long> encontrados=sql.queryForList("""
             SELECT "idCliente" FROM "CLIENTE"
-             WHERE (:excluir IS NULL OR "idCliente"<>:excluir)
+             WHERE (:excluir=0 OR "idCliente"<>:excluir)
                AND regexp_replace(lower(btrim(concat_ws(' ',"nombres","apellidos"))),
                    '[[:space:]]+', ' ', 'g')=:nombre
                AND regexp_replace("telefonoPrincipal",'[^0-9]','','g')=:tel
@@ -228,12 +228,12 @@ public class GestionClientesService {
     private List<Long> coincidenciasParciales(Normalizados n, Long excluirId) {
         return List.copyOf(sql.queryForList("""
             SELECT "idCliente" FROM "CLIENTE"
-             WHERE (:excluir IS NULL OR "idCliente"<>:excluir)
+             WHERE (:excluir=0 OR "idCliente"<>:excluir)
                AND (regexp_replace(lower(btrim(concat_ws(' ',"nombres","apellidos"))),
                    '[[:space:]]+', ' ', 'g')=:nombre
                OR regexp_replace("telefonoPrincipal",'[^0-9]','','g')=:tel)
              ORDER BY "idCliente"
-            """,new MapSqlParameterSource().addValue("excluir",excluirId)
+            """,new MapSqlParameterSource().addValue("excluir",excluirId==null?0L:excluirId)
                 .addValue("nombre",n.nombre()).addValue("tel",n.telefono()),Long.class));
     }
     private static Normalizados normalizados(DatosCliente d) {
