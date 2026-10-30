@@ -239,6 +239,16 @@ class GestionProductoServiceIntegrationTest {
                 "porcentajePromocionOriginal")
             VALUES (30603,1,?,'UN',1,100.00,0)
             """,id);
+        // Segundo Pedido sin ese detalle: evita que UNIQUE(idPedido,idProducto)
+        // oculte la regla F09 que debe denegar un PRODUCTO inactivo.
+        jdbc.update("""
+            INSERT INTO "PEDIDO" ("idPedido","idCliente","idUsuarioCreador",
+                "fechaHoraCarga","fechaReparto","canalOrigen","estado",
+                "categoriaComercialAplicada","idPoliticaComercialAplicada","tipoAjuste",
+                "porcentajeAjuste","totalOriginal","direccionEntregaCalle","direccionEntregaLocalidad")
+            VALUES (30604,30601,30302,now(),current_date,'INTERNO','PENDIENTE',
+                'CUMPLIDOR',30602,'SIN_AJUSTE',0,100.00,'Calle ficticia','Apóstoles')
+            """);
         servicio.cambiarEstadoProducto(ADMIN,id,false);
         assertEquals(1,contar("DETALLE_PEDIDO"));
         assertEquals("PENDIENTE",jdbc.queryForObject(
@@ -247,7 +257,7 @@ class GestionProductoServiceIntegrationTest {
             INSERT INTO "DETALLE_PEDIDO" ("idPedido","numeroDetalle","idProducto",
                 "codigoUnidadVenta","cantidadOriginal","precioUnitarioOriginal",
                 "porcentajePromocionOriginal")
-            VALUES (30603,2,?,'UN',1,100.00,0)
+            VALUES (30604,1,?,'UN',1,100.00,0)
             """,id));
     }
 }
