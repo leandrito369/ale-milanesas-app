@@ -150,6 +150,14 @@ public class CobroManualService {
             throw new IllegalArgumentException("Cobro manual confirmado requerido");
         }
         long cliente = ((Number)rows.getFirst().get("idCliente")).longValue();
+        // Mismo protocolo que registrarCobro y precondicion de UC15:
+        // impedir reevaluar categoria sobre una cuenta modificada por otro escritor.
+        var clientesBloqueados = sql.queryForList("""
+                SELECT "idCliente" FROM "CLIENTE" WHERE "idCliente"=:id FOR UPDATE
+                """, Map.of("id", cliente));
+        if (clientesBloqueados.size() != 1) {
+            throw new IllegalStateException("Cliente del Cobro inexistente");
+        }
         long movCuenta = siguiente("MOVIMIENTO_CUENTA","idMovimientoCuenta");
         long movCaja = siguiente("MOVIMIENTO_CAJA","idMovimientoCaja");
         jdbc.queryForList("SELECT \"fn_mr3_anular_cobro_manual\"(?,?,?,?,?)",
