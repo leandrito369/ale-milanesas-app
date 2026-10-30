@@ -44,3 +44,9 @@ La línea base G0 `source_commit=1263ffc17bd0eb7f3c69faaa9ff5ae556cf9de7e` **per
 En **UC-17/18/53/54** prevalecen esos PATCH sobre las firmas y literales REV02 del corte G0. Contratos y DSS/DS vigentes: `docs/08-diagramas/revision/REV02_SEGURIDAD/propuestos/` **en el commit posterior indicado**, no en el blob de G0. Fuente de las RD: `docs/01-gobierno/i1/`. La tabla `EVENTO_ASIGNACION_ROL.tipoEvento` continúa con `ASIGNACION/REVOCACION` de MR5; **el modelo físico MR5/F01 de G0 no fue modificado**.
 
 Esta adenda solo aplica a esos cuatro CU y no cambia las referencias canónicas del resto de las 67 operaciones. Cualquier futuro RD debe registrarse con su nuevo commit y PR; está prohibido reemplazar el `source_commit` de G0 por la punta móvil de `main`.
+
+## Adenda RD-UC53-002 — Revocación de sesiones al cambiar contraseña
+
+**Autoridad posterior a G0:** [PR documental #31](https://github.com/leandrito369/ale-milanesas/pull/31), commit fusionado `ad696cebafa3600b89df68782e61d28a6059fbed` (29/10/2026). Se ratificó **revocar todas las sesiones al cambiar la contraseña y exigir nuevo inicio de sesión**. Contrato y DSS/DS UC53 REV02 en ese corte, compatible con trigger físico MR5; incidencia [#30](https://github.com/leandrito369/ale-milanesas/issues/30) cerrada. **No** se sustituye `source_commit` G0 ni RD-UC53-001; se añade precedencia específica para UC-53.
+
+La UC-54 actual utiliza la autoridad `RD-UC54-001` ya consolidada en `3cf4b19078f02a374229012cbf8d278b4bb58196`; el restablecimiento de hash por parte del Administrador también dispara revocación de sesiones previas de esa cuenta, sin alta automática de sesión.
