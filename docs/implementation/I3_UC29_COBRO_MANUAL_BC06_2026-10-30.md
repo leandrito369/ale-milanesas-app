@@ -48,9 +48,9 @@ Se incorpora el dictamen recibido sobre **UC15 y concurrencia** sin cambiar los 
 ### Política temporal (implementada en código y bajo prueba)
 
 - La categoría EN_MORA exige `antiguedadDeudaMasAntigua > diasToleranciaMora`. La antigüedad pasa a calcularse como `ChronoUnit.DAYS.between(fechaDeuda, instanteDb)`: **días COMPLETOS transcurridos**, con comparación estricta. Por tanto, tolerancia 0 no genera mora con apenas segundos/horas, mientras que a las 24 horas completas pasa a 1 día y puede generar mora. Con tolerancia 7, 7 días y 1 segundo sigue contando 7; recién con 8 días completos corresponde mora.
-- `instanteDb` proviene de **un único `SELECT clock_timestamp()` de PostgreSQL** y se reutiliza tanto para vigencia de `POLITICA_CATEGORIA_COMERCIAL` como para el cálculo de antigüedad; se elimina `Instant.now()`. Los INSERT siguen usando reloj BD; su evaluación toma una instantánea temporal por invocación.
+- `instanteDb` proviene de **un único `SELECT clock_timestamp()` de PostgreSQL**, obtenido como `OffsetDateTime` (`TIMESTAMPTZ`) y se reutiliza tanto para vigencia de `POLITICA_CATEGORIA_COMERCIAL` como para el cálculo de antigüedad; se elimina `Instant.now()`. Los INSERT siguen usando reloj BD; su evaluación toma una instantánea temporal por invocación.
 - Esta definición significa días **transcurridos de 24 h**, NO diferencia entre fechas de calendario local. Si Fase 4 o el responsable exige contar días calendario, se requiere precisión normativa adicional; no implementar silenciosamente `current_date - fecha::date` ni introducir zona horaria implícita.
-- Se añaden **5 tests unitarios de frontera** (0 días, igualdad a 7, instante futuro, parámetros inválidos) y **un test de integración PostgreSQL** que modifica fechas efectivas, verifica tolerancias 0 y 7 y observa las dos categorías.
+- Se añaden **5 tests unitarios de frontera** (0 días, igualdad a 7, instante futuro, parámetros inválidos) y **un test de integración PostgreSQL** que modifica fechas efectivas, verifica tolerancias 0 y 7 y observa las dos categorías, incluso con sesión PostgreSQL en zona `America/Argentina/Cordoba` distinta de UTC.
 - **Reserva UC26/UC49:** al implementar reembolsos, un `AJUSTE_DEBITO` que efectivamente revierta un `PAGO` electrónico (correlacionado por `idReembolso/idCobro`) deberá reducir el pool de créditos en vez de convertirse automáticamente en nueva deuda con fecha reciente. No cambiar **todos** los `AJUSTE_DEBITO` aquí: existen ajustes de débito genuinos y requiere discriminación verificada del origen. Exigir pruebas de FIFO/deuda antigua y reversión de crédito en el futuro incremento financiero.
 
 ### Concurrencia y garantía transaccional (implementadas bajo prueba)
@@ -62,3 +62,7 @@ Se incorpora el dictamen recibido sobre **UC15 y concurrencia** sin cambiar los 
 ### Puerta de integración
 
 La PR queda en borrador hasta verificar **B1 + B2 SUCCESS en el SHA final**, resultados cuantitativos, logs de carrera/rollback y revisión del orden de bloqueo. El dictamen de esta revisión **no autoriza fusionar automáticamente**. Continuar la iteración 1 con servicios B3 y posponer B4/aceptación E2E hasta finalizar I1, como instrucción explícita del responsable.
+
+### Próxima secuencia según backlog G0-D03 — sin adelantar B4
+
+El orden rector ratificado sigue **I1-01 → I1-02 → I1-03 → I1-04 → I1-05 → I1-06** antes del recorrido vertical I2/I3 completo; esta implementación parcial de UC29 es una excepción acotada a los ensayos BC06. El próximo trabajo de implementación deberá recuperar lo pendiente de I1 (particularmente operaciones de seguridad/maestros todavía sin servicio B3), revisar dependencias y pruebas por CU, y no abrir UI/endpoints HTTP B4 hasta finalizar iteración 1. Los **18 BC06** y los **cuatro E2E UC54** seguirán sin acreditación E2E mientras no exista B4, independientemente de los PASS de las pruebas B3.
