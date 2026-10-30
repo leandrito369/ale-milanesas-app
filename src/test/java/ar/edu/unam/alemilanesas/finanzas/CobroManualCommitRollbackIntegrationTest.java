@@ -2,6 +2,9 @@ package ar.edu.unam.alemilanesas.finanzas;
 
 import java.math.BigDecimal;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -87,8 +90,28 @@ class CobroManualCommitRollbackIntegrationTest {
                    (29113,'EN_MORA','SIN_AJUSTE',0)
             """);
         });
-        var cobro = servicio.registrarCobro(sesion,29112,null,
-                new BigDecimal("10.00"),"EFECTIVO",clave);
+        // Dos comandos simultaneos con la misma clave deben producir
+        // UN SOLO Cobro confirmado, no dos asientos ni error UNIQUE.
+        CobroManualService.Resultado cobro;
+        try (var pool = Executors.newFixedThreadPool(2)) {
+            var inicio = new CountDownLatch(1);
+            var primero = pool.submit(() -> {
+                inicio.await();
+                return servicio.registrarCobro(sesion,29112,null,
+                        new BigDecimal("10.00"),"EFECTIVO",clave);
+            });
+            var segundo = pool.submit(() -> {
+                inicio.await();
+                return servicio.registrarCobro(sesion,29112,null,
+                        new BigDecimal("10.00"),"EFECTIVO",clave);
+            });
+            inicio.countDown();
+            cobro = primero.get(20,TimeUnit.SECONDS);
+            var reintentoConcurrente = segundo.get(20,TimeUnit.SECONDS);
+            assertEquals(cobro.idCobro(), reintentoConcurrente.idCobro());
+        } catch (Exception ex) {
+            throw new AssertionError("Fallo de idempotencia concurrente real",ex);
+        }
         assertEquals("CONFIRMADO",cobro.estado());
         assertEquals(1,contar("COBRO"));
         assertEquals(1,contar("MOVIMIENTO_CUENTA"));
