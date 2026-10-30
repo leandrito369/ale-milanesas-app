@@ -198,6 +198,9 @@ class CobroManualServiceIntegrationTest {
         assertEquals(0,n("COBRO"));
     }
     @Test void uc15MoraSeEvaluaConDiasCompletosEnPostgresql() {
+        // La zona de sesion difiere de UTC: el parametro JDBC debe conservar
+        // TIMESTAMPTZ y no reinterpretar una fecha local como un instante nuevo.
+        jdbc.execute("SET LOCAL TIME ZONE 'America/Argentina/Cordoba'");
         // El instante de evaluacion se obtiene en el servicio desde el reloj DB.
         // Un AJUSTE_DEBITO sin origen externo permite ensayar el umbral temporal.
         jdbc.update("""
