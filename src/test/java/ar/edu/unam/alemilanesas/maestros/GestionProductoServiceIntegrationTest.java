@@ -253,11 +253,14 @@ class GestionProductoServiceIntegrationTest {
         assertEquals(1,contar("DETALLE_PEDIDO"));
         assertEquals("PENDIENTE",jdbc.queryForObject(
             "SELECT \"estado\" FROM \"PEDIDO\" WHERE \"idPedido\"=30603",String.class));
-        assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("""
+        var rechazoF09=assertThrows(org.springframework.dao.DataAccessException.class,()->jdbc.update("""
             INSERT INTO "DETALLE_PEDIDO" ("idPedido","numeroDetalle","idProducto",
                 "codigoUnidadVenta","cantidadOriginal","precioUnitarioOriginal",
                 "porcentajePromocionOriginal")
             VALUES (30604,1,?,'UN',1,100.00,0)
             """,id));
+        assertTrue(rechazoF09.getMostSpecificCause().getMessage()
+            .contains("Producto no habilitado para pedido nuevo"),
+            "Se debe rechazar por trigger F09, no por UNIQUE ni FK");
     }
 }
