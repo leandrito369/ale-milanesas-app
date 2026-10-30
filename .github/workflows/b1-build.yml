@@ -40,5 +40,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: b1-surefire-reports
-          path: target/surefire-reports/
+          path: |
+            target/surefire-reports/
+            target/site/jacoco/
+            target/jacoco.exec
           if-no-files-found: warn
