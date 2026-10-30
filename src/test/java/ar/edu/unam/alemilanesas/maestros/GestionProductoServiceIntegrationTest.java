@@ -260,7 +260,7 @@ class GestionProductoServiceIntegrationTest {
             VALUES (30604,1,?,'UN',1,100.00,0)
             """,id));
         assertTrue(rechazoF09.getMostSpecificCause().getMessage()
-            .contains("Producto no habilitado para pedido nuevo"),
+            .contains("Producto inactivo o inexistente para selección nueva"),
             "Se debe rechazar por trigger F09, no por UNIQUE ni FK");
     }
 }
