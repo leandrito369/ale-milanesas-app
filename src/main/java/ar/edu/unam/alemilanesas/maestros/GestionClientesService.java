@@ -105,7 +105,7 @@ public class GestionClientesService {
             || !Objects.equals(anterior.get("provincia"),d.provincia())
             || !Objects.equals(anterior.get("referenciaDomicilio"),d.referenciaDomicilio())
             || !Objects.equals(anterior.get("zona"),d.zona())
-            || !Objects.equals(anterior.get("diaHabitualReparto"),d.diaHabitualReparto());
+            || !Objects.equals(diaEnShort(anterior.get("diaHabitualReparto")),d.diaHabitualReparto());
         if (!distinto) return new ResultadoCliente(idCliente,(String)anterior.get("estado"),
                 (String)anterior.get("categoriaComercial"),false,advertencias);
 
@@ -155,7 +155,7 @@ public class GestionClientesService {
                     (String)previo.get("piso"),(String)previo.get("unidadFuncional"),
                     (String)previo.get("localidad"),(String)previo.get("provincia"),
                     (String)previo.get("referenciaDomicilio"),(String)previo.get("zona"),
-                    (Short)previo.get("diaHabitualReparto")));
+                    diaEnShort(previo.get("diaHabitualReparto"))));
         }
         Long admin=sql.queryForObject("""
             SELECT "idUsuario" FROM "SESION_USUARIO"
@@ -193,6 +193,11 @@ public class GestionClientesService {
                 """, Map.of("id",idCliente));
         }
         return new EstadoCliente(idCliente,nuevoEstado,true,siguiente);
+    }
+
+    /** PostgreSQL smallint puede materializarse como Integer en Map JDBC. */
+    private static Short diaEnShort(Object valor) {
+        return valor == null ? null : ((Number)valor).shortValue();
     }
 
     private void invalidarOtpPendientes(long cliente) {
