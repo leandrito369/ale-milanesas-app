@@ -219,6 +219,25 @@ class CategoriaPoliticaServiceIntegrationTest {
         assertEquals(0,BigDecimal.ZERO.compareTo(r.importeAjuste()));
     }
 
+    @Test void uc16AceptaCerosDeEscalaYControlaLimiteNumerico() {
+        politicaInicial(7,"DESCUENTO","10.00","RECARGO","5.00");
+        // Producto cantidad (3 decimales) x precio (2) puede crear escala 5.
+        // Solo es invalida si hay más de 4 decimales significativos.
+        var normalizado=aplicar.aplicarAjusteComercialSegunCategoria(
+                15711,new BigDecimal("125.62500"));
+        assertEquals(0,new BigDecimal("113.07").compareTo(normalizado.totalOriginal()));
+        assertEquals(0,new BigDecimal("12.56").compareTo(normalizado.importeAjuste()));
+        assertThrows(IllegalArgumentException.class,()->aplicar.aplicarAjusteComercialSegunCategoria(
+                15711,new BigDecimal("1.23456")));
+        assertThrows(IllegalArgumentException.class,()->aplicar.aplicarAjusteComercialSegunCategoria(
+                15711,new BigDecimal("10000000000000000.00")));
+        // Mayor valor que permite NUMERIC(18,2), antes de ajustar por descuento.
+        var frontera=aplicar.aplicarAjusteComercialSegunCategoria(
+                15711,new BigDecimal("9999999999999999.99"));
+        assertTrue(frontera.totalOriginal().compareTo(
+                new BigDecimal("9999999999999999.99"))<=0);
+    }
+
     @Test void uc16RechazaClienteInactivoSubtotalNegativoYPoliticaAusente() {
         assertThrows(IllegalArgumentException.class,()->aplicar.aplicarAjusteComercialSegunCategoria(
                 15714,new BigDecimal("10")));
