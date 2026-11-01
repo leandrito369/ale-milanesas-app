@@ -2,7 +2,6 @@ package ar.edu.unam.alemilanesas.web;
 
 import ar.edu.unam.alemilanesas.maestros.GestionClientesService;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -30,10 +29,6 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @ConditionalOnProperty(prefix="ale.http.writes", name="clientes-uc02-enabled",
         havingValue="true")
 public class RegistroClienteHttpController {
-    private static final Set<String> CAMPOS=Set.of(
-            "nombres","apellidos","telefonoPrincipal","calle","numeroPuerta",
-            "piso","unidadFuncional","localidad","provincia",
-            "referenciaDomicilio","zona","diaHabitualReparto");
     private final GestionClientesService clientes;
 
     public RegistroClienteHttpController(GestionClientesService clientes) {
@@ -47,17 +42,8 @@ public class RegistroClienteHttpController {
     @PostMapping(path="/clientes",consumes="application/json",produces="application/json")
     public ResponseEntity<AltaConfirmada> registrar(Authentication auth,
                                                      @RequestBody Map<String,Object> datos) {
-        if (datos==null || !CAMPOS.containsAll(datos.keySet())) {
-            throw new IllegalArgumentException("Campos de alta inválidos");
-        }
         UUID sesion=sesionAutenticada(auth);
-        var dto=new GestionClientesService.DatosCliente(
-                texto(datos,"nombres"),texto(datos,"apellidos"),
-                texto(datos,"telefonoPrincipal"),texto(datos,"calle"),
-                texto(datos,"numeroPuerta"),texto(datos,"piso"),
-                texto(datos,"unidadFuncional"),texto(datos,"localidad"),
-                texto(datos,"provincia"),texto(datos,"referenciaDomicilio"),
-                texto(datos,"zona"),dia(datos));
+        var dto=DatosClienteHttpParser.interpretar(datos);
         var r=clientes.registrarCliente(sesion,dto);
         return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
                 .body(new AltaConfirmada(r.idCliente(),r.estado(),r.categoriaComercial(),
@@ -72,23 +58,7 @@ public class RegistroClienteHttpController {
         return actor.idSesion();
     }
 
-    private static String texto(Map<String,Object> datos,String nombre) {
-        Object valor=datos.get(nombre);
-        if(valor==null) return null;
-        if(!(valor instanceof String cadena)) {
-            throw new IllegalArgumentException("Tipo de campo incorrecto");
-        }
-        return cadena;
-    }
 
-    private static Short dia(Map<String,Object> datos) {
-        Object valor=datos.get("diaHabitualReparto");
-        if (valor==null) return null;
-        if (!(valor instanceof Integer entero) || entero<1 || entero>7) {
-            throw new IllegalArgumentException("Día inválido");
-        }
-        return entero.shortValue();
-    }
 }
 
 /** Respuestas deliberadamente genéricas; jamás devuelven SQL ni PII. */
