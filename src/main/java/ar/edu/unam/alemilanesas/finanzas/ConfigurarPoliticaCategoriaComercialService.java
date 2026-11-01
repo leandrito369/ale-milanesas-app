@@ -58,6 +58,10 @@ public class ConfigurarPoliticaCategoriaComercialService {
                 if(vigenteHasta==null || p.inicio().isBefore(vigenteHasta))
                     throw new IllegalArgumentException("Politica futura solapada");
             } else if(p.fin()==null || p.fin().isAfter(vigenteDesde)){
+                // Una vigencia FUTURA ya programada es historia contractual
+                // comprometida: no truncarla sin operación de edición explícita.
+                if(p.inicio().isAfter(ahora))
+                    throw new IllegalArgumentException("No truncar politica futura programada");
                 if(cerrar!=null)throw new IllegalStateException("Vigencias anteriores ambiguas");
                 cerrar=p;
             }
