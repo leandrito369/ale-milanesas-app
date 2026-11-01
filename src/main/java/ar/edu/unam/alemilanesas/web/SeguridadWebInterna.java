@@ -15,6 +15,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -55,7 +57,16 @@ public class SeguridadWebInterna {
                 .anyRequest().authenticated());
         http.exceptionHandling(e -> e
                 .authenticationEntryPoint((req,resp,ex)->resp.sendError(401))
-                .accessDeniedHandler((req,resp,ex)->resp.sendError(403)));
+                .accessDeniedHandler((req,resp,ex)->{
+                    var actual=SecurityContextHolder.getContext().getAuthentication();
+                    if (ex instanceof CsrfException) {
+                        resp.sendError(403);
+                    } else if (actual==null || actual instanceof AnonymousAuthenticationToken) {
+                        resp.sendError(401);
+                    } else {
+                        resp.sendError(403);
+                    }
+                }));
         http.addFilterBefore(new FiltroOrigen(origenPermitido),
                 UsernamePasswordAuthenticationFilter.class);
         http.addFilterBefore(new SesionCookieFilter(sesiones),
