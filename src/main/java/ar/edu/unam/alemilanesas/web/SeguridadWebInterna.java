@@ -37,8 +37,7 @@ public class SeguridadWebInterna {
     @Order(2)
     SecurityFilterChain seguridadWeb(HttpSecurity http,
                                      SeguridadHttpInterna.VerificadorSesionBearer sesiones,
-                                     @Value("${ale.web.allowed-origin:}") String origenPermitido)
-            throws Exception {
+                                     @Value("${ale.web.allowed-origin:}") String origenPermitido) {
         http.securityMatcher("/web/**");
         http.httpBasic(AbstractHttpConfigurer::disable);
         http.formLogin(AbstractHttpConfigurer::disable);
@@ -86,38 +85,51 @@ public class SeguridadWebInterna {
         @Override
         protected void doFilterInternal(HttpServletRequest req,HttpServletResponse res,
                                         FilterChain chain) throws ServletException,IOException {
-            String metodo=req.getMethod();
-            boolean muta="POST".equals(metodo) || "PUT".equals(metodo)
-                    || "PATCH".equals(metodo) || "DELETE".equals(metodo);
-            if (muta && req.getHeader("Origin")!=null) {
-                String permitido=origenConfigurado.isBlank() ?
-                        req.getScheme()+"://"+req.getServerName()+":"+req.getServerPort()
-                        : origenConfigurado;
-                try {
-                    URI recibido=URI.create(req.getHeader("Origin"));
-                    URI esperado=URI.create(permitido);
-                    int puertoRecibido=recibido.getPort()==-1?
-                            ("https".equalsIgnoreCase(recibido.getScheme())?443:80)
-                            : recibido.getPort();
-                    int puertoEsperado=esperado.getPort()==-1?
-                            ("https".equalsIgnoreCase(esperado.getScheme())?443:80)
-                            : esperado.getPort();
-                    if (!esperado.getScheme().equalsIgnoreCase(recibido.getScheme())
-                            || !esperado.getHost().equalsIgnoreCase(recibido.getHost())
-                            || puertoEsperado!=puertoRecibido
-                            || (recibido.getRawPath()!=null && !recibido.getRawPath().isEmpty())
-                            || recibido.getUserInfo()!=null) {
-                        res.sendError(403); return;
-                    }
-                } catch (RuntimeException ex) {
-                    res.sendError(403); return;
-                }
+            if (muta(req.getMethod()) && origenInvalido(req)) {
+                res.sendError(403);
+                return;
             }
             res.setHeader("Content-Security-Policy",
                     "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
             res.setHeader("X-Content-Type-Options","nosniff");
             chain.doFilter(req,res);
         }
+
+        private static boolean muta(String metodo) {
+            return "POST".equals(metodo) || "PUT".equals(metodo)
+                    || "PATCH".equals(metodo) || "DELETE".equals(metodo);
+        }
+
+        private boolean origenInvalido(HttpServletRequest req) {
+            String origen=req.getHeader("Origin");
+            if (origen==null) return false;
+            String esperado=origenConfigurado.isBlank()
+                    ? req.getScheme()+"://"+req.getServerName()+":"+req.getServerPort()
+                    : origenConfigurado;
+            try {
+                URI recibido=URI.create(origen);
+                URI confiable=URI.create(esperado);
+                return !mismoOrigen(recibido,confiable);
+            } catch (RuntimeException ex) {
+                return true;
+            }
+        }
+
+        private static boolean mismoOrigen(URI recibido,URI esperado) {
+            if (recibido.getHost()==null || esperado.getHost()==null) return false;
+            if (recibido.getUserInfo()!=null || recibido.getRawQuery()!=null
+                    || recibido.getRawFragment()!=null || recibido.getRawPath()!=null
+                    && !recibido.getRawPath().isEmpty()) return false;
+            return esperado.getScheme().equalsIgnoreCase(recibido.getScheme())
+                    && esperado.getHost().equalsIgnoreCase(recibido.getHost())
+                    && puerto(esperado)==puerto(recibido);
+        }
+
+        private static int puerto(URI uri) {
+            if (uri.getPort()!=-1) return uri.getPort();
+            return "https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80;
+        }
+
     }
 
     private static final class SesionCookieFilter extends OncePerRequestFilter {
