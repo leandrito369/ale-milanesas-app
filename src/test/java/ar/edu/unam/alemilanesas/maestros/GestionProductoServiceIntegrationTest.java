@@ -160,9 +160,18 @@ class GestionProductoServiceIntegrationTest {
             """,id);
         assertThrows(IllegalArgumentException.class,()->servicio.modificarProducto(
             ADMIN,id,"Milanesa combo",null,"REVENTA","KG"));
-        assertTrue(servicio.modificarProducto(ADMIN,id,
-            "Milanesa combo familiar",null,"ELABORADO","UN").huboCambio());
+        var cambioNombre=servicio.modificarProducto(ADMIN,id,
+            "Milanesa combo familiar",null,"ELABORADO","UN");
+        assertTrue(cambioNombre.huboCambio());
+        assertEquals(id,cambioNombre.idProducto(),
+            "La identidad idProducto no cambia al renombrar (RD-UC30-001)");
+        assertEquals("milanesa combo familiar",jdbc.queryForObject(
+            "SELECT \"nombreNormalizado\" FROM \"PRODUCTO\" WHERE \"idProducto\"=?",
+            String.class,id));
         assertEquals(1,contar("PRECIO_PRODUCTO"));
+        assertEquals(id,jdbc.queryForObject(
+            "SELECT \"idProducto\" FROM \"PRECIO_PRODUCTO\" WHERE \"idPrecio\"=30401",
+            Long.class), "El precio histórico conserva la referencia al mismo Producto");
     }
 
     @Test void uc47ProductoConRecetaNoPuedeCambiarTipo(){
