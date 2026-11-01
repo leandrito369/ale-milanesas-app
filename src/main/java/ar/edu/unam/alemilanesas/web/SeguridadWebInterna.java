@@ -35,6 +35,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Configuration
 public class SeguridadWebInterna {
     public static final String COOKIE_SESION = "__Host-ale_session";
+    private static final String RUTA_LOGIN_WEB = "/web/login";
 
     @Bean
     @Order(2)
@@ -52,8 +53,8 @@ public class SeguridadWebInterna {
         http.securityContext(c -> c.securityContextRepository(
                 new NullSecurityContextRepository()));
         http.authorizeHttpRequests(a -> a
-                .requestMatchers(HttpMethod.GET, "/web/login").permitAll()
-                .requestMatchers(HttpMethod.POST, "/web/login").permitAll()
+                .requestMatchers(HttpMethod.GET, RUTA_LOGIN_WEB).permitAll()
+                .requestMatchers(HttpMethod.POST, RUTA_LOGIN_WEB).permitAll()
                 .anyRequest().authenticated());
         http.exceptionHandling(e -> e
                 .authenticationEntryPoint((req,resp,ex)->resp.sendError(401))
@@ -175,7 +176,7 @@ public class SeguridadWebInterna {
                             valor.principal(),null,
                             valor.roles().stream().map(SimpleGrantedAuthority::new).toList());
                     SecurityContextHolder.getContext().setAuthentication(auth);
-                } else if (!"/web/login".equals(req.getServletPath())) {
+                } else if (!RUTA_LOGIN_WEB.equals(req.getServletPath())) {
                     // Cookie presentada pero expirada/revocada/ilegible:
                     // 401 inmediato, nunca autoridad cacheada en HttpSession.
                     res.sendError(401);
