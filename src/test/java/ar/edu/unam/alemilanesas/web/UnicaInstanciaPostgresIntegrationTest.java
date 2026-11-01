@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
 @Testcontainers
 class UnicaInstanciaPostgresIntegrationTest {
     @Container
-    static PostgreSQLContainer<?> db = new PostgreSQLContainer<>("postgres:17.11-alpine");
+    static PostgreSQLContainer db = new PostgreSQLContainer("postgres:17.11-alpine");
 
     @DynamicPropertySource
     static void db(DynamicPropertyRegistry props) {
