@@ -17,6 +17,13 @@ El 01/11/2026, [Quality Gate PR #30](https://sonarcloud.io/dashboard?id=leandrit
 
 Los cuatro cambios están en **PR #30**, no en este PR B4-02C, para preservar responsabilidad de la corrección. **Un diff no equivale a Quality Gate PASS**: verificar análisis Sonar del nuevo SHA y registrar resultado.
 
+## Evidencia ejecutada B4-02C (01/11/2026)
+
+- **SonarCloud B4-02B PR #30:** después de corregir S6437 y tres S1192, [Quality Gate SUCCESS](https://sonarcloud.io/dashboard?id=leandrito369_ale-milanesas-app&pullRequest=30), B1 SUCCESS y B2 SUCCESS en SHA `947f6b9ebfbad70bfb2dae83d8dd0a2f2c2fef20`.
+- **B4-02C HTTP real focalizado:** [GitHub Actions run 41338336225](https://github.com/leandrito369/ale-milanesas-app/actions/runs/41338336225), SHA `87474e0bb649f0c62678bd93621027d49ece261e`: **10 tests, 0 fallos, 0 errores, 0 skip, BUILD SUCCESS**. `AutenticacionHttpExternaTest` 6/6, `LimiteIntentosLoginTest` 2/2, `TokenSesionInternaTest` 2/2.
+- **Fallo encontrado y corregido por la prueba:** el bearer cookie web parecía mantener acceso tras logout. La solución separa explícitamente `SecurityContext` de `HttpSession` mediante `NullSecurityContextRepository`; el test ratifica revocación de la fila PostgreSQL, rechazo de cookie previa con 401/403 y rotación de token CSRF después de login.
+- **Nota de límites:** esta prueba de puerto real es un HTTP loopback con PostgreSQL real, **no** HTTPS desplegado, Android ni E2E de proveedor comercial. B1/B2 y SonarCloud deben aprobar el **SHA definitivo de esta PR**, no reutilizar evidencia de un SHA anterior.
+
 ## Pruebas propuestas de B4-02C
 
 | ID B4-02A | Evidencia / control | Estado |
