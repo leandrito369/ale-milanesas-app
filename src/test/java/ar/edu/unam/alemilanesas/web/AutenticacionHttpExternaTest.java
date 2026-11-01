@@ -252,6 +252,10 @@ class AutenticacionHttpExternaTest {
                 .findFirst().orElseThrow().split(";",2)[0];
 
         String datos="nombreUsuario="+userAdmin+"&credencial="+claveAdmin;
+        var login=enviar("/web/login","POST",datos+"&_csrf="+csrfFormulario,Map.of(
+                "Content-Type","application/x-www-form-urlencoded",
+                "Cookie",session));
+        assertEquals(302,login.statusCode(),login.body());
         assertEquals(403,enviar("/web/login","POST",datos+"&_csrf="+csrfFormulario,
                 Map.of("Content-Type","application/x-www-form-urlencoded",
                        "Origin","https://origen-malicioso.example",
@@ -261,10 +265,6 @@ class AutenticacionHttpExternaTest {
                 "Cookie",session));
         assertEquals(403,sinCsrf.statusCode());
 
-        var login=enviar("/web/login","POST",datos+"&_csrf="+csrfFormulario,Map.of(
-                "Content-Type","application/x-www-form-urlencoded",
-                "Cookie",session));
-        assertEquals(302,login.statusCode(),login.body());
         String cookie=login.headers().allValues("Set-Cookie").stream()
                 .filter(x->x.startsWith("__Host-ale_session=")).findFirst().orElseThrow();
         assertTrue(cookie.contains("Secure"));
