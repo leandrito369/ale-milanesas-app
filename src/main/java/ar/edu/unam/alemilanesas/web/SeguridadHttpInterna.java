@@ -19,6 +19,7 @@ import jakarta.servlet.http.HttpServletResponse;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -42,14 +43,18 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Configuration
 public class SeguridadHttpInterna {
     @Bean
+    @Order(1)
     SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones) throws Exception {
+        // La aplicación ya posee un SecurityFilterChain fail-closed para las
+        // demás rutas en bootstrap.SecurityConfiguration. Esta cadena solo
+        // cubre la API interna y se evalúa ANTES de la cadena global.
+        http.securityMatcher("/api/v1/**");
         http.csrf(AbstractHttpConfigurer::disable);
         http.httpBasic(AbstractHttpConfigurer::disable);
         http.formLogin(AbstractHttpConfigurer::disable);
         http.logout(AbstractHttpConfigurer::disable);
         http.sessionManagement(s->s.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
         http.authorizeHttpRequests(a->a
-                .requestMatchers("/actuator/health","/error").permitAll()
                 .requestMatchers(HttpMethod.GET, "/api/v1/clientes")
                     .hasAnyAuthority("ADMINISTRADOR","VENDEDOR")
                 .requestMatchers(HttpMethod.GET,"/api/v1/insumos","/api/v1/unidades")
