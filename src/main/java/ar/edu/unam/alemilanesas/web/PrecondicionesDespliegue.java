@@ -35,7 +35,7 @@ public class PrecondicionesDespliegue implements ApplicationRunner {
             throw new IllegalStateException("ALE_PUBLIC_ORIGIN debe ser origen HTTPS sin ruta");
         }
         if (!"127.0.0.1".equals(env.getProperty("server.address",""))
-                || !env.getProperty("ale.security.singleton-db-guard",Boolean.class,false)
+                || !Boolean.TRUE.equals(env.getProperty("ale.security.singleton-db-guard",Boolean.class))
                 || !"native".equalsIgnoreCase(env.getProperty("server.forward-headers-strategy",""))) {
             throw new IllegalStateException("Aislamiento del backend y singleton requeridos");
         }
