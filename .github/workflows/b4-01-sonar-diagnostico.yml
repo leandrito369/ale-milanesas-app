@@ -1,0 +1,25 @@
+name: B4-01 - diagnostico de seguridad SonarCloud
+on:
+  push:
+    branches: [feat/b4-01-http-consultas-seguras-uc33-36-2026-11-01]
+permissions:
+  contents: read
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Leer hallazgos de la PR27 sin secretos
+        run: |
+          set -euo pipefail
+          code=$(curl -sSL --max-time 20 -o /tmp/issues.json -w '%{http_code}' 'https://sonarcloud.io/api/issues/search?componentKeys=leandrito369_ale-milanesas-app&pullRequest=27&resolved=false&ps=100')
+          echo "Sonar API status: $code"
+          if [ "$code" != 200 ]; then exit 1; fi
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/issues.json'))
+          print('Total:',d.get('total'))
+          for x in d.get('issues',[]):
+              print('Regla=%s tipo=%s gravedad=%s archivo=%s linea=%s mensaje=%s' %(
+                 x.get('rule'),x.get('type'),x.get('severity'),
+                 (x.get('component') or '').split(':')[-1],x.get('line'),x.get('message','')))
+          PY
