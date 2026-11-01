@@ -38,7 +38,11 @@ public class SeguridadHttpInterna {
 
     @Bean
     @Order(1)
-    SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones) throws Exception {
+    // Sonar S4502: excepción revisada exclusivamente para API Bearer sin cookies.
+    // La cadena /web/** conserva CSRF; la API ignora cookies de autenticación.
+    // Evidencia B4-02C: test HTTP externo que rechaza cookie en /api/v1/**.
+    @SuppressWarnings("java:S4502")
+    SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones) {
         http.securityMatcher("/api/v1/**");
         // Los endpoints de /api/v1/** aceptan solo Bearer en Authorization.
         // No se autentican mediante cookies: se excluyen de CSRF por ruta,
