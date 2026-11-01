@@ -1,10 +1,8 @@
 package ar.edu.unam.alemilanesas.web;
 
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
@@ -25,7 +23,6 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
-import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -44,12 +41,13 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class SeguridadHttpInterna {
     @Bean
     @Order(1)
-    SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones) throws Exception {
+    SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones) {
         // La aplicación ya posee un SecurityFilterChain fail-closed para las
         // demás rutas en bootstrap.SecurityConfiguration. Esta cadena solo
         // cubre la API interna y se evalúa ANTES de la cadena global.
         http.securityMatcher("/api/v1/**");
-        http.csrf(AbstractHttpConfigurer::disable);
+        // B4-01 habilita solo GET: mantener CSRF activo por defecto.
+        // B4-02B introducirá POST Bearer sin cookies en una cadena separada.
         http.httpBasic(AbstractHttpConfigurer::disable);
         http.formLogin(AbstractHttpConfigurer::disable);
         http.logout(AbstractHttpConfigurer::disable);
