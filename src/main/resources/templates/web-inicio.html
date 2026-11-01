@@ -1,0 +1,13 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ale Milanesas - Acceso interno</title></head><body>
+<main><h1>Sesión interna</h1>
+<p>Acceso autenticado. Las operaciones de negocio continúan bloqueadas.</p>
+<a th:href="@{/web/cambiar-clave}">Cambiar contraseña</a>
+<form th:action="@{/web/renew}" method="post">
+<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+<button type="submit">Renovar sesión</button></form>
+<form th:action="@{/web/logout}" method="post">
+<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+<button type="submit">Cerrar sesión</button></form></main></body></html>

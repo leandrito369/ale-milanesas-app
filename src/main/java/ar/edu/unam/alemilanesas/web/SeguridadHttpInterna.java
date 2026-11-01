@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import org.springframework.context.annotation.Bean;
+import org.springframework.dao.DataAccessException;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
@@ -38,15 +39,12 @@ public class SeguridadHttpInterna {
 
     @Bean
     @Order(1)
-    // Sonar S4502: excepción revisada exclusivamente para API Bearer sin cookies.
-    // La cadena /web/** conserva CSRF; la API ignora cookies de autenticación.
-    // Evidencia B4-02C: test HTTP externo que rechaza cookie en /api/v1/**.
+    // S4502 validado: API no acepta cookie, solo Authorization Bearer.
+    // Cadena /web/** conserva CSRF y prueba negativa de cookies en API.
     @SuppressWarnings("java:S4502")
     SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones) {
         http.securityMatcher("/api/v1/**");
-        // Los endpoints de /api/v1/** aceptan solo Bearer en Authorization.
-        // No se autentican mediante cookies: se excluyen de CSRF por ruta,
-        // mientras que /web/** conserva CSRF y su cadena independiente.
+        // La API no autentica cookies. El sitio web (otra cadena) conserva CSRF.
         http.csrf(csrf -> csrf.ignoringRequestMatchers("/api/v1/**"));
         http.httpBasic(AbstractHttpConfigurer::disable);
         http.formLogin(AbstractHttpConfigurer::disable);
@@ -107,7 +105,13 @@ public class SeguridadHttpInterna {
                         || header.length()<=7) {
                     rechazar(res); return;
                 }
-                var sesion=sesiones.validar(header.substring(7));
+                Optional<VerificadorSesionBearer.SesionAutorizada> sesion;
+                try {
+                    sesion=sesiones.validar(header.substring(7));
+                } catch (DataAccessException ex) {
+                    error(res,503,"AUTENTICACION_NO_DISPONIBLE");
+                    return;
+                }
                 if (sesion.isEmpty()) { rechazar(res); return; }
                 var s=sesion.get();
                 var auth=new UsernamePasswordAuthenticationToken(s.principal(),null,
@@ -140,6 +144,15 @@ public class SeguridadHttpInterna {
                        AND s."fechaHoraInicio"+interval '8 hours'>clock_timestamp()
                        AND s."fechaHoraRevocacion" IS NULL
                        AND u."estado"='HABILITADO'
+                       AND (
+                         NOT EXISTS (SELECT 1 FROM "USUARIO_ROL" r
+                                      WHERE r."idUsuario"=u."idUsuario"
+                                        AND r."codigoRol"='PROVEEDOR')
+                         OR EXISTS (SELECT 1 FROM "USUARIO_PROVEEDOR" up
+                                      JOIN "PROVEEDOR" p ON p."idProveedor"=up."idProveedor"
+                                     WHERE up."idUsuario"=u."idUsuario"
+                                       AND p."estado"='ACTIVO')
+                       )
                     """,new MapSqlParameterSource("huella",huella.get()));
             if (filas.isEmpty()) return Optional.empty();
             var primero=filas.getFirst();

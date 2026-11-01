@@ -128,6 +128,12 @@ class ErroresAutenticacionHttp {
                 .body(Map.of(CODIGO,"INTENTOS_EXCEDIDOS"));
     }
 
+    @ExceptionHandler(org.springframework.dao.DataAccessException.class)
+    ResponseEntity<Map<String,String>> baseNoDisponible() {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of(CODIGO,"AUTENTICACION_NO_DISPONIBLE"));
+    }
+
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<Map<String,String>> invalidos() {
         return ResponseEntity.badRequest().body(Map.of(CODIGO,"SOLICITUD_INVALIDA"));

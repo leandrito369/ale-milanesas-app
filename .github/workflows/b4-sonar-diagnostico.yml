@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - feat/b4-02b-auth-sesiones-uc01-53-54-2026-11-01
+      - test/b4-02c-seguridad-http-e2e-2026-11-01
   workflow_dispatch:
 permissions:
   contents: read
@@ -14,7 +15,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          url='https://sonarcloud.io/api/issues/search?componentKeys=leandrito369_ale-milanesas-app&pullRequest=30&resolved=false&ps=100'
+          pr=30
+          if [[ "$GITHUB_REF_NAME" == test/b4-02c-* ]]; then pr=31; fi
+          url="https://sonarcloud.io/api/issues/search?componentKeys=leandrito369_ale-milanesas-app&pullRequest=${pr}&resolved=false&ps=100"
           code=$(curl --max-time 20 -sSL -o /tmp/sonar-issues.json -w '%{http_code}' "$url")
           echo "SonarCloud API HTTP $code"
           if [[ "$code" != "200" ]]; then

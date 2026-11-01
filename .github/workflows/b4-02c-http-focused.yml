@@ -1,0 +1,30 @@
+name: B4-02C - HTTP real y seguridad focalizada
+on:
+  push:
+    branches:
+      - test/b4-02c-seguridad-http-e2e-2026-11-01
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  http-real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Verificar Docker
+        run: docker info --format '{{.ServerVersion}}'
+      - name: Ejecutar suite HTTP real (sin MockMvc) y tests de seguridad
+        run: mvn -B -ntp -Dtest=AutenticacionHttpExternaTest,LimiteIntentosLoginTest,TokenSesionInternaTest test
+      - name: Adjuntar evidencias
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b4-02c-http-real-report
+          path: target/surefire-reports/
+          if-no-files-found: warn

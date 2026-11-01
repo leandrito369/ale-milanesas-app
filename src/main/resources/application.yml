@@ -29,3 +29,9 @@ management:
       show-details: never
 server:
   port: ${ALE_HTTP_PORT:8080}
+  servlet:
+    session:
+      cookie:
+        secure: true
+        http-only: true
+        same-site: strict
