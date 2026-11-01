@@ -23,17 +23,20 @@ class PrecondicionesDespliegueTest {
                 "","http://ale.example.invalid","https://ale.example.invalid/carpeta",
                 "https://user@ale.example.invalid","https://ale.example.invalid?x=1"}) {
             var env=base().withProperty("ale.web.allowed-origin",origen);
-            assertThrows(IllegalStateException.class,
-                    ()->new PrecondicionesDespliegue(env).run(null));
+            var validador=new PrecondicionesDespliegue(env);
+            assertThrows(IllegalStateException.class,()->validador.run(null));
         }
     }
 
     @Test void noAdmiteBackendPublicoNiEscalarSinLock() {
-        assertThrows(IllegalStateException.class,()->new PrecondicionesDespliegue(
-                base().withProperty("server.address","0.0.0.0")).run(null));
-        assertThrows(IllegalStateException.class,()->new PrecondicionesDespliegue(
-                base().withProperty("ale.security.singleton-db-guard","false")).run(null));
-        assertThrows(IllegalStateException.class,()->new PrecondicionesDespliegue(
-                base().withProperty("server.forward-headers-strategy","framework")).run(null));
+        var backendPublico=new PrecondicionesDespliegue(
+                base().withProperty("server.address","0.0.0.0"));
+        var sinLock=new PrecondicionesDespliegue(
+                base().withProperty("ale.security.singleton-db-guard","false"));
+        var proxyNoConfiable=new PrecondicionesDespliegue(
+                base().withProperty("server.forward-headers-strategy","framework"));
+        assertThrows(IllegalStateException.class,()->backendPublico.run(null));
+        assertThrows(IllegalStateException.class,()->sinLock.run(null));
+        assertThrows(IllegalStateException.class,()->proxyNoConfiable.run(null));
     }
 }
