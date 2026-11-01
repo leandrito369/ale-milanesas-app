@@ -40,12 +40,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * Se ejecuta sin @Transactional en el test: cada request servidor usa otra tx.
  * No acredita TLS de despliegue/ingress o uso externo de red publica.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = {
-            // Solo loopback HTTP en la prueba: produccion conserva cookie Secure.
-            "server.servlet.session.cookie.secure=false",
-            "logging.level.org.springframework.security.web.csrf=DEBUG"
-        })
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @Testcontainers
 class AutenticacionHttpExternaTest {
     @Container
@@ -278,15 +273,27 @@ class AutenticacionHttpExternaTest {
         assertTrue(cookie.contains("Path=/"));
         String bearerCookie=cookie.split(";",2)[0];
 
-        assertEquals(200,enviar("/web/inicio","GET",null,
-                Map.of("Cookie",bearerCookie+"; "+session)).statusCode());
-        assertEquals(403,enviar("/web/logout","POST","",Map.of(
-                "Cookie",bearerCookie+"; "+session)).statusCode());
-        assertEquals(302,enviar("/web/logout","POST","_csrf="+csrfFormulario,
+        String sessionLogin=login.headers().allValues("Set-Cookie").stream()
+                .filter(x->x.startsWith("JSESSIONID=")).findFirst()
+                .map(x->x.split(";",2)[0]).orElse(session);
+        var panel=enviar("/web/inicio","GET",null,
+                Map.of("Cookie",bearerCookie+"; "+sessionLogin));
+        assertEquals(200,panel.statusCode());
+        Matcher csrfPanel=CSRF.matcher(panel.body());
+        assertTrue(csrfPanel.find(),"Panel autenticado debe emitir CSRF nuevo");
+        String csrfVigente=URLEncoder.encode(csrfPanel.group(1),StandardCharsets.UTF_8);
+        String sessionVigente=panel.headers().allValues("Set-Cookie").stream()
+                .filter(x->x.startsWith("JSESSIONID=")).findFirst()
+                .map(x->x.split(";",2)[0]).orElse(sessionLogin);
+        // La autenticacion rota CSRF: el token anterior NO permite logout.
+        assertEquals(403,enviar("/web/logout","POST","_csrf="+csrfFormulario,
                 Map.of("Content-Type","application/x-www-form-urlencoded",
-                       "Cookie",bearerCookie+"; "+session)).statusCode());
+                       "Cookie",bearerCookie+"; "+sessionVigente)).statusCode());
+        assertEquals(302,enviar("/web/logout","POST","_csrf="+csrfVigente,
+                Map.of("Content-Type","application/x-www-form-urlencoded",
+                       "Cookie",bearerCookie+"; "+sessionVigente)).statusCode());
         assertEquals(401,enviar("/web/inicio","GET",null,
-                Map.of("Cookie",bearerCookie+"; "+session)).statusCode());
+                Map.of("Cookie",bearerCookie+"; "+sessionVigente)).statusCode());
         // La API no utiliza la cookie web como identidad.
         assertEquals(401,enviar("/api/v1/unidades","GET",null,
                 Map.of("Cookie",bearerCookie)).statusCode());
