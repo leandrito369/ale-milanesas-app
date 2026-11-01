@@ -130,6 +130,7 @@ public class SeguridadHttpInterna {
                      WHERE s."tokenProtegido"=:huella
                        AND s."fechaHoraInicio"<=clock_timestamp()
                        AND s."fechaHoraExpiracion">clock_timestamp()
+                       AND s."fechaHoraInicio"+interval '8 hours'>clock_timestamp()
                        AND s."fechaHoraRevocacion" IS NULL
                        AND u."estado"='HABILITADO'
                     """,new MapSqlParameterSource("huella",huella.get()));
