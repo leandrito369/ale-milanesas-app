@@ -1,6 +1,6 @@
 # Acta de consolidación I1 B3 — 01/11/2026
 
-**Estado:** rama técnica de integración **sin merge a main**, pendiente repetición B1/B2 del SHA posterior a RD-UC50-001 y revisión de integración; no equivale a cierre funcional total de I1.
+**Estado al 01/11/2026:** rama I1 B3 técnicamente integrada, con RD-UC50-001 y RD-UC19-001 **APROBADAS**, Issues #25/#21 cerradas. B1/B2 deben confirmarse en el SHA final después de esta adenda. **Sin merge a main**, ni HTTP B4 ni acreditación E2E.
 
 ## Corte y procedencia
 
@@ -31,9 +31,19 @@ El `stockActual=0` **no** es una inmovilidad permanente del campo: indica ausenc
 
 **Evidencia anterior a esta adenda documental:** SHA `c372aed91b719032efd678191c3614932b1bb62f`, B1/B2 **136/136 SUCCESS**, 3 rutas MR6, restauración 1.225 objetos y digests registrados en la PR. El nuevo SHA documental requiere repetición B1/B2 para ser gate final.
 
+## Issue #21 — RD-UC19-001 APROBADA y reserva de primer evento cerrada
+
+El responsable del proyecto ratificó expresamente el 01/11/2026 **RD-UC19-001 — Mapeo `MODIFICACION_PROGRAMADA` con `precioAnterior=NULL`**. [Texto de la decisión aprobada](https://github.com/leandrito369/ale-milanesas/blob/main/docs/01-gobierno/b0/RD_UC19_001_AUDITORIA_PRIMER_PRECIO_2026-11-01.md). [Issue #21](https://github.com/leandrito369/ale-milanesas-app/issues/21) cerrada como `completed`.
+
+El primer precio en UC19 se registra en `PRECIO_PRODUCTO` y `AUDITORIA_PRECIO` de forma atómica, con `tipoEvento='MODIFICACION_PROGRAMADA'`, `precioAnterior=NULL`, `vigenteDesdeAnterior=NULL`, `precioNuevo` positivo y valor de `vigenteDesdeNuevo`, usuario y fecha del evento reales. **No** se inventa `ALTA_PRECIO`, ni `CANCELACION_PROGRAMADA` cuando no existe cancelación real. `CIERRE_VIGENCIA` permanece para el ajuste real del fin de la versión anterior; no cambia el precio histórico de Pedidos. La semántica física y de negocio se validó mediante `PreciosProductoServiceIntegrationTest` y `PrecioProductoConcurrenciaIntegrationTest` en PostgreSQL 17.11; MR5/F01 permanece inmutable.
+
+**SHA previo de lógica y prueba reforzada:** `cc2f6dc5ed37229f0e4cb31baf667fe002a2ee6a`: [B1 #41316787755](https://github.com/leandrito369/ale-milanesas-app/actions/runs/41316787755) y [B2 #41316787756](https://github.com/leandrito369/ale-milanesas-app/actions/runs/41316787756), ambos **SUCCESS 137/137**; restauración de 1225 objetos y triple huella MR6 equivalente. Esta adenda cambia solo documentación y deberá revalidarse B1/B2 del nuevo HEAD.
+
+**Reserva distinta de la Issue #21:** la interpretación del recorte anticipado de una programación futura aún no iniciada no fue aprobada por RD-UC19-001. Requiere cotejo funcional adicional si se pretende declararlo aceptado. La PR conjunta continúa pendiente de revisión humana y autorización de merge a `main`.
+
 ## Gate de integración obligatorio
 
 - Ejecutar en un mismo HEAD **B1** (`mvn clean verify` + JUnit + Testcontainers + JaCoCo) y **B2** (Flyway V1/V2, integridad fuente MR5/F01, triple huella MR6, backup/restore físico 1.225 objetos), cotejando artefactos/digests y sin sumar resultados históricos por rama.
 - Registrar fallos intermedios con causa y SHA. No atribuir a SonarQube un resultado inexistente.
 - **Prohibiciones y límites:** no merge automático a `main`; no cambios MR5/F01 ni reinvención de auditoría de eventos; UC03/21 no persisten Pedido desde UC16; no UC10/42 ni SALDO_INICIAL; no HTTP B4 ni E2E hasta resolver el gate I1. No confundir prueba B3 integrada con acreditación de 18 escenarios BC06 ni cuatro UC54.
-- Dependencias adicionales: Issue #21 para primer precio y revisión funcional PR20, revisión de locks UC29/UC15 con futuros servicios, y revisión humana de las PR de origen.
+- Dependencias restantes: revisión funcional del eventual recorte de precios futuros, revisión de locks UC29/UC15 con futuros servicios y revisión humana de PR26. **Issues #21 y #25 resueltas**, no acreditan automáticamente merge a main.
