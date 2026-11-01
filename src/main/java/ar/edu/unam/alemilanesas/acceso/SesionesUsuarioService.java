@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class SesionesUsuarioService {
+    private static final String PARAM_DIGEST = "digest";
     private final NamedParameterJdbcTemplate sql;
     private final PasswordEncoder encoder;
     private final String hashFicticio;
@@ -26,7 +27,7 @@ public class SesionesUsuarioService {
     public SesionesUsuarioService(NamedParameterJdbcTemplate sql, PasswordEncoder encoder) {
         this.sql = sql;
         this.encoder = encoder;
-        this.hashFicticio = encoder.encode("usuario-inexistente-ale");
+        this.hashFicticio = encoder.encode(TokenSesionInterna.nuevo());
     }
 
     /** Auth01: fila de USUARIO bloqueada para no emitir despues de deshabilitar/cambiar clave. */
@@ -58,7 +59,7 @@ public class SesionesUsuarioService {
         var params = new MapSqlParameterSource()
                 .addValue("idSesion", UUID.randomUUID())
                 .addValue("usuario", id)
-                .addValue("digest", TokenSesionInterna.huella(token).orElseThrow());
+                .addValue(PARAM_DIGEST, TokenSesionInterna.huella(token).orElseThrow());
         int insertadas = sql.update("""
                 INSERT INTO "SESION_USUARIO"
                     ("idSesionUsuario","idUsuario","tokenProtegido",
@@ -102,7 +103,7 @@ public class SesionesUsuarioService {
                 SELECT "idUsuario" FROM "SESION_USUARIO"
                  WHERE "idSesionUsuario"=:id AND "tokenProtegido"=:digest
                 """, new MapSqlParameterSource().addValue("id", idSesion)
-                        .addValue("digest", digest),
+                        .addValue(PARAM_DIGEST, digest),
                 rs -> rs.next() ? rs.getLong(1) : null);
         if (idUsuario == null) throw new TokenSesionInterna.AccesoRechazado();
 
@@ -125,7 +126,7 @@ public class SesionesUsuarioService {
                    AND "fechaHoraInicio" + interval '8 hours' > clock_timestamp()
                  FOR UPDATE
                 """, new MapSqlParameterSource()
-                    .addValue("id",idSesion).addValue("usuario",idUsuario).addValue("digest",digest));
+                    .addValue("id",idSesion).addValue("usuario",idUsuario).addValue(PARAM_DIGEST,digest));
         if (sesiones.size()!=1) throw new TokenSesionInterna.AccesoRechazado();
 
         String nuevo = TokenSesionInterna.nuevo();
