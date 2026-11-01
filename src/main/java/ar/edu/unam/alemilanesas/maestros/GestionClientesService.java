@@ -25,7 +25,8 @@ public class GestionClientesService {
     private static final Set<String> ALTA = Set.of("ADMINISTRADOR","VENDEDOR");
     private static final Set<String> MODIFICACION = Set.of("VENDEDOR");
     private static final Set<String> ADMIN = Set.of("ADMINISTRADOR");
-    private static final Set<String> ESTADOS = Set.of("ACTIVO","INACTIVO");
+    private static final String ESTADO_INACTIVO = "INACTIVO";
+    private static final Set<String> ESTADOS = Set.of("ACTIVO",ESTADO_INACTIVO);
     private final NamedParameterJdbcTemplate sql;
     private final AutorizacionSesionInterna auth;
 
@@ -194,7 +195,7 @@ public class GestionClientesService {
                  "fechaHoraCambio","motivo","idUsuarioAdministrador")
             VALUES (:id,:seq,:previo,:nuevo,clock_timestamp(),:motivo,:admin)
             """,args);
-        if("INACTIVO".equals(nuevoEstado)) {
+        if(ESTADO_INACTIVO.equals(nuevoEstado)) {
             invalidarOtpPendientes(idCliente);
             sql.update("""
                 UPDATE "SESION_CLIENTE_ONLINE" s
@@ -239,7 +240,7 @@ public class GestionClientesService {
                AND regexp_replace("telefonoPrincipal",'[^0-9]','','g')=:tel
             """,args,String.class);
         if(!estados.isEmpty()) {
-            throw new ClienteDuplicadoException(estados.contains("INACTIVO"));
+            throw new ClienteDuplicadoException(estados.contains(ESTADO_INACTIVO));
         }
     }
     private List<Long> coincidenciasParciales(Normalizados n, Long excluirId) {
