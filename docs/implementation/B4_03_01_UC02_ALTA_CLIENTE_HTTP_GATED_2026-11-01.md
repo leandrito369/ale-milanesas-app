@@ -15,7 +15,7 @@
 - `RegistroClienteHttpController` con `POST /api/v1/clientes` en JSON. Acepta exclusivamente `nombres,apellidos,telefonoPrincipal,calle,numeroPuerta,piso,unidadFuncional,localidad,provincia,referenciaDomicilio,zona,diaHabitualReparto`. Rechaza tipos indebidos y claves desconocidas (incluido `idUsuario,idSesionUsuario,idCliente,roles,estado,categoriaComercial`); no convierte IDs remitidos por el actor en autoridad.
 - Spring Security: autorización de ruta **solo si** `ale.http.writes.clientes-uc02-enabled=true` **y** Bearer autenticado Admin/Vendedor; B3 revalida permisos y sesión en transacción. Flag **false por defecto**. El controlador además requiere perfil **`!prod`**. `PrecondicionesDespliegue` rechaza arrancar `prod` con el flag verdadero. Todos los demás POST comerciales siguen `denyAll`.
 - Alta `201 Created` sin `Location` (no existe GET individual contratado): `idCliente,estado=ACTIVO,categoriaComercial=CUMPLIDOR,advertenciaCoincidenciaParcial:boolean`. No devuelve IDs ni PII de coincidencias.
-- Fallos: 400 `SOLICITUD_INVALIDA`, 409 `CLIENTE_DUPLICADO`, 401 Bearer ausente/inválido, 403 rol o flag rechazado, 503 `PERSISTENCIA_NO_DISPONIBLE`. `Cache-Control:no-store`, sin SQL ni teléfonos en errores.
+- Fallos: 400 `SOLICITUD_INVALIDA`, 409 `CLIENTE_DUPLICADO` para activo y `CLIENTE_INACTIVO_REQUIERE_ADMINISTRADOR` para A3 inactivo (sin IDs/PII de terceros), 401 Bearer ausente/inválido, 403 rol o flag rechazado, 503 `PERSISTENCIA_NO_DISPONIBLE`. `Cache-Control:no-store`, sin SQL ni teléfonos en errores.
 - No habilita UC32, UC38, gestión de stock, precios, pedidos ni operaciones de Cobro/BC06. No agrega SQL, tabla ni migración.
 
 ## 3. Evidencia de pruebas (no declarar PASS antes de CI)
