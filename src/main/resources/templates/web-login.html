@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ale Milanesas - Iniciar sesión</title></head><body>
+<main><h1>Iniciar sesión</h1>
+<p th:if="${param.error}">No se pudo iniciar sesión.</p>
+<p th:if="${param.cambiada}">Credencial cambiada. Iniciá sesión nuevamente.</p>
+<form th:action="@{/web/login}" method="post" autocomplete="off">
+<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+<label>Usuario <input name="nombreUsuario" required maxlength="80"></label>
+<label>Contraseña <input type="password" name="credencial" required></label>
+<button type="submit">Ingresar</button></form></main></body></html>
