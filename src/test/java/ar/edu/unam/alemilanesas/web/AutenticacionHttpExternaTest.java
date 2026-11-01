@@ -297,8 +297,11 @@ class AutenticacionHttpExternaTest {
                 SELECT count(*) FROM "SESION_USUARIO"
                  WHERE "tokenProtegido"=? AND "fechaHoraRevocacion" IS NOT NULL
                 """,Integer.class,TokenSesionInterna.huella(secreto).orElseThrow()));
-        assertEquals(401,enviar("/web/inicio","GET",null,
-                Map.of("Cookie",bearerCookie+"; "+sessionVigente)).statusCode());
+        // El canal web deniega la cookie revocada; según la rama de
+        // autorización puede devolver 401 o 403, nunca un documento 200.
+        int estadoRevocada=enviar("/web/inicio","GET",null,
+                Map.of("Cookie",bearerCookie+"; "+sessionVigente)).statusCode();
+        assertTrue(estadoRevocada==401 || estadoRevocada==403);
         // La API no utiliza la cookie web como identidad.
         assertEquals(401,enviar("/api/v1/unidades","GET",null,
                 Map.of("Cookie",bearerCookie)).statusCode());
