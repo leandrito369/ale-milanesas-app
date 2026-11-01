@@ -2,6 +2,7 @@ package ar.edu.unam.alemilanesas.maestros;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -45,9 +46,17 @@ public class ActualizarPrecioVigenteService {
         autorizacion.exigirRoles(sesion,ADMIN);
         if(idProducto<=0 || nuevoPrecioBase==null || nuevoPrecioBase.signum()<=0
                 || nuevoPrecioBase.scale()>4 || nuevoPrecioBase.precision()>18
-                || vigenteDesde==null
-                || (vigenteHasta!=null && !vigenteHasta.isAfter(vigenteDesde))) {
+                || vigenteDesde==null) {
             throw new IllegalArgumentException("Precio o vigencia invalida");
+        }
+        // TIMESTAMPTZ PostgreSQL conserva microsegundos; Java OffsetDateTime
+        // admite nanosegundos. Normalizar ANTES de comparar y escribir evita
+        // tratar como disjuntos dos inicios que la BD representa como iguales.
+        vigenteDesde=vigenteDesde.truncatedTo(ChronoUnit.MICROS);
+        if(vigenteHasta!=null) {
+            vigenteHasta=vigenteHasta.truncatedTo(ChronoUnit.MICROS);
+            if(!vigenteHasta.isAfter(vigenteDesde))
+                throw new IllegalArgumentException("Intervalo vacío tras normalizar TIMESTAMPTZ");
         }
 
         // Lock cooperativo de Producto ANTES de crear dependencias, orden
