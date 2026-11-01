@@ -27,6 +27,10 @@ public class PrecondicionesDespliegue implements BeanFactoryPostProcessor {
                 "ale.http.writes.clientes-uc02-enabled",Boolean.class))) {
             throw new IllegalStateException("UC02 HTTP bloqueado en producción");
         }
+        if (Boolean.TRUE.equals(env.getProperty(
+                "ale.http.writes.clientes-uc32-enabled",Boolean.class))) {
+            throw new IllegalStateException("UC32 HTTP bloqueado en producción");
+        }
         String origen=env.getProperty("ale.web.allowed-origin","");
         URI parsed;
         try {parsed=URI.create(origen);}
