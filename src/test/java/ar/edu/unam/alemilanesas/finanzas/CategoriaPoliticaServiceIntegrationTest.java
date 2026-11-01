@@ -155,6 +155,10 @@ class CategoriaPoliticaServiceIntegrationTest {
                 ADMIN,7,futuro(2),null,ajuste("DESCUENTO","101"),ajuste("RECARGO","5")));
         assertThrows(IllegalArgumentException.class,()->configurar.configurarPoliticaCategoriaComercial(
                 ADMIN,7,futuro(2),null,null,ajuste("RECARGO","5")));
+        assertThrows(IllegalArgumentException.class,()->configurar.configurarPoliticaCategoriaComercial(
+                ADMIN,7,futuro(2),null,ajuste("RECARGO","5"),ajuste("RECARGO","5")));
+        assertThrows(IllegalArgumentException.class,()->configurar.configurarPoliticaCategoriaComercial(
+                ADMIN,7,futuro(2),null,ajuste("DESCUENTO","5"),ajuste("DESCUENTO","5")));
         assertEquals(0,contar("POLITICA_CATEGORIA_COMERCIAL"));
     }
 
