@@ -6,6 +6,8 @@ import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.net.URI;
+import org.springframework.beans.factory.annotation.Value;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -33,7 +35,8 @@ public class SeguridadWebInterna {
     @Bean
     @Order(2)
     SecurityFilterChain seguridadWeb(HttpSecurity http,
-                                     SeguridadHttpInterna.VerificadorSesionBearer sesiones)
+                                     SeguridadHttpInterna.VerificadorSesionBearer sesiones,
+                                     @Value("${ale.web.allowed-origin:}") String origenPermitido)
             throws Exception {
         http.securityMatcher("/web/**");
         http.httpBasic(AbstractHttpConfigurer::disable);
@@ -48,6 +51,8 @@ public class SeguridadWebInterna {
         http.exceptionHandling(e -> e
                 .authenticationEntryPoint((req,resp,ex)->resp.sendError(401))
                 .accessDeniedHandler((req,resp,ex)->resp.sendError(403)));
+        http.addFilterBefore(new FiltroOrigen(origenPermitido),
+                UsernamePasswordAuthenticationFilter.class);
         http.addFilterBefore(new SesionCookieFilter(sesiones),
                 UsernamePasswordAuthenticationFilter.class);
         return http.build();
@@ -64,6 +69,54 @@ public class SeguridadWebInterna {
             }
         }
         return token;
+    }
+
+    /**
+     * Rechazo de solicitudes mutantes cross-origin incluso si traen un CSRF válido.
+     * Origen autorizado configurable por despliegue; no confiar en X-Forwarded-Host.
+     */
+    private static final class FiltroOrigen extends OncePerRequestFilter {
+        private final String origenConfigurado;
+
+        private FiltroOrigen(String origenConfigurado) {
+            this.origenConfigurado = origenConfigurado;
+        }
+
+        @Override
+        protected void doFilterInternal(HttpServletRequest req,HttpServletResponse res,
+                                        FilterChain chain) throws ServletException,IOException {
+            String metodo=req.getMethod();
+            boolean muta="POST".equals(metodo) || "PUT".equals(metodo)
+                    || "PATCH".equals(metodo) || "DELETE".equals(metodo);
+            if (muta && req.getHeader("Origin")!=null) {
+                String permitido=origenConfigurado.isBlank() ?
+                        req.getScheme()+"://"+req.getServerName()+":"+req.getServerPort()
+                        : origenConfigurado;
+                try {
+                    URI recibido=URI.create(req.getHeader("Origin"));
+                    URI esperado=URI.create(permitido);
+                    int puertoRecibido=recibido.getPort()==-1?
+                            ("https".equalsIgnoreCase(recibido.getScheme())?443:80)
+                            : recibido.getPort();
+                    int puertoEsperado=esperado.getPort()==-1?
+                            ("https".equalsIgnoreCase(esperado.getScheme())?443:80)
+                            : esperado.getPort();
+                    if (!esperado.getScheme().equalsIgnoreCase(recibido.getScheme())
+                            || !esperado.getHost().equalsIgnoreCase(recibido.getHost())
+                            || puertoEsperado!=puertoRecibido
+                            || (recibido.getRawPath()!=null && !recibido.getRawPath().isEmpty())
+                            || recibido.getUserInfo()!=null) {
+                        res.sendError(403); return;
+                    }
+                } catch (RuntimeException ex) {
+                    res.sendError(403); return;
+                }
+            }
+            res.setHeader("Content-Security-Policy",
+                    "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+            res.setHeader("X-Content-Type-Options","nosniff");
+            chain.doFilter(req,res);
+        }
     }
 
     private static final class SesionCookieFilter extends OncePerRequestFilter {
