@@ -23,6 +23,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -54,6 +55,7 @@ class RegistroClienteHttpExternoTest {
     @Value("${local.server.port}") int port;
     @Autowired JdbcTemplate jdbc;
     @Autowired ObjectMapper json;
+    @Autowired TransactionTemplate transactions;
     private final HttpClient cliente=HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(8)).build();
     private long base;
@@ -62,6 +64,7 @@ class RegistroClienteHttpExternoTest {
     @BeforeEach
     void fixture() {
         base=SEQ.addAndGet(10);
+        transactions.executeWithoutResult(tx -> {
         jdbc.update("""
                 INSERT INTO "ROL"("codigoRol","nombreMostrado") VALUES
                 ('ADMINISTRADOR','Administrador B403'),
@@ -89,6 +92,7 @@ class RegistroClienteHttpExternoTest {
         vendedor=sesion(base+1);
         repartidor=sesion(base+2);
         pendiente=sesion(base+3);
+        });
     }
 
     private String sesion(long actor) {
