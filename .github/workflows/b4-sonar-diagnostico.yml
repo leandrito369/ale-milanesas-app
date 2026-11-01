@@ -1,0 +1,33 @@
+name: B4 - Diagnostico SonarCloud PR30
+on:
+  push:
+    branches:
+      - feat/b4-02b-auth-sesiones-uc01-53-54-2026-11-01
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  sonar-diagnostico:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consultar hallazgos publicos SonarCloud
+        shell: bash
+        run: |
+          set -euo pipefail
+          url='https://sonarcloud.io/api/issues/search?componentKeys=leandrito369_ale-milanesas-app&pullRequest=30&resolved=false&ps=100'
+          code=$(curl --max-time 20 -sSL -o /tmp/sonar-issues.json -w '%{http_code}' "$url")
+          echo "SonarCloud API HTTP $code"
+          if [[ "$code" != "200" ]]; then
+            echo "Los detalles no estan disponibles sin permiso de SonarCloud."
+            exit 0
+          fi
+          python3 - <<'PY'
+          import json
+          with open('/tmp/sonar-issues.json', encoding='utf-8') as f: data=json.load(f)
+          print('Hallazgos totales:', data.get('total','?'))
+          for x in data.get('issues',[]):
+            print('regla=%s tipo=%s gravedad=%s archivo=%s linea=%s mensaje=%s' % (
+                x.get('rule'), x.get('type'), x.get('severity'),
+                (x.get('component') or '').split(':')[-1],
+                x.get('line'), x.get('message','')[:300]))
+          PY

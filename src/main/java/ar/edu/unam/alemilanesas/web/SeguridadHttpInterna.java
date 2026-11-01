@@ -1,9 +1,7 @@
 package ar.edu.unam.alemilanesas.web;
 
+import ar.edu.unam.alemilanesas.acceso.TokenSesionInterna;
 import java.io.IOException;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -32,112 +30,125 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
-/**
- * B4-01: sesión interna vinculada a token secreto de 256 bits.
- * La API NUNCA admite UUID de sesión, idUsuario ni roles desde parámetros HTTP.
- * tokenProtegido = SHA-256(bytes originales del token Base64URL canónico).
- * El alta/entrega/rotación del token se reserva para UC54; no hay login nuevo.
- */
+/** B4-02B: API SOLO Bearer. UC01 emite, UC53 permite sesion restringida. */
 @Configuration
 public class SeguridadHttpInterna {
+    public static final String ROL_CAMBIO_PENDIENTE = "UC53_RESTRINGIDO";
+    private static final String ROL_ADMINISTRADOR = "ADMINISTRADOR";
+
     @Bean
     @Order(1)
+    // Sonar S4502: excepción revisada exclusivamente para API Bearer sin cookies.
+    // La cadena /web/** conserva CSRF; la API ignora cookies de autenticación.
+    // Evidencia B4-02C: test HTTP externo que rechaza cookie en /api/v1/**.
+    @SuppressWarnings("java:S4502")
     SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones) {
-        // La aplicación ya posee un SecurityFilterChain fail-closed para las
-        // demás rutas en bootstrap.SecurityConfiguration. Esta cadena solo
-        // cubre la API interna y se evalúa ANTES de la cadena global.
         http.securityMatcher("/api/v1/**");
-        // B4-01 habilita solo GET: mantener CSRF activo por defecto.
-        // B4-02B introducirá POST Bearer sin cookies en una cadena separada.
+        // Los endpoints de /api/v1/** aceptan solo Bearer en Authorization.
+        // No se autentican mediante cookies: se excluyen de CSRF por ruta,
+        // mientras que /web/** conserva CSRF y su cadena independiente.
+        http.csrf(csrf -> csrf.ignoringRequestMatchers("/api/v1/**"));
         http.httpBasic(AbstractHttpConfigurer::disable);
         http.formLogin(AbstractHttpConfigurer::disable);
         http.logout(AbstractHttpConfigurer::disable);
         http.sessionManagement(s->s.sessionCreationPolicy(SessionCreationPolicy.STATELESS));
         http.authorizeHttpRequests(a->a
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/password/change").authenticated()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/renew",
+                        "/api/v1/auth/logout").access((auth,context) ->
+                            new org.springframework.security.authorization.AuthorizationDecision(
+                                auth.get().isAuthenticated() &&
+                                auth.get().getAuthorities().stream().noneMatch(
+                                    x->ROL_CAMBIO_PENDIENTE.equals(x.getAuthority()))))
+                .requestMatchers(HttpMethod.POST, "/api/v1/usuarios/*/restablecer-acceso")
+                    .hasAuthority(ROL_ADMINISTRADOR)
                 .requestMatchers(HttpMethod.GET, "/api/v1/clientes")
-                    .hasAnyAuthority("ADMINISTRADOR","VENDEDOR")
+                    .hasAnyAuthority(ROL_ADMINISTRADOR,"VENDEDOR")
                 .requestMatchers(HttpMethod.GET,"/api/v1/insumos","/api/v1/unidades")
-                    .hasAnyAuthority("ADMINISTRADOR","RESPONSABLE_PRODUCCION")
+                    .hasAnyAuthority(ROL_ADMINISTRADOR,"RESPONSABLE_PRODUCCION")
                 .anyRequest().denyAll());
         http.exceptionHandling(e->e
                 .authenticationEntryPoint((req,res,ex)->rechazar(res))
-                .accessDeniedHandler((req,res,ex)->res.sendError(HttpServletResponse.SC_FORBIDDEN)));
-        // No es un Filter @Component registrado por el contenedor: se ejecuta
-        // una única vez dentro del SecurityFilterChain, nunca como servlet filter.
-        http.addFilterBefore(new FiltroSesionBearer(sesiones), UsernamePasswordAuthenticationFilter.class);
+                .accessDeniedHandler((req,res,ex)->error(res,403,"OPERACION_PROHIBIDA")));
+        http.addFilterBefore(new FiltroSesionBearer(sesiones),
+                UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 
-    private static void rechazar(HttpServletResponse res) throws IOException {
+    static void rechazar(HttpServletResponse res) throws IOException {
         res.setHeader("WWW-Authenticate","Bearer realm=\"ale-interno\"");
-        res.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+        error(res,401,"SESION_INVALIDA");
+    }
+
+    static void error(HttpServletResponse res,int status,String codigo) throws IOException {
+        res.setStatus(status);
+        res.setHeader("Cache-Control","no-store");
+        res.setHeader("Pragma","no-cache");
+        res.setCharacterEncoding("UTF-8");
+        res.setContentType("application/json");
+        res.getWriter().write("{\"codigo\":\""+codigo+"\"}");
     }
 
     public record PrincipalInterno(UUID idSesion, long idUsuario) {}
 
     private static final class FiltroSesionBearer extends OncePerRequestFilter {
         private final VerificadorSesionBearer sesiones;
-        private FiltroSesionBearer(VerificadorSesionBearer sesiones) {this.sesiones=sesiones;}
+        private FiltroSesionBearer(VerificadorSesionBearer sesiones){this.sesiones=sesiones;}
 
         @Override
-        protected void doFilterInternal(HttpServletRequest request,HttpServletResponse response,
+        protected void doFilterInternal(HttpServletRequest req, HttpServletResponse res,
                                         FilterChain chain) throws ServletException,IOException {
-            String header=request.getHeader("Authorization");
-            if(header!=null) {
-                if(!header.startsWith("Bearer ") || header.length()<=7) {
-                    rechazar(response);return;
+            res.setHeader("Cache-Control","no-store");
+            res.setHeader("Pragma","no-cache");
+            String header=req.getHeader("Authorization");
+            if (header!=null) {
+                if (!header.startsWith("Bearer ") || header.length()>1024
+                        || header.length()<=7) {
+                    rechazar(res); return;
                 }
-                var autenticado=sesiones.validar(header.substring(7));
-                if(autenticado.isEmpty()) {
-                    rechazar(response);return;
-                }
-                var sesion=autenticado.get();
-                var auth=new UsernamePasswordAuthenticationToken(sesion.principal(),null,
-                        sesion.roles().stream().map(SimpleGrantedAuthority::new).toList());
+                var sesion=sesiones.validar(header.substring(7));
+                if (sesion.isEmpty()) { rechazar(res); return; }
+                var s=sesion.get();
+                var auth=new UsernamePasswordAuthenticationToken(s.principal(),null,
+                    s.roles().stream().map(SimpleGrantedAuthority::new).toList());
                 SecurityContextHolder.getContext().setAuthentication(auth);
             }
-            try {chain.doFilter(request,response);}
-            finally {SecurityContextHolder.clearContext();}
+            try { chain.doFilter(req,res); }
+            finally { SecurityContextHolder.clearContext(); }
         }
     }
 
     @Component
     public static class VerificadorSesionBearer {
         private final NamedParameterJdbcTemplate sql;
-        public VerificadorSesionBearer(NamedParameterJdbcTemplate sql) {this.sql=sql;}
+        public VerificadorSesionBearer(NamedParameterJdbcTemplate sql){this.sql=sql;}
         public record SesionAutorizada(PrincipalInterno principal,Set<String> roles) {}
 
         public Optional<SesionAutorizada> validar(String token) {
-            if(token==null || !token.matches("[A-Za-z0-9_-]{43}"))return Optional.empty();
-            byte[] secreto;
-            try {secreto=Base64.getUrlDecoder().decode(token);}
-            catch(IllegalArgumentException ex) {return Optional.empty();}
-            if(secreto.length!=32 ||
-               !Base64.getUrlEncoder().withoutPadding().encodeToString(secreto).equals(token))
-                return Optional.empty();
-            byte[] huella;
-            try {huella=MessageDigest.getInstance("SHA-256").digest(secreto);}
-            catch(NoSuchAlgorithmException e) {throw new IllegalStateException("SHA-256 no disponible",e);}
-            // Una validación completa por request: revocación, vencimiento,
-            // usuario habilitado, credencial no pendiente y roles vigentes.
+            var huella=TokenSesionInterna.huella(token);
+            if (huella.isEmpty()) return Optional.empty();
             List<Map<String,Object>> filas=sql.queryForList("""
-                    SELECT s."idSesionUsuario",u."idUsuario",ur."codigoRol"
+                    SELECT s."idSesionUsuario",u."idUsuario",
+                           u."cambioCredencialPendiente",ur."codigoRol"
                       FROM "SESION_USUARIO" s
                       JOIN "USUARIO" u ON u."idUsuario"=s."idUsuario"
                       JOIN "USUARIO_ROL" ur ON ur."idUsuario"=u."idUsuario"
                      WHERE s."tokenProtegido"=:huella
                        AND s."fechaHoraInicio"<=clock_timestamp()
                        AND s."fechaHoraExpiracion">clock_timestamp()
+                       AND s."fechaHoraInicio"+interval '8 hours'>clock_timestamp()
                        AND s."fechaHoraRevocacion" IS NULL
                        AND u."estado"='HABILITADO'
-                       AND u."cambioCredencialPendiente"=false
-                    """,new MapSqlParameterSource("huella",huella));
-            if(filas.isEmpty())return Optional.empty();
-            Map<String,Object> primera=filas.getFirst();
-            UUID id=(UUID)primera.get("idSesionUsuario");
-            long actor=((Number)primera.get("idUsuario")).longValue();
-            Set<String> roles=filas.stream().map(f->(String)f.get("codigoRol"))
-                    .collect(java.util.stream.Collectors.toUnmodifiableSet());
+                    """,new MapSqlParameterSource("huella",huella.get()));
+            if (filas.isEmpty()) return Optional.empty();
+            var primero=filas.getFirst();
+            var id=(UUID)primero.get("idSesionUsuario");
+            var actor=((Number)primero.get("idUsuario")).longValue();
+            boolean pendiente=Boolean.TRUE.equals(primero.get("cambioCredencialPendiente"));
+            Set<String> roles=pendiente ? Set.of(ROL_CAMBIO_PENDIENTE) :
+                filas.stream().map(f->(String)f.get("codigoRol"))
+                     .collect(java.util.stream.Collectors.toUnmodifiableSet());
             return Optional.of(new SesionAutorizada(new PrincipalInterno(id,actor),roles));
         }
     }

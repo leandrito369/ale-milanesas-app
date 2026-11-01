@@ -176,10 +176,12 @@ class ConsultasI1HttpIntegrationTest {
                 .andExpect(status().isUnauthorized());
     }
 
-    @Test void cambioCredencialPendienteNoAccede() throws Exception {
+    @Test void cambioCredencialPendienteSoloPermiteUC53() throws Exception {
         jdbc.update("UPDATE \"USUARIO\" SET \"cambioCredencialPendiente\"=true WHERE \"idUsuario\"=44031");
         mvc.perform(get("/api/v1/unidades").header("Authorization",admin()))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isForbidden());
+        mvc.perform(post("/api/v1/auth/renew").header("Authorization",admin()))
+                .andExpect(status().isForbidden());
     }
 
     @Test void rolRevocadoSeEvaluaEnSolicitudSiguiente() throws Exception {
