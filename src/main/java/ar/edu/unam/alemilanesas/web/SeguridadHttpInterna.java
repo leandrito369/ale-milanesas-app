@@ -39,10 +39,13 @@ public class SeguridadHttpInterna {
 
     @Bean
     @Order(1)
-    SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones) throws Exception {
+    // S4502 validado: API no acepta cookie, solo Authorization Bearer.
+    // Cadena /web/** conserva CSRF y prueba negativa de cookies en API.
+    @SuppressWarnings("java:S4502")
+    SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones) {
         http.securityMatcher("/api/v1/**");
         // La API no autentica cookies. El sitio web (otra cadena) conserva CSRF.
-        http.csrf(AbstractHttpConfigurer::disable);
+        http.csrf(csrf -> csrf.ignoringRequestMatchers("/api/v1/**"));
         http.httpBasic(AbstractHttpConfigurer::disable);
         http.formLogin(AbstractHttpConfigurer::disable);
         http.logout(AbstractHttpConfigurer::disable);
