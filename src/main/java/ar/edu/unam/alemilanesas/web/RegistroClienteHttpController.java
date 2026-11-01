@@ -96,11 +96,14 @@ public class RegistroClienteHttpController {
 class ErroresRegistroClienteHttp {
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<Map<String,String>> invalidos(IllegalArgumentException ex) {
-        boolean repetido=ex.getMessage()!=null &&
-                ex.getMessage().startsWith("Cliente ya registrado");
+        boolean repetido=ex instanceof GestionClientesService.ClienteDuplicadoException;
+        boolean inactivo=repetido &&
+                ((GestionClientesService.ClienteDuplicadoException)ex).inactivo();
+        String codigo=inactivo ? "CLIENTE_INACTIVO_REQUIERE_ADMINISTRADOR"
+                : repetido ? "CLIENTE_DUPLICADO" : "SOLICITUD_INVALIDA";
         return ResponseEntity.status(repetido ? HttpStatus.CONFLICT : HttpStatus.BAD_REQUEST)
                 .cacheControl(CacheControl.noStore())
-                .body(Map.of("codigo",repetido ? "CLIENTE_DUPLICADO" : "SOLICITUD_INVALIDA"));
+                .body(Map.of("codigo",codigo));
     }
 
     @ExceptionHandler(SecurityException.class)
