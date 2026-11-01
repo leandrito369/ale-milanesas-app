@@ -89,6 +89,21 @@ class PreciosProductoServiceIntegrationTest {
         assertNull(res.idPrecioCerrado());
         assertEquals(1,contar("PRECIO_PRODUCTO"));
         assertEquals(1,contar("AUDITORIA_PRECIO"));
+        // Primer precio: evento de programación con anterior inexistente.
+        // Se comprueba la semántica exacta candidata RD-UC19-001, sin
+        // inventar ALTA_PRECIO, fechas previas ni CANCELACION_PROGRAMADA.
+        assertEquals(1,jdbc.queryForObject("""
+            SELECT count(*) FROM "AUDITORIA_PRECIO"
+            WHERE "idPrecio"=? AND "idUsuario"=19001
+              AND "fechaHoraEvento" IS NOT NULL
+              AND "tipoEvento"='MODIFICACION_PROGRAMADA'
+              AND "precioAnterior" IS NULL
+              AND "precioNuevo"=1500.1250
+              AND "vigenteDesdeAnterior" IS NULL
+              AND "vigenteDesdeNuevo"=?
+              AND "vigenteHastaAnterior" IS NULL
+              AND "vigenteHastaNuevo" IS NULL
+            """,Integer.class,res.idPrecio(),res.vigenteDesde()));
         assertEquals("MODIFICACION_PROGRAMADA",jdbc.queryForObject("""
             SELECT "tipoEvento" FROM "AUDITORIA_PRECIO" WHERE "idPrecio"=?
             """,String.class,res.idPrecio()));
