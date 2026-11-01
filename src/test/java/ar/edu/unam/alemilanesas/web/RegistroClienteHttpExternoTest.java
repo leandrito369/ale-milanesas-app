@@ -203,7 +203,10 @@ class RegistroClienteHttpExternoTest {
         assertEquals(1,contar());
         long id=json.readTree(primero.body()).get("idCliente").asLong();
         jdbc.update("UPDATE \"CLIENTE\" SET \"estado\"='INACTIVO' WHERE \"idCliente\"=?",id);
-        assertEquals(409,post(admin,payload).statusCode());
+        var inactivo=post(admin,payload);
+        assertEquals(409,inactivo.statusCode(),inactivo.body());
+        assertTrue(inactivo.body().contains("CLIENTE_INACTIVO_REQUIERE_ADMINISTRADOR"));
+        assertFalse(inactivo.body().contains("idCliente"));
         assertEquals(1,contar());
     }
 
