@@ -2,6 +2,7 @@ package ar.edu.unam.alemilanesas.web;
 
 import ar.edu.unam.alemilanesas.acceso.TokenSesionInterna;
 import java.net.URI;
+import java.net.URLEncoder;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -245,12 +246,13 @@ class AutenticacionHttpExternaTest {
         Matcher m=CSRF.matcher(entrada.body());
         assertTrue(m.find(),"La plantilla debe entregar token CSRF independiente");
         String csrf=m.group(1);
+        String csrfFormulario=URLEncoder.encode(csrf,StandardCharsets.UTF_8);
         String session=entrada.headers().allValues("Set-Cookie").stream()
                 .filter(x->x.startsWith("JSESSIONID="))
                 .findFirst().orElseThrow().split(";",2)[0];
 
         String datos="nombreUsuario="+userAdmin+"&credencial="+claveAdmin;
-        assertEquals(403,enviar("/web/login","POST",datos+"&_csrf="+csrf,
+        assertEquals(403,enviar("/web/login","POST",datos+"&_csrf="+csrfFormulario,
                 Map.of("Content-Type","application/x-www-form-urlencoded",
                        "Origin","https://origen-malicioso.example",
                        "Cookie",session)).statusCode());
@@ -259,7 +261,7 @@ class AutenticacionHttpExternaTest {
                 "Cookie",session));
         assertEquals(403,sinCsrf.statusCode());
 
-        var login=enviar("/web/login","POST",datos+"&_csrf="+csrf,Map.of(
+        var login=enviar("/web/login","POST",datos+"&_csrf="+csrfFormulario,Map.of(
                 "Content-Type","application/x-www-form-urlencoded",
                 "Cookie",session));
         assertEquals(302,login.statusCode(),login.body());
@@ -275,7 +277,7 @@ class AutenticacionHttpExternaTest {
                 Map.of("Cookie",bearerCookie+"; "+session)).statusCode());
         assertEquals(403,enviar("/web/logout","POST","",Map.of(
                 "Cookie",bearerCookie+"; "+session)).statusCode());
-        assertEquals(302,enviar("/web/logout","POST","_csrf="+csrf,
+        assertEquals(302,enviar("/web/logout","POST","_csrf="+csrfFormulario,
                 Map.of("Content-Type","application/x-www-form-urlencoded",
                        "Cookie",bearerCookie+"; "+session)).statusCode());
         assertEquals(401,enviar("/web/inicio","GET",null,
