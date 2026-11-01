@@ -21,6 +21,12 @@ public class PrecondicionesDespliegue implements BeanFactoryPostProcessor {
 
     @Override
     public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) {
+        // Ningún perfil prod puede habilitar una escritura comercial experimental,
+        // aunque la variable de entorno de feature flag haya sido configurada.
+        if (Boolean.TRUE.equals(env.getProperty(
+                "ale.http.writes.clientes-uc02-enabled",Boolean.class))) {
+            throw new IllegalStateException("UC02 HTTP bloqueado en producción");
+        }
         String origen=env.getProperty("ale.web.allowed-origin","");
         URI parsed;
         try {parsed=URI.create(origen);}
