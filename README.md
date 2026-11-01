@@ -37,3 +37,17 @@ Una vez iniciado: `http://localhost:8080/` (informativo) y `/actuator/health` (d
 ## B2 — Migraciones físicas en revisión (29/10/2026)
 
 Se prepararon en la **PR de B2** las migraciones `V1__baseline_mr5.sql` y `V2__f01_cobro_estados.sql`, extraídas de G0 con cambios mecánicos limitados a delimitadores transaccionales y directiva psql. `spring.flyway.enabled=true` **únicamente en esta rama pendiente de merge**. [ADR-IMP-002](docs/architecture/ADR-IMP-002_BASELINE_MR5_F01.md) · [ensayo y límites](docs/implementation/B2_MIGRACIONES_MR5_F01.md). El esquema de aplicación es `ale_gestion` y la metadata de Flyway **no** se cuenta dentro de las 60 tablas de negocio. Si CI no verifica equivalencia triple de MR6 y F01, NO fusionar; aplicación real y BC-06 continúan pendientes.
+
+## Propuesta B4-02D — Hardening operativo y gate anterior a B4-03
+
+**No está incorporado en `main`:** [PR #32](https://github.com/leandrito369/ale-milanesas-app/pull/32) es Draft y depende de [PR #31](https://github.com/leandrito369/ale-milanesas-app/pull/31), PR #30, PR #29 y PR #27. No habilita escrituras HTTP comerciales.
+
+El perfil `prod` propuesto acepta exclusivamente un ingreso Nginx TLS en el mismo host, backend Java vinculado a `127.0.0.1`, origen HTTPS `ALE_PUBLIC_ORIGIN` obligatorio y un lock de sesión PostgreSQL que impide iniciar dos instancias simultáneas. Un filtro falla cerrado cuando se pierde la conexión de ese lock. Nginx aplica tasa compartida por IP a POST de login; dentro de la JVM se conserva el límite por cuenta.
+
+Para ensayar el perímetro con Docker y certificado autofirmado **exclusivamente de CI**, ejecutar:
+
+```bash
+bash scripts/security/verify_perimeter.sh
+```
+
+El procedimiento de despliegue, límites del control, matriz de aceptación y las dependencias reales de BC06 se detallan en [B4-02D: gate operativo y aceptación](docs/implementation/B4_02D_GATE_OPERATIVO_Y_ACEPTACION_2026-11-01.md). **Una prueba TLS con certificado efímero no acredita HTTPS público:** falta validación real del certificado, dominio, firewall, canal comercial UC54 y revisión humana. No ejecutar pruebas con contraseñas/productos/pagos reales.

@@ -1,9 +1,10 @@
-name: B4 - Diagnostico SonarCloud PR30
+name: B4 - Diagnostico SonarCloud PR de seguridad
 on:
   push:
     branches:
       - feat/b4-02b-auth-sesiones-uc01-53-54-2026-11-01
       - test/b4-02c-seguridad-http-e2e-2026-11-01
+      - security/b4-02d-gate-operativo-2026-11-01
   workflow_dispatch:
 permissions:
   contents: read
@@ -17,6 +18,7 @@ jobs:
           set -euo pipefail
           pr=30
           if [[ "$GITHUB_REF_NAME" == test/b4-02c-* ]]; then pr=31; fi
+          if [[ "$GITHUB_REF_NAME" == security/b4-02d-* ]]; then pr=32; fi
           url="https://sonarcloud.io/api/issues/search?componentKeys=leandrito369_ale-milanesas-app&pullRequest=${pr}&resolved=false&ps=100"
           code=$(curl --max-time 20 -sSL -o /tmp/sonar-issues.json -w '%{http_code}' "$url")
           echo "SonarCloud API HTTP $code"

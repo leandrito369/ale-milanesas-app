@@ -1,0 +1,22 @@
+name: B4-02D - TLS y rate limit de proxy
+on:
+  push:
+    branches: [security/b4-02d-gate-operativo-2026-11-01]
+  pull_request:
+    paths:
+      - 'deploy/nginx/**'
+      - 'scripts/security/**'
+      - '.github/workflows/b4-02d-perimetro.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  validar-perimetro:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Docker disponible
+        run: docker info --format '{{.ServerVersion}}'
+      - name: TLS loopback, Host y bloqueo de solicitudes login
+        run: bash scripts/security/verify_perimeter.sh

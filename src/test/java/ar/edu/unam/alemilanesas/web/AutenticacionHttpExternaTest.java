@@ -239,6 +239,73 @@ class AutenticacionHttpExternaTest {
         assertEquals(43,login(userProv,"Temporal_"+prov+"_nuevo").length());
     }
 
+    /**
+     * UC54/A3: un error real durante UPDATE debe provocar ROLLBACK
+     * (no confundir con un rechazo de validacion previo a persistencia).
+     */
+    @Test
+    void uc54FalloDePersistenciaHaceRollbackSinRevocarSesiones() throws Exception {
+        String adminToken=login(userAdmin,claveAdmin);
+        String provToken=login(userProv,claveProv);
+        String hashAnterior=jdbc.queryForObject("""
+                SELECT "credencialProtegida" FROM "USUARIO" WHERE "idUsuario"=?
+                """,String.class,prov);
+        jdbc.execute("""
+                CREATE FUNCTION "fn_uc54_forzar_error_test"() RETURNS trigger
+                LANGUAGE plpgsql AS $test$
+                BEGIN
+                    RAISE EXCEPTION 'Fallo sintetico controlado de persistencia UC54';
+                END
+                $test$;
+                """);
+        try {
+            jdbc.execute("""
+                    CREATE TRIGGER "tg_uc54_forzar_error_test"
+                    BEFORE UPDATE ON "USUARIO"
+                    FOR EACH ROW EXECUTE FUNCTION "fn_uc54_forzar_error_test"()
+                    """);
+            try {
+                var fallo=postJson("/api/v1/usuarios/"+prov+"/restablecer-acceso",
+                        adminToken,Map.of("identidadComercialVerificada",true,
+                                "credencialTemporal","NuevaTemporal_"+prov));
+                assertEquals(503,fallo.statusCode(),fallo.body());
+            } finally {
+                jdbc.execute("DROP TRIGGER IF EXISTS \"tg_uc54_forzar_error_test\" ON \"USUARIO\"");
+            }
+        } finally {
+            jdbc.execute("DROP FUNCTION IF EXISTS \"fn_uc54_forzar_error_test\"()");
+        }
+        assertEquals(hashAnterior,jdbc.queryForObject("""
+                SELECT "credencialProtegida" FROM "USUARIO" WHERE "idUsuario"=?
+                """,String.class,prov));
+        assertEquals(0,jdbc.queryForObject("""
+                SELECT count(*) FROM "SESION_USUARIO"
+                 WHERE "tokenProtegido"=? AND "fechaHoraRevocacion" IS NOT NULL
+                """,Integer.class,TokenSesionInterna.huella(provToken).orElseThrow()));
+        assertEquals(43,login(userProv,claveProv).length());
+    }
+
+    /** RD-UC54-001: restablecimiento no habilita la cuenta deshabilitada. */
+    @Test
+    void uc54NoReactivaCuentaProveedorDeshabilitada() throws Exception {
+        String adminToken=login(userAdmin,claveAdmin);
+        jdbc.update("""
+                UPDATE "USUARIO"
+                   SET "estado"='DESHABILITADO',
+                       "fechaHoraDeshabilitacion"=clock_timestamp()
+                 WHERE "idUsuario"=?
+                """,prov);
+        var resp=postJson("/api/v1/usuarios/"+prov+"/restablecer-acceso",
+                adminToken,Map.of("identidadComercialVerificada",true,
+                        "credencialTemporal","ClaveTrasReset_"+prov));
+        assertEquals(204,resp.statusCode(),resp.body());
+        assertEquals("DESHABILITADO",jdbc.queryForObject("""
+                SELECT "estado" FROM "USUARIO" WHERE "idUsuario"=?
+                """,String.class,prov));
+        assertEquals(401,postJson("/api/v1/auth/login",null,
+                Map.of("nombreUsuario",userProv,"credencial","ClaveTrasReset_"+prov)).statusCode());
+    }
+
     @Test
     void formularioWebExigeCsrfYCookieProtegida() throws Exception {
         var entrada=enviar("/web/login","GET",null,Map.of());
