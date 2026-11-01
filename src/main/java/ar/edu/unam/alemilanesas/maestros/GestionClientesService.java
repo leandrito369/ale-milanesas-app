@@ -48,6 +48,19 @@ public class GestionClientesService {
     public record EstadoCliente(long idCliente, String estado, boolean huboCambio,
                                 Integer numeroCambio) {}
     private record Normalizados(String nombre, String telefono) {}
+    /**
+     * UC02 A2/A3: el estado del duplicado diferencia la orientación posterior.
+     * No incorpora idCliente ni identidad de terceros al error.
+     */
+    public static class ClienteDuplicadoException extends IllegalArgumentException {
+        private final boolean inactivo;
+        public ClienteDuplicadoException(boolean inactivo) {
+            super("Cliente ya registrado con nombre y teléfono exactos");
+            this.inactivo=inactivo;
+        }
+        public boolean inactivo() { return inactivo; }
+    }
+
 
     @Transactional
     public ResultadoCliente registrarCliente(UUID sesion, DatosCliente datos) {
@@ -218,16 +231,15 @@ public class GestionClientesService {
     private void asegurarSinDuplicado(Normalizados n, Long excluirId) {
         var args=new MapSqlParameterSource().addValue("nombre",n.nombre())
             .addValue("tel",n.telefono()).addValue("excluir",excluirId==null?0L:excluirId);
-        List<Long> encontrados=sql.queryForList("""
-            SELECT "idCliente" FROM "CLIENTE"
+        List<String> estados=sql.queryForList("""
+            SELECT "estado" FROM "CLIENTE"
              WHERE (:excluir=0 OR "idCliente"<>:excluir)
                AND regexp_replace(lower(btrim(concat_ws(' ',"nombres","apellidos"))),
                    '[[:space:]]+', ' ', 'g')=:nombre
                AND regexp_replace("telefonoPrincipal",'[^0-9]','','g')=:tel
-            """,args,Long.class);
-        if(!encontrados.isEmpty()) {
-            throw new IllegalArgumentException(
-                "Cliente ya registrado con nombre y teléfono exactos (activo o inactivo)");
+            """,args,String.class);
+        if(!estados.isEmpty()) {
+            throw new ClienteDuplicadoException(estados.contains("INACTIVO"));
         }
     }
     private List<Long> coincidenciasParciales(Normalizados n, Long excluirId) {
