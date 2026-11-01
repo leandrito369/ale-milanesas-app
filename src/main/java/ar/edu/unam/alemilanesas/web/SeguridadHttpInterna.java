@@ -34,6 +34,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 @Configuration
 public class SeguridadHttpInterna {
     public static final String ROL_CAMBIO_PENDIENTE = "UC53_RESTRINGIDO";
+    private static final String ROL_ADMINISTRADOR = "ADMINISTRADOR";
 
     @Bean
     @Order(1)
@@ -55,11 +56,11 @@ public class SeguridadHttpInterna {
                                 auth.get().getAuthorities().stream().noneMatch(
                                     x->ROL_CAMBIO_PENDIENTE.equals(x.getAuthority()))))
                 .requestMatchers(HttpMethod.POST, "/api/v1/usuarios/*/restablecer-acceso")
-                    .hasAuthority("ADMINISTRADOR")
+                    .hasAuthority(ROL_ADMINISTRADOR)
                 .requestMatchers(HttpMethod.GET, "/api/v1/clientes")
-                    .hasAnyAuthority("ADMINISTRADOR","VENDEDOR")
+                    .hasAnyAuthority(ROL_ADMINISTRADOR,"VENDEDOR")
                 .requestMatchers(HttpMethod.GET,"/api/v1/insumos","/api/v1/unidades")
-                    .hasAnyAuthority("ADMINISTRADOR","RESPONSABLE_PRODUCCION")
+                    .hasAnyAuthority(ROL_ADMINISTRADOR,"RESPONSABLE_PRODUCCION")
                 .anyRequest().denyAll());
         http.exceptionHandling(e->e
                 .authenticationEntryPoint((req,res,ex)->rechazar(res))
