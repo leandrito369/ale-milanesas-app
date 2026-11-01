@@ -1,7 +1,7 @@
 package ar.edu.unam.alemilanesas.web;
 
 import ar.edu.unam.alemilanesas.acceso.TokenSesionInterna;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
