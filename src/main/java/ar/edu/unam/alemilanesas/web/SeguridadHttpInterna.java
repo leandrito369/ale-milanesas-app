@@ -37,6 +37,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class SeguridadHttpInterna {
     public static final String ROL_CAMBIO_PENDIENTE = "UC53_RESTRINGIDO";
     private static final String ROL_ADMINISTRADOR = "ADMINISTRADOR";
+    private static final String ROL_VENDEDOR = "VENDEDOR";
 
     @Bean
     @Order(1)
@@ -72,16 +73,16 @@ public class SeguridadHttpInterna {
                             habilitarAltaCliente && auth.get().isAuthenticated() &&
                             auth.get().getAuthorities().stream().anyMatch(
                                 rol -> ROL_ADMINISTRADOR.equals(rol.getAuthority()) ||
-                                       "VENDEDOR".equals(rol.getAuthority()))))
+                                       ROL_VENDEDOR.equals(rol.getAuthority()))))
                 // UC32 solamente VENDEDOR, nunca Administrador; flag independiente.
                 .requestMatchers(HttpMethod.PUT, "/api/v1/clientes/*")
                     .access((auth,context) ->
                         new org.springframework.security.authorization.AuthorizationDecision(
                             habilitarModificarCliente && auth.get().isAuthenticated() &&
                             auth.get().getAuthorities().stream().anyMatch(
-                                rol -> "VENDEDOR".equals(rol.getAuthority()))))
+                                rol -> ROL_VENDEDOR.equals(rol.getAuthority()))))
                 .requestMatchers(HttpMethod.GET, "/api/v1/clientes")
-                    .hasAnyAuthority(ROL_ADMINISTRADOR,"VENDEDOR")
+                    .hasAnyAuthority(ROL_ADMINISTRADOR,ROL_VENDEDOR)
                 .requestMatchers(HttpMethod.GET,"/api/v1/insumos","/api/v1/unidades")
                     .hasAnyAuthority(ROL_ADMINISTRADOR,"RESPONSABLE_PRODUCCION")
                 .anyRequest().denyAll());
