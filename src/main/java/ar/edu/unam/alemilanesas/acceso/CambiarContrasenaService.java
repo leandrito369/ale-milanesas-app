@@ -46,6 +46,7 @@ public class CambiarContrasenaService {
                  WHERE s."idSesionUsuario"=:sesion
                    AND s."fechaHoraInicio"<=clock_timestamp()
                    AND s."fechaHoraExpiracion">clock_timestamp()
+                   AND s."fechaHoraInicio"+interval '8 hours'>clock_timestamp()
                    AND s."fechaHoraRevocacion" IS NULL
                 """, Map.of("sesion", sesionVigente),
                 rs -> rs.next() ? rs.getLong(1) : null);
@@ -72,6 +73,7 @@ public class CambiarContrasenaService {
                    AND "idUsuario"=:usuario
                    AND "fechaHoraInicio"<=clock_timestamp()
                    AND "fechaHoraExpiracion">clock_timestamp()
+                   AND "fechaHoraInicio"+interval '8 hours'>clock_timestamp()
                    AND "fechaHoraRevocacion" IS NULL
                 """, new MapSqlParameterSource()
                     .addValue("sesion", sesionVigente).addValue("usuario", idUsuario),
@@ -99,6 +101,6 @@ public class CambiarContrasenaService {
         }
         // MR5 (tg_mr5_revocar_sesiones_usuario) revoca todas las sesiones
         // cuando el hash cambia, incluida la sesión de origen. NO se
-        // reactiva la misma sesión. IC-UC53-MR5-002 pendiente de RD.
+        // reactiva la misma sesión. RD-UC53-002 ratificada: nuevo login obligatorio tras revocacion.
     }
 }
