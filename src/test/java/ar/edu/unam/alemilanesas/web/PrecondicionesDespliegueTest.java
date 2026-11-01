@@ -15,7 +15,7 @@ class PrecondicionesDespliegueTest {
     }
 
     @Test void configuracionBienFormadaPermiteInicioDeEtapaOperativa() {
-        assertDoesNotThrow(()->new PrecondicionesDespliegue(base()).run(null));
+        assertDoesNotThrow(()->new PrecondicionesDespliegue(base()).postProcessBeanFactory(null));
     }
 
     @Test void noAdmiteHttpNiOrigenMalFormado() {
@@ -24,7 +24,7 @@ class PrecondicionesDespliegueTest {
                 "https://user@ale.example.invalid","https://ale.example.invalid?x=1"}) {
             var env=base().withProperty("ale.web.allowed-origin",origen);
             var validador=new PrecondicionesDespliegue(env);
-            assertThrows(IllegalStateException.class,()->validador.run(null));
+            assertThrows(IllegalStateException.class,()->validador.postProcessBeanFactory(null));
         }
     }
 
@@ -35,8 +35,8 @@ class PrecondicionesDespliegueTest {
                 base().withProperty("ale.security.singleton-db-guard","false"));
         var proxyNoConfiable=new PrecondicionesDespliegue(
                 base().withProperty("server.forward-headers-strategy","framework"));
-        assertThrows(IllegalStateException.class,()->backendPublico.run(null));
-        assertThrows(IllegalStateException.class,()->sinLock.run(null));
-        assertThrows(IllegalStateException.class,()->proxyNoConfiable.run(null));
+        assertThrows(IllegalStateException.class,()->backendPublico.postProcessBeanFactory(null));
+        assertThrows(IllegalStateException.class,()->sinLock.postProcessBeanFactory(null));
+        assertThrows(IllegalStateException.class,()->proxyNoConfiable.postProcessBeanFactory(null));
     }
 }
