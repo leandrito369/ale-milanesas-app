@@ -1,0 +1,26 @@
+name: B4-03-01 - Diagnostico SonarCloud PR36
+on:
+  push:
+    branches: [feat/b4-03-01-uc02-http-gated-2026-11-01]
+permissions:
+  contents: read
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Leer issues SonarCloud PR36 desde API pública
+        run: |
+          set -euo pipefail
+          code=$(curl -sSL --max-time 25 -o /tmp/sonar.json -w '%{http_code}' 'https://sonarcloud.io/api/issues/search?componentKeys=leandrito369_ale-milanesas-app&pullRequest=36&resolved=false&ps=100')
+          echo "HTTP SonarCloud $code"
+          test "$code" = 200
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/sonar.json'))
+          print('Hallazgos:',d.get('total'))
+          for x in d.get('issues',[]):
+              print('regla=%s tipo=%s gravedad=%s archivo=%s linea=%s mensaje=%s' %(
+                  x.get('rule'),x.get('type'),x.get('severity'),
+                  x.get('component','').split(':')[-1],x.get('line'),x.get('message')))
+          PY

@@ -28,6 +28,13 @@ class PrecondicionesDespliegueTest {
         }
     }
 
+    @Test void rechazaEscrituraExperimentalEnProduccion() {
+        var validador=new PrecondicionesDespliegue(base()
+                .withProperty("ale.http.writes.clientes-uc02-enabled","true"));
+        assertThrows(IllegalStateException.class,
+                ()->validador.postProcessBeanFactory(null));
+    }
+
     @Test void noAdmiteBackendPublicoNiEscalarSinLock() {
         var backendPublico=new PrecondicionesDespliegue(
                 base().withProperty("server.address","0.0.0.0"));

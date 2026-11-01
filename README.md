@@ -51,3 +51,7 @@ bash scripts/security/verify_perimeter.sh
 ```
 
 El procedimiento de despliegue, límites del control, matriz de aceptación y las dependencias reales de BC06 se detallan en [B4-02D: gate operativo y aceptación](docs/implementation/B4_02D_GATE_OPERATIVO_Y_ACEPTACION_2026-11-01.md). **Una prueba TLS con certificado efímero no acredita HTTPS público:** falta validación real del certificado, dominio, firewall, canal comercial UC54 y revisión humana. No ejecutar pruebas con contraseñas/productos/pagos reales.
+
+## B4-03-01 — UC02 Registrar Cliente (solo corte de prueba)
+
+[PR #36](https://github.com/leandrito369/ale-milanesas-app/pull/36), Draft: incorpora un adaptador HTTP de **desarrollo controlado** para `POST /api/v1/clientes`. El flag `ale.http.writes.clientes-uc02-enabled` es **false por defecto**; además el controlador no se carga con `prod` y el validador de arranque de producción rechaza el flag activo. En consecuencia, **ninguna escritura comercial queda habilitada** al crear esta PR. El contrato, las pruebas HTTP reales y la matriz CU→B3→MR5→API→test figuran en [B4-03-01 UC02](docs/implementation/B4_03_01_UC02_ALTA_CLIENTE_HTTP_GATED_2026-11-01.md). No activar el flag fuera de las pruebas hasta revisión y aprobación expresa por operación; [Issue #28](https://github.com/leandrito369/ale-milanesas-app/issues/28) conserva las aceptaciones externas pendientes.

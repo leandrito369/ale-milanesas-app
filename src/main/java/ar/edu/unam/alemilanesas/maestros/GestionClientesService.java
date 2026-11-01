@@ -25,7 +25,9 @@ public class GestionClientesService {
     private static final Set<String> ALTA = Set.of("ADMINISTRADOR","VENDEDOR");
     private static final Set<String> MODIFICACION = Set.of("VENDEDOR");
     private static final Set<String> ADMIN = Set.of("ADMINISTRADOR");
-    private static final Set<String> ESTADOS = Set.of("ACTIVO","INACTIVO");
+    private static final String ESTADO_ACTIVO = "ACTIVO";
+    private static final String ESTADO_INACTIVO = "INACTIVO";
+    private static final Set<String> ESTADOS = Set.of(ESTADO_ACTIVO,ESTADO_INACTIVO);
     private final NamedParameterJdbcTemplate sql;
     private final AutorizacionSesionInterna auth;
 
@@ -48,6 +50,19 @@ public class GestionClientesService {
     public record EstadoCliente(long idCliente, String estado, boolean huboCambio,
                                 Integer numeroCambio) {}
     private record Normalizados(String nombre, String telefono) {}
+    /**
+     * UC02 A2/A3: el estado del duplicado diferencia la orientación posterior.
+     * No incorpora idCliente ni identidad de terceros al error.
+     */
+    public static class ClienteDuplicadoException extends IllegalArgumentException {
+        private final boolean inactivo;
+        public ClienteDuplicadoException(boolean inactivo) {
+            super("Cliente ya registrado con nombre y teléfono exactos");
+            this.inactivo=inactivo;
+        }
+        public boolean inactivo() { return inactivo; }
+    }
+
 
     @Transactional
     public ResultadoCliente registrarCliente(UUID sesion, DatosCliente datos) {
@@ -73,7 +88,7 @@ public class GestionClientesService {
                 :localidad,:provincia,:referencia,:zona,:dia,'ACTIVO','CUMPLIDOR',
                 clock_timestamp())
             """,args);
-        return new ResultadoCliente(siguiente,"ACTIVO","CUMPLIDOR",true,advertencias);
+        return new ResultadoCliente(siguiente,ESTADO_ACTIVO,"CUMPLIDOR",true,advertencias);
     }
 
     /** UC32 exclusivamente VENDEDOR; actualizar sólo identidad/domicilio. */
@@ -147,7 +162,7 @@ public class GestionClientesService {
         if(estadoPrevio.equals(nuevoEstado)) {
             return new EstadoCliente(idCliente,estadoPrevio,false,null);
         }
-        if("ACTIVO".equals(nuevoEstado)) {
+        if(ESTADO_ACTIVO.equals(nuevoEstado)) {
             // Validación de reactivación del contrato UC38 A3.
             validar(new DatosCliente((String)previo.get("nombres"),
                     (String)previo.get("apellidos"),(String)previo.get("telefonoPrincipal"),
@@ -181,7 +196,7 @@ public class GestionClientesService {
                  "fechaHoraCambio","motivo","idUsuarioAdministrador")
             VALUES (:id,:seq,:previo,:nuevo,clock_timestamp(),:motivo,:admin)
             """,args);
-        if("INACTIVO".equals(nuevoEstado)) {
+        if(ESTADO_INACTIVO.equals(nuevoEstado)) {
             invalidarOtpPendientes(idCliente);
             sql.update("""
                 UPDATE "SESION_CLIENTE_ONLINE" s
@@ -218,16 +233,15 @@ public class GestionClientesService {
     private void asegurarSinDuplicado(Normalizados n, Long excluirId) {
         var args=new MapSqlParameterSource().addValue("nombre",n.nombre())
             .addValue("tel",n.telefono()).addValue("excluir",excluirId==null?0L:excluirId);
-        List<Long> encontrados=sql.queryForList("""
-            SELECT "idCliente" FROM "CLIENTE"
+        List<String> estados=sql.queryForList("""
+            SELECT "estado" FROM "CLIENTE"
              WHERE (:excluir=0 OR "idCliente"<>:excluir)
                AND regexp_replace(lower(btrim(concat_ws(' ',"nombres","apellidos"))),
                    '[[:space:]]+', ' ', 'g')=:nombre
                AND regexp_replace("telefonoPrincipal",'[^0-9]','','g')=:tel
-            """,args,Long.class);
-        if(!encontrados.isEmpty()) {
-            throw new IllegalArgumentException(
-                "Cliente ya registrado con nombre y teléfono exactos (activo o inactivo)");
+            """,args,String.class);
+        if(!estados.isEmpty()) {
+            throw new ClienteDuplicadoException(estados.contains(ESTADO_INACTIVO));
         }
     }
     private List<Long> coincidenciasParciales(Normalizados n, Long excluirId) {
