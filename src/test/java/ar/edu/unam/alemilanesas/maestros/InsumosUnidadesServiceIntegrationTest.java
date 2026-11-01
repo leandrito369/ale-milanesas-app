@@ -102,7 +102,7 @@ class InsumosUnidadesServiceIntegrationTest {
         assertEquals(1,contar("INSUMO"));
         assertEquals(0,contar("MOVIMIENTO_INSUMO"));
         assertEquals(0,contar("COSTO_INSUMO_HISTORICO"));
-        assertEquals(0,jdbc.queryForObject("""
+        assertEquals(1,jdbc.queryForObject("""
             SELECT count(*) FROM "INSUMO"
              WHERE "idInsumo"=? AND NOT "automatizacionCompraActiva"
                AND "stockActual"=0 AND "umbralMinimo"=2.000
