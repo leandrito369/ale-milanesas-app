@@ -21,6 +21,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.context.NullSecurityContextRepository;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.filter.OncePerRequestFilter;
 
@@ -44,6 +45,10 @@ public class SeguridadWebInterna {
         http.logout(AbstractHttpConfigurer::disable);
         // CSRF habilitado por defecto: incluso login/logout/rotacion/UC53.
         http.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED));
+        // HttpSession almacena CSRF, pero NUNCA Authentication. La autoridad
+        // solo proviene de SESION_USUARIO revalidada contra PostgreSQL en cada request.
+        http.securityContext(c -> c.securityContextRepository(
+                new NullSecurityContextRepository()));
         http.authorizeHttpRequests(a -> a
                 .requestMatchers(HttpMethod.GET, "/web/login").permitAll()
                 .requestMatchers(HttpMethod.POST, "/web/login").permitAll()
