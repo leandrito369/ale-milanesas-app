@@ -113,35 +113,36 @@ public class AuthInternaController {
 /** Mensajes uniformes; no filtrar hash, contraseña, SQL ni IDs de sesion. */
 @RestControllerAdvice(assignableTypes=AuthInternaController.class)
 class ErroresAutenticacionHttp {
+    private static final String CODIGO = "codigo";
     @ExceptionHandler(TokenSesionInterna.AccesoRechazado.class)
     ResponseEntity<Map<String,String>> rechazo() {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .header("WWW-Authenticate","Bearer realm=\"ale-interno\"")
-                .body(Map.of("codigo","AUTENTICACION_RECHAZADA"));
+                .body(Map.of(CODIGO,"AUTENTICACION_RECHAZADA"));
     }
 
     @ExceptionHandler(LimiteIntentosLogin.IntentosExcedidos.class)
     ResponseEntity<Map<String,String>> rateLimit() {
         return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
                 .header("Retry-After","900")
-                .body(Map.of("codigo","INTENTOS_EXCEDIDOS"));
+                .body(Map.of(CODIGO,"INTENTOS_EXCEDIDOS"));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<Map<String,String>> invalidos() {
-        return ResponseEntity.badRequest().body(Map.of("codigo","SOLICITUD_INVALIDA"));
+        return ResponseEntity.badRequest().body(Map.of(CODIGO,"SOLICITUD_INVALIDA"));
     }
 
     @ExceptionHandler(SecurityException.class)
     ResponseEntity<Map<String,String>> noAutorizado() {
         return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .header("WWW-Authenticate","Bearer realm=\"ale-interno\"")
-                .body(Map.of("codigo","SESION_INVALIDA"));
+                .body(Map.of(CODIGO,"SESION_INVALIDA"));
     }
 
     @ExceptionHandler(IllegalStateException.class)
     ResponseEntity<Map<String,String>> conflicto() {
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(Map.of("codigo","CONFLICTO_ESTADO"));
+                .body(Map.of(CODIGO,"CONFLICTO_ESTADO"));
     }
 }
