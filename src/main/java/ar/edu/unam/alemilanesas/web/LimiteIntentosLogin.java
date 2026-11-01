@@ -53,6 +53,7 @@ public class LimiteIntentosLogin {
 
     public void exitoso(String nombre,String origen) {
         estados.remove("U:"+usuario(nombre));
-        estados.remove("I:"+ip(origen));
+        // La IP conserva intentos recientes: un login válido no debe reiniciar
+        // el cupo común y facilitar password spraying con cuenta conocida.
     }
 }
