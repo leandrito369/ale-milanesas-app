@@ -89,9 +89,9 @@ public class CobroManualService {
                 throw new IllegalArgumentException("Pedido no elegible para Cobro");
             }
         }
-        long cobro = siguiente("COBRO","idCobro");
-        long cuenta = siguiente("MOVIMIENTO_CUENTA","idMovimientoCuenta");
-        long caja = siguiente("MOVIMIENTO_CAJA","idMovimientoCaja");
+        long cobro = siguienteIdCobro();
+        long cuenta = siguienteIdMovimientoCuenta();
+        long caja = siguienteIdMovimientoCaja();
         long secuencia = siguienteSecuencia(idCliente);
         BigDecimal saldoFinal = saldo(idCliente).subtract(importe);
         sql.update("""
@@ -158,8 +158,8 @@ public class CobroManualService {
         if (clientesBloqueados.size() != 1) {
             throw new IllegalStateException("Cliente del Cobro inexistente");
         }
-        long movCuenta = siguiente("MOVIMIENTO_CUENTA","idMovimientoCuenta");
-        long movCaja = siguiente("MOVIMIENTO_CAJA","idMovimientoCaja");
+        long movCuenta = siguienteIdMovimientoCuenta();
+        long movCaja = siguienteIdMovimientoCaja();
         jdbc.queryForList("SELECT \"fn_mr3_anular_cobro_manual\"(?,?,?,?,?)",
                 idCobro,actor,movCuenta,movCaja,motivo.strip());
         String categoriaFinal = categoria.reevaluar(cliente);
@@ -195,17 +195,34 @@ public class CobroManualService {
         return id;
     }
 
-    private long siguiente(String tabla, String columna) {
-        // Identificadores de esquema sin secuencias; literales solo locales,
-        // no acepta identificadores provistos por el actor ni SQL arbitrario.
-        if (!Set.of("COBRO","MOVIMIENTO_CUENTA","MOVIMIENTO_CAJA").contains(tabla)
-                || !Set.of("idCobro","idMovimientoCuenta","idMovimientoCaja").contains(columna)) {
-            throw new IllegalArgumentException("Identificador no permitido");
+    /**
+     * Literales SQL estáticos sobre MR5. No hay interpolación de identificadores,
+     * aun cuando el método sea invocado solo desde parámetros internos.
+     */
+    private long siguienteIdCobro() {
+        return validarSiguiente(jdbc.queryForObject("""
+                SELECT COALESCE(MAX("idCobro"),0)+1 FROM "COBRO"
+                """,Long.class));
+    }
+
+    private long siguienteIdMovimientoCuenta() {
+        return validarSiguiente(jdbc.queryForObject("""
+                SELECT COALESCE(MAX("idMovimientoCuenta"),0)+1
+                  FROM "MOVIMIENTO_CUENTA"
+                """,Long.class));
+    }
+
+    private long siguienteIdMovimientoCaja() {
+        return validarSiguiente(jdbc.queryForObject("""
+                SELECT COALESCE(MAX("idMovimientoCaja"),0)+1
+                  FROM "MOVIMIENTO_CAJA"
+                """,Long.class));
+    }
+
+    private static long validarSiguiente(Long siguiente) {
+        if (siguiente == null || siguiente <= 0) {
+            throw new IllegalStateException("Sin ID financiero");
         }
-        Long siguiente = jdbc.queryForObject(
-                "SELECT COALESCE(MAX(\""+columna+"\"),0)+1 FROM \""+tabla+"\"",
-                Long.class);
-        if (siguiente == null || siguiente <=0) throw new IllegalStateException("Sin ID financiero");
         return siguiente;
     }
 
