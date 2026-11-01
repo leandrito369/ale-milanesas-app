@@ -15,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
  */
 @Service
 public class AplicarAjusteComercialService {
+    private static final BigDecimal MAX_IMPORTE =
+            new BigDecimal("9999999999999999.99");
     private final NamedParameterJdbcTemplate sql;
     private final EvaluadorCategoriaComercialInterno categoria;
 
@@ -32,7 +34,8 @@ public class AplicarAjusteComercialService {
             long idCliente,BigDecimal subtotalBaseLuegoPromocion) {
         if(idCliente<=0 || subtotalBaseLuegoPromocion==null
                 || subtotalBaseLuegoPromocion.signum()<0
-                || subtotalBaseLuegoPromocion.scale()>4 || subtotalBaseLuegoPromocion.precision()>18)
+                || subtotalBaseLuegoPromocion.stripTrailingZeros().scale()>4
+                || subtotalBaseLuegoPromocion.compareTo(MAX_IMPORTE)>0)
             throw new IllegalArgumentException("Cliente o subtotal comercial invalido");
         var clientes=sql.queryForList("""
                 SELECT "estado" FROM "CLIENTE" WHERE "idCliente"=:id FOR UPDATE
