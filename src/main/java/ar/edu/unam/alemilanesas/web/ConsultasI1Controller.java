@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.UUID;
 
 import ar.edu.unam.alemilanesas.maestros.BuscarClienteService;
+import ar.edu.unam.alemilanesas.maestros.ClienteConsulta;
+import ar.edu.unam.alemilanesas.maestros.CriterioBusquedaCliente;
 import ar.edu.unam.alemilanesas.maestros.ConsultarInsumosUnidadesService;
 import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
@@ -31,14 +33,14 @@ public class ConsultasI1Controller {
     }
 
     @GetMapping("/clientes")
-    public ResponseEntity<List<BuscarClienteService.ClienteConsulta>> clientes(
+    public ResponseEntity<List<ClienteConsulta>> clientes(
             Authentication authentication,
             @RequestParam(required=false) Long idCliente,
             @RequestParam(required=false) String nombre,
             @RequestParam(required=false) String telefonoPrincipal,
             @RequestParam(required=false) String zona,
             @RequestParam(required=false) String estado) {
-        var filtros=new BuscarClienteService.CriterioBusquedaCliente(
+        var filtros=new CriterioBusquedaCliente(
                 idCliente,nombre,telefonoPrincipal,zona,estado);
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(clientes.buscarCliente(sesion(authentication),filtros));
