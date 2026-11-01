@@ -292,6 +292,11 @@ class AutenticacionHttpExternaTest {
         assertEquals(302,enviar("/web/logout","POST","_csrf="+csrfVigente,
                 Map.of("Content-Type","application/x-www-form-urlencoded",
                        "Cookie",bearerCookie+"; "+sessionVigente)).statusCode());
+        String secreto= bearerCookie.substring("__Host-ale_session=".length());
+        assertEquals(1,jdbc.queryForObject("""
+                SELECT count(*) FROM "SESION_USUARIO"
+                 WHERE "tokenProtegido"=? AND "fechaHoraRevocacion" IS NOT NULL
+                """,Integer.class,TokenSesionInterna.huella(secreto).orElseThrow()));
         assertEquals(401,enviar("/web/inicio","GET",null,
                 Map.of("Cookie",bearerCookie+"; "+sessionVigente)).statusCode());
         // La API no utiliza la cookie web como identidad.
