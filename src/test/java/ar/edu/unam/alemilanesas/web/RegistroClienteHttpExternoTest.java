@@ -140,6 +140,26 @@ class RegistroClienteHttpExternoTest {
     }
 
     @Test
+    void uc32PermaneceDenegadoEnContextoQueHabilitaSolamenteUC02() throws Exception {
+        var primero=post(vendedor,datos("B403_"+base+"_SinModificacion","3764000091"));
+        assertEquals(201,primero.statusCode(),primero.body());
+        long id=json.readTree(primero.body()).get("idCliente").asLong();
+        var cambio=HttpRequest.newBuilder(
+                URI.create("http://127.0.0.1:"+port+"/api/v1/clientes/"+id))
+                .header("Authorization","Bearer "+vendedor)
+                .header("Content-Type","application/json")
+                .PUT(HttpRequest.BodyPublishers.ofString(
+                        json.writeValueAsString(datos("B403_"+base+"_Ataque","3764000092"))))
+                .build();
+        var denegado=cliente.send(cambio,HttpResponse.BodyHandlers.ofString());
+        assertEquals(403,denegado.statusCode());
+        assertEquals("B403_"+base+"_SinModificacion",
+                jdbc.queryForObject("""
+                        SELECT "nombres" FROM "CLIENTE" WHERE "idCliente"=?
+                        """,String.class,id));
+    }
+
+    @Test
     void adminPuedeRegistrarYNoSeExponeProyeccionDeOtrosClientes() throws Exception {
         var resp=post(admin,datos("B403_"+base+"_Ana","3764000001"));
         assertEquals(201,resp.statusCode(),resp.body());
