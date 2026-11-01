@@ -66,7 +66,9 @@ public class AplicarAjusteComercialService {
         if(porcentaje==null||porcentaje.signum()<0||porcentaje.compareTo(
                 new BigDecimal("100"))>0 || (sin&&porcentaje.signum()!=0)
                 || (!sin&&porcentaje.signum()==0)
-                || (!sin&&!"DESCUENTO".equals(tipo)&&!"RECARGO".equals(tipo)))
+                || (!sin&&!"DESCUENTO".equals(tipo)&&!"RECARGO".equals(tipo))
+                || ("CUMPLIDOR".equals(categoriaActual)&&"RECARGO".equals(tipo))
+                || ("EN_MORA".equals(categoriaActual)&&"DESCUENTO".equals(tipo)))
             throw new IllegalStateException("Regla de politica inconsistente");
 
         BigDecimal base=subtotalBaseLuegoPromocion.setScale(2,RoundingMode.HALF_UP);
