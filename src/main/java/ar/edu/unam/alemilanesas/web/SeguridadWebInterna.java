@@ -10,6 +10,7 @@ import java.net.URI;
 import org.springframework.beans.factory.annotation.Value;
 
 import org.springframework.context.annotation.Bean;
+import org.springframework.dao.DataAccessException;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
@@ -133,7 +134,13 @@ public class SeguridadWebInterna {
             res.setHeader("Pragma","no-cache");
             String token=tokenCookie(req);
             if (token!=null) {
-                var sesion=verificador.validar(token);
+                java.util.Optional<SeguridadHttpInterna.VerificadorSesionBearer.SesionAutorizada> sesion;
+                try {
+                    sesion=verificador.validar(token);
+                } catch (DataAccessException ex) {
+                    res.sendError(503);
+                    return;
+                }
                 if (sesion.isPresent()) {
                     var valor=sesion.get();
                     var auth=new UsernamePasswordAuthenticationToken(
