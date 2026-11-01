@@ -250,6 +250,10 @@ class AutenticacionHttpExternaTest {
                 .findFirst().orElseThrow().split(";",2)[0];
 
         String datos="nombreUsuario="+userAdmin+"&credencial="+claveAdmin;
+        assertEquals(403,enviar("/web/login","POST",datos+"&_csrf="+csrf,
+                Map.of("Content-Type","application/x-www-form-urlencoded",
+                       "Origin","https://origen-malicioso.example",
+                       "Cookie",session)).statusCode());
         var sinCsrf=enviar("/web/login","POST",datos,Map.of(
                 "Content-Type","application/x-www-form-urlencoded",
                 "Cookie",session));
