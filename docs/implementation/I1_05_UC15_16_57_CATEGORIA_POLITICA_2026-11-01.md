@@ -12,7 +12,7 @@
 
 `ConfigurarPoliticaCategoriaComercialService`: solo Administrador interno revalidado después de lock `pg_advisory_xact_lock(5715001)`; `POLITICA_CATEGORIA_COMERCIAL` nueva y **exactamente dos hijos** `AJUSTE_POLITICA_CATEGORIA` para CUMPLIDOR/EN_MORA. `tipoAjuste` físico de MR5; porcentajes `NUMERIC(5,2)` de 0 a 100; SIN_AJUSTE implica porcentaje 0; descuento/recargo requieren positivo. No existen porcentajes incrustados en tabla política.
 
-`vigenteDesde` debe ser futuro respecto del mismo reloj PostgreSQL; `vigenteHasta` es opcional y exclusivo. Si la política anterior abierta cruza el nuevo inicio, se acota su fin **prospectivamente** sin alterar inicio/tolerancia/ajustes históricos. Si una programación futura se solapa, se rechaza antes de cualquier UPDATE. Exclusión GiST MR5 es barrera física definitiva. No se inventa un umbral por defecto ni se altera PEDIDO histórico. IDs BIGINT se generan con MAX+1 bajo lock común solo para escritores cooperantes.
+`vigenteDesde` debe ser futuro respecto del mismo reloj PostgreSQL; `vigenteHasta` es opcional y exclusivo. Si la política anterior abierta cruza el nuevo inicio, se acota su fin **prospectivamente** sin alterar inicio/tolerancia/ajustes históricos. Si una programación futura se solapa, se rechaza antes de cualquier UPDATE, incluso cuando su comienzo antecede al nuevo inicio: no se trunca una vigencia todavía no iniciada por inferencia. Exclusión GiST MR5 es barrera física definitiva. No se inventa un umbral por defecto ni se altera PEDIDO histórico. IDs BIGINT se generan con MAX+1 bajo lock común solo para escritores cooperantes.
 
 ## Alcance UC15 — reevaluación de categoría
 
@@ -26,7 +26,7 @@ Antigüedad: **días completos de 24 h**, `ChronoUnit.DAYS.between(origen, insta
 
 ## Pruebas previstas
 
-- `CategoriaPoliticaServiceIntegrationTest`: **13 escenarios** con PostgreSQL Testcontainers: crear política y dos reglas, cierre de período, solape, validación/roles, mora por días completos, créditos FIFO, ausencia de política/Cliente, descuento/recargo/sin ajuste, errores y conservación de total y política en Pedido existente.
+- `CategoriaPoliticaServiceIntegrationTest`: **12 escenarios** con PostgreSQL Testcontainers: crear política y dos reglas, cierre de período, solape, validación/roles, mora por días completos, créditos FIFO, ausencia de política/Cliente, descuento/recargo/sin ajuste, errores y conservación de total y política en Pedido existente.
 - `PoliticaCategoriaConcurrenciaIntegrationTest`: **1 carrera real de dos comandos** mismo inicio, sin `@Transactional` de JUnit; a lo sumo un commit de política y exactamente dos reglas.
 - B1 y B2 deben pasar para el mismo HEAD. MR5/F01 inmutables, revisión de logs, artefactos y SHA. La confirmación de integridad no equivale a aceptación E2E.
 
