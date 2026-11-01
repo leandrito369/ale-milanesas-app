@@ -1,6 +1,6 @@
 # Acta de consolidación I1 B3 — 01/11/2026
 
-**Estado al 01/11/2026:** rama I1 B3 técnicamente integrada, con RD-UC50-001 y RD-UC19-001 **APROBADAS**, Issues #25/#21 cerradas. B1/B2 deben confirmarse en el SHA final después de esta adenda. **Sin merge a main**, ni HTTP B4 ni acreditación E2E.
+**Estado al 01/11/2026:** rama I1 B3 consolidada, con **RD-UC50-001, RD-UC19-001 y RD-UC19-002 APROBADAS**, Issues #25/#21 cerradas. El responsable **autorizó expresamente el merge de PR #26 a main incluyendo el recorte de precios futuros UC-19**. Confirmar B1/B2 sobre el HEAD final antes de ejecutar GitHub merge. B4/E2E no acreditados.
 
 ## Corte y procedencia
 
@@ -39,11 +39,11 @@ El primer precio en UC19 se registra en `PRECIO_PRODUCTO` y `AUDITORIA_PRECIO` d
 
 **SHA previo de lógica y prueba reforzada:** `cc2f6dc5ed37229f0e4cb31baf667fe002a2ee6a`: [B1 #41316787755](https://github.com/leandrito369/ale-milanesas-app/actions/runs/41316787755) y [B2 #41316787756](https://github.com/leandrito369/ale-milanesas-app/actions/runs/41316787756), ambos **SUCCESS 137/137**; restauración de 1225 objetos y triple huella MR6 equivalente. Esta adenda cambia solo documentación y deberá revalidarse B1/B2 del nuevo HEAD.
 
-**Reserva distinta de la Issue #21:** la interpretación del recorte anticipado de una programación futura aún no iniciada no fue aprobada por RD-UC19-001. Requiere cotejo funcional adicional si se pretende declararlo aceptado. La PR conjunta continúa pendiente de revisión humana y autorización de merge a `main`.
+**Aprobación adicional — [RD-UC19-002](https://github.com/leandrito369/ale-milanesas/blob/main/docs/01-gobierno/b0/RD_UC19_002_ACOTAMIENTO_VIGENCIAS_FUTURAS_2026-11-01.md):** El responsable autorizó expresamente el comportamiento actual de recortar una vigencia futura anterior cuando el nuevo precio empieza después de su inicio y dentro de ella, cerrando `vigenteHasta` y emitiendo `CIERRE_VIGENCIA` sin alterar precios congelados ni crear `CANCELACION_PROGRAMADA`. La autorización también incluye **fusionar PR #26 a main**. El merge solo debe ejecutarse tras B1/B2 SUCCESS en el HEAD final y cumplimiento de las protecciones de GitHub.
 
 ## Gate de integración obligatorio
 
 - Ejecutar en un mismo HEAD **B1** (`mvn clean verify` + JUnit + Testcontainers + JaCoCo) y **B2** (Flyway V1/V2, integridad fuente MR5/F01, triple huella MR6, backup/restore físico 1.225 objetos), cotejando artefactos/digests y sin sumar resultados históricos por rama.
 - Registrar fallos intermedios con causa y SHA. No atribuir a SonarQube un resultado inexistente.
-- **Prohibiciones y límites:** no merge automático a `main`; no cambios MR5/F01 ni reinvención de auditoría de eventos; UC03/21 no persisten Pedido desde UC16; no UC10/42 ni SALDO_INICIAL; no HTTP B4 ni E2E hasta resolver el gate I1. No confundir prueba B3 integrada con acreditación de 18 escenarios BC06 ni cuatro UC54.
-- Dependencias restantes: revisión funcional del eventual recorte de precios futuros, revisión de locks UC29/UC15 con futuros servicios y revisión humana de PR26. **Issues #21 y #25 resueltas**, no acreditan automáticamente merge a main.
+- **Prohibiciones y límites:** la aprobación del responsable habilita merge de PR #26 exclusivamente tras gate técnico y verificaciones GitHub; no cambios MR5/F01 ni reinvención de auditoría de eventos; UC03/21 no persisten Pedido desde UC16; no UC10/42 ni SALDO_INICIAL; no HTTP B4 ni E2E hasta resolver el gate I1. No confundir prueba B3 integrada con acreditación de 18 escenarios BC06 ni cuatro UC54.
+- Dependencias restantes: revisión de locks UC29/UC15 con futuros servicios y verificaciones finales del merge GitHub. **Issues #21 y #25 resueltas; RD-UC19-002 ratifica el recorte futuro y la integración**. La aprobación en chat no se presenta como una review independiente `APPROVED` del autor en GitHub.
