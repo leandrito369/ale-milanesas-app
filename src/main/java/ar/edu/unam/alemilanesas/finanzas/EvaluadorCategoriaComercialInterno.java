@@ -12,8 +12,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * UC15 interno: reevalua categoria desde deuda confirmada y politica vigente.
- * Debe invocarse dentro de la transaccion que modifica Cuenta Corriente y
- * con CLIENTE bloqueado por el servicio invocante. No expone endpoint.
+ * Invocar dentro de transaccion; el evaluador asegura CLIENTE FOR UPDATE.
+ * Portado de PR #14 para desarrollo paralelo I1-05; conciliar en merge.
+ * No expone endpoint.
  *
  * Imputacion FIFO: los creditos definitivos extinguen los debitos mas antiguos.
  * ANULACION_COBRO restaura credito previamente aplicado, no crea nueva venta.
@@ -32,14 +33,27 @@ public class EvaluadorCategoriaComercialInterno {
         OffsetDateTime instanteDb = sql.getJdbcTemplate().queryForObject(
                 "SELECT clock_timestamp()",
                 (rs, rowNum) -> rs.getObject(1, OffsetDateTime.class));
-        if (instanteDb == null) {
-            throw new IllegalStateException("No se pudo obtener reloj PostgreSQL");
+        return reevaluar(idCliente, instanteDb);
+    }
+
+    /**
+     * La operacion invocante provee una sola marca temporal PostgreSQL para
+     * UC15 y UC16. Se bloquea CLIENTE y la politica escogida FOR SHARE.
+     */
+    String reevaluar(long idCliente, OffsetDateTime instanteDb) {
+        if (idCliente<=0 || instanteDb == null) {
+            throw new IllegalArgumentException("Cliente o instante inválido");
         }
+        var clientes=sql.queryForList("""
+                SELECT "idCliente" FROM "CLIENTE" WHERE "idCliente"=:id FOR UPDATE
+                """,Map.of("id",idCliente));
+        if (clientes.size()!=1) throw new IllegalArgumentException("Cliente inexistente");
         Instant ahora = instanteDb.toInstant();
         List<Integer> tolerancias = sql.queryForList("""
                 SELECT "diasToleranciaMora" FROM "POLITICA_CATEGORIA_COMERCIAL"
                  WHERE "vigenteDesde" <= :ahora
                    AND ("vigenteHasta" IS NULL OR "vigenteHasta" > :ahora)
+                 FOR SHARE
                 """, Map.of("ahora", instanteDb), Integer.class);
         if (tolerancias.size() != 1) {
             throw new IllegalStateException(
