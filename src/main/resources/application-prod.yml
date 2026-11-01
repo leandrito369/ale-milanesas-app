@@ -1,0 +1,22 @@
+# B4-02D: perfil de UNICA instancia detras de Nginx en el MISMO host.
+# No es despliegue certificado: exige TLS y pruebas de ingress reales.
+server:
+  address: 127.0.0.1
+  forward-headers-strategy: native
+  tomcat:
+    redirect-context-root: false
+    remoteip:
+      remote-ip-header: x-forwarded-for
+      protocol-header: x-forwarded-proto
+      internal-proxies: "127\\.0\\.0\\.1|::1"
+  servlet:
+    session:
+      cookie:
+        secure: true
+        http-only: true
+        same-site: strict
+ale:
+  web:
+    allowed-origin: ${ALE_PUBLIC_ORIGIN:}
+  security:
+    singleton-db-guard: true
