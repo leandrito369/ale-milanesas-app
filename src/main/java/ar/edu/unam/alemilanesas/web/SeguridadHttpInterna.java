@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import org.springframework.context.annotation.Bean;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataAccessException;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
@@ -42,7 +43,8 @@ public class SeguridadHttpInterna {
     // S4502 validado: API no acepta cookie, solo Authorization Bearer.
     // Cadena /web/** conserva CSRF y prueba negativa de cookies en API.
     @SuppressWarnings("java:S4502")
-    SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones) {
+    SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones,
+            @Value("${ale.http.writes.clientes-uc02-enabled:false}") boolean habilitarAltaCliente) {
         http.securityMatcher("/api/v1/**");
         // La API no autentica cookies. El sitio web (otra cadena) conserva CSRF.
         http.csrf(csrf -> csrf.ignoringRequestMatchers("/api/v1/**"));
@@ -61,6 +63,15 @@ public class SeguridadHttpInterna {
                                     x->ROL_CAMBIO_PENDIENTE.equals(x.getAuthority()))))
                 .requestMatchers(HttpMethod.POST, "/api/v1/usuarios/*/restablecer-acceso")
                     .hasAuthority(ROL_ADMINISTRADOR)
+                // B4-03-01: flag falso por defecto; no hay autorizaciones
+                // implícitas para ningún otro POST comercial.
+                .requestMatchers(HttpMethod.POST, "/api/v1/clientes")
+                    .access((auth,context) ->
+                        new org.springframework.security.authorization.AuthorizationDecision(
+                            habilitarAltaCliente && auth.get().isAuthenticated() &&
+                            auth.get().getAuthorities().stream().anyMatch(
+                                rol -> ROL_ADMINISTRADOR.equals(rol.getAuthority()) ||
+                                       "VENDEDOR".equals(rol.getAuthority()))))
                 .requestMatchers(HttpMethod.GET, "/api/v1/clientes")
                     .hasAnyAuthority(ROL_ADMINISTRADOR,"VENDEDOR")
                 .requestMatchers(HttpMethod.GET,"/api/v1/insumos","/api/v1/unidades")
