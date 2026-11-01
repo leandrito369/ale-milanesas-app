@@ -137,6 +137,18 @@ class InsumosUnidadesServiceIntegrationTest {
         assertEquals(0,contar("MOVIMIENTO_INSUMO"));
     }
 
+    @Test void uc50NoInventaParametrosInicialesAnteEntradaFaltante(){
+        assertThrows(IllegalArgumentException.class,()->gestion.registrarInsumo(
+            ADMIN,"Perejil","KG",null,new BigDecimal("3.000")));
+        assertThrows(IllegalArgumentException.class,()->gestion.registrarInsumo(
+            ADMIN,"Perejil","KG",BigDecimal.ZERO,null));
+        assertThrows(IllegalArgumentException.class,()->gestion.registrarInsumo(
+            ADMIN,"  ","KG",BigDecimal.ZERO,new BigDecimal("3.000")));
+        assertEquals(0,contar("INSUMO"));
+        assertEquals(0,contar("MOVIMIENTO_INSUMO"));
+        assertEquals(0,contar("COSTO_INSUMO_HISTORICO"));
+    }
+
     @Test void uc36AdminYProduccionVenActivosEInactivosSinMutar(){
         long carne=alta("Carne de res");
         long pan=alta("Pan rallado");
