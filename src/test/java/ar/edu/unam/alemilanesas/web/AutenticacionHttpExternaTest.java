@@ -40,7 +40,12 @@ import static org.junit.jupiter.api.Assertions.*;
  * Se ejecuta sin @Transactional en el test: cada request servidor usa otra tx.
  * No acredita TLS de despliegue/ingress o uso externo de red publica.
  */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
+        properties = {
+            // Solo loopback HTTP en la prueba: produccion conserva cookie Secure.
+            "server.servlet.session.cookie.secure=false",
+            "logging.level.org.springframework.security.web.csrf=DEBUG"
+        })
 @Testcontainers
 class AutenticacionHttpExternaTest {
     @Container
