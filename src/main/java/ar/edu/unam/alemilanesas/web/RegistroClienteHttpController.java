@@ -94,29 +94,37 @@ public class RegistroClienteHttpController {
 /** Respuestas deliberadamente genéricas; jamás devuelven SQL ni PII. */
 @RestControllerAdvice(assignableTypes=RegistroClienteHttpController.class)
 class ErroresRegistroClienteHttp {
+    private static final String CODIGO = "codigo";
+
     @ExceptionHandler(IllegalArgumentException.class)
     ResponseEntity<Map<String,String>> invalidos(IllegalArgumentException ex) {
         boolean repetido=ex instanceof GestionClientesService.ClienteDuplicadoException;
         boolean inactivo=repetido &&
                 ((GestionClientesService.ClienteDuplicadoException)ex).inactivo();
-        String codigo=inactivo ? "CLIENTE_INACTIVO_REQUIERE_ADMINISTRADOR"
-                : repetido ? "CLIENTE_DUPLICADO" : "SOLICITUD_INVALIDA";
+        String codigo;
+        if (inactivo) {
+            codigo="CLIENTE_INACTIVO_REQUIERE_ADMINISTRADOR";
+        } else if (repetido) {
+            codigo="CLIENTE_DUPLICADO";
+        } else {
+            codigo="SOLICITUD_INVALIDA";
+        }
         return ResponseEntity.status(repetido ? HttpStatus.CONFLICT : HttpStatus.BAD_REQUEST)
                 .cacheControl(CacheControl.noStore())
-                .body(Map.of("codigo",codigo));
+                .body(Map.of(CODIGO,codigo));
     }
 
     @ExceptionHandler(SecurityException.class)
     ResponseEntity<Map<String,String>> prohibido() {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .cacheControl(CacheControl.noStore())
-                .body(Map.of("codigo","OPERACION_PROHIBIDA"));
+                .body(Map.of(CODIGO,"OPERACION_PROHIBIDA"));
     }
 
     @ExceptionHandler(DataAccessException.class)
     ResponseEntity<Map<String,String>> persistencia() {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .cacheControl(CacheControl.noStore())
-                .body(Map.of("codigo","PERSISTENCIA_NO_DISPONIBLE"));
+                .body(Map.of(CODIGO,"PERSISTENCIA_NO_DISPONIBLE"));
     }
 }
