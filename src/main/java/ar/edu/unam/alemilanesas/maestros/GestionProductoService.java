@@ -1,6 +1,5 @@
 package ar.edu.unam.alemilanesas.maestros;
 
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -8,7 +7,6 @@ import java.util.Set;
 import java.util.UUID;
 
 import ar.edu.unam.alemilanesas.acceso.AutorizacionSesionInterna;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -129,19 +127,18 @@ public class GestionProductoService {
         return filas;
     }
 
-    /** Dependencias históricas existentes en MR5 (no excluir las inactivas). */
+    /** Dependencias históricas MR5 verificadas en SQL estático parametrizado. */
     private boolean tieneHistoria(long id) {
-        for (String tabla : List.of("DETALLE_PEDIDO","PRECIO_PRODUCTO","RECETA",
-                "PROMOCION_PRODUCTO","RECEPCION_COMPRA","MOVIMIENTO_STOCK_REVENTA",
-                "VALORACION_EXTRAORDINARIA_REVENTA")) {
-            // Sólo identificadores literales internos, jamás proporcionados por el actor.
-            String columna = tabla.equals("RECEPCION_COMPRA") ? "idProductoReventa" : "idProducto";
-            Integer n = sql.getJdbcTemplate().queryForObject(
-                    "SELECT count(*) FROM \""+tabla+"\" WHERE \""+columna+"\"=?",
-                    Integer.class,id);
-            if (n!=null && n>0) return true;
-        }
-        return false;
+        Boolean existe = sql.queryForObject("""
+                SELECT EXISTS (SELECT 1 FROM "DETALLE_PEDIDO" WHERE "idProducto"=:id)
+                    OR EXISTS (SELECT 1 FROM "PRECIO_PRODUCTO" WHERE "idProducto"=:id)
+                    OR EXISTS (SELECT 1 FROM "RECETA" WHERE "idProducto"=:id)
+                    OR EXISTS (SELECT 1 FROM "PROMOCION_PRODUCTO" WHERE "idProducto"=:id)
+                    OR EXISTS (SELECT 1 FROM "RECEPCION_COMPRA" WHERE "idProductoReventa"=:id)
+                    OR EXISTS (SELECT 1 FROM "MOVIMIENTO_STOCK_REVENTA" WHERE "idProducto"=:id)
+                    OR EXISTS (SELECT 1 FROM "VALORACION_EXTRAORDINARIA_REVENTA" WHERE "idProducto"=:id)
+                """, Map.of("id",id), Boolean.class);
+        return Boolean.TRUE.equals(existe);
     }
 
     private void bloquearEscritores() {
