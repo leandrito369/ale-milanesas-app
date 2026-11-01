@@ -3,6 +3,7 @@ package ar.edu.unam.alemilanesas.finanzas;
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -84,7 +85,7 @@ class CategoriaPoliticaServiceIntegrationTest {
         return new ConfigurarPoliticaCategoriaComercialService.AjusteCategoria(t,new BigDecimal(p));
     }
     private OffsetDateTime futuro(int dias) {
-        return OffsetDateTime.now(ZoneOffset.UTC).plusDays(dias);
+        return OffsetDateTime.now(ZoneOffset.UTC).plusDays(dias).truncatedTo(ChronoUnit.MICROS);
     }
     private int contar(String tabla) {
         return jdbc.queryForObject("SELECT count(*) FROM \""+tabla+"\"",Integer.class);
