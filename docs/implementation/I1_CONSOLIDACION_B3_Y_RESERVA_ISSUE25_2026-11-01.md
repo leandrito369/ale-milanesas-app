@@ -1,6 +1,6 @@
 # Acta de consolidación I1 B3 — 01/11/2026
 
-**Estado:** rama técnica de integración **sin merge a main**, pendiente gate B1/B2 del SHA definitivo y revisión documental; no equivale a cierre funcional total de I1.
+**Estado:** rama técnica de integración **sin merge a main**, pendiente repetición B1/B2 del SHA posterior a RD-UC50-001 y revisión de integración; no equivale a cierre funcional total de I1.
 
 ## Corte y procedencia
 
@@ -16,19 +16,20 @@ La rama `integration/i1-b3-completo-2026-11-01` deriva del HEAD de [PR #23](http
 
 `EvaluadorCategoriaComercialInterno` permanece en la variante conciliada de PR23 (una marca PostgreSQL, dos firmas, bloqueo CLIENTE/política y FIFO), sin volver a introducir la versión previa de PR14. Los cambios portados de PR22 y PR14 ya se encuentran en PR23. I1-01 solo incorpora lo que contiene `main` más la PR16; no se afirma que estén implementados automáticamente todos los CU de identidad sin comprobación individual.
 
-## Issue #25 — discrepancia y propuesta de cierre normativo
+## Issue #25 — decisión APROBADA RD-UC50-001 y fuentes renumeradas
 
-El [backlog G0 de 29/10/2026](https://github.com/leandrito369/ale-milanesas/blob/main/docs/01-gobierno/b0/B0_BACKLOG_I0_I1_PRIMER_VERTICAL_2026-10-29.md), SHA `1263ffc17bd0eb7f3c69faaa9ff5ae556cf9de7e`, fija expresamente **I1-06 = UC50/51/52/36**, alta Insumo stock 0 y prohibición de `SALDO_INICIAL` antes de UC42.
+**Estado actualizado el 01/11/2026:** decisión `RD-UC50-001` **APROBADA (Opción A)** por el responsable. [Texto de la RD canónica](https://github.com/leandrito369/ale-milanesas/blob/main/docs/01-gobierno/b0/RD_UC50_001_ALTA_INSUMO_Y_MODIFICACION_2026-11-01.md). [Issue #25](https://github.com/leandrito369/ale-milanesas-app/issues/25) queda resuelta por la aprobación documental; no requiere cambiar código ni MR5/F01.
 
-**Incompatibilidad de numeración:** en `C_ANEXO_49_CU_TRES_NIVELES_ACTUALIZADO_23-10-2026.md` y `C_CasosDeUso_y_Estado_ACTUALIZADO_23-10-2026.md`, fecha anterior, **UC50 = Registrar Resultado de Reembolso Electrónico** y **UC36 = Buscar Producto**. Es una versión de 49 CU, no la línea G0 de 64 CU. **No usarla para inventar las fichas Fase4 de Insumos**; hace falta identificar la renumeración y revisar las nuevas fichas UC50/51.
+Se identificó la fuente actualizada `ALE_MILANESAS_FASE_4_CU_01_A_64_TRES_NIVELES.docx` (equivalente a `docs/04-casos-uso/CASOS_DE_USO_64_TRES_NIVELES.docx`) y la partición correcta de B0: UC50 registrarInsumo y UC51 modificarInsumo están en **REV-01**, junto con UC42; REV-06B.2 reúne los otros seis CU de inventario. Los archivos de 49 CU del 23/10 son antecedentes de numeración previa, **no** evidencia contradictoria para el catálogo de 64 CU.
 
-La decisión técnica provisional de PR24 deja explícito:
-- **Alta UC50 B3**: solo ADMIN, unidad preexistente; exige umbral y objetivo explícitos para campos NOT NULL MR5; `stockActual=0`, `automatizacionCompraActiva=false`, `activo=true`; no genera movimiento de Insumo, costo ni recepción ficticia. Esta es una regla conservadora implementada, **no demostración de aceptación normativa de parámetros**.
-- **UC51**: modificar nombre/unidad únicamente, sin alterar stock ni umbral/objetivo (UC31). Rechazar cambio de unidad con historia, conservar `idInsumo`; extensiones requieren revisar ficha Fase4 del corte posterior al 23/10.
-- **UC52**: ADMIN cambia activo sin cancelar órdenes/recetas ni crear stock. **UC36**: Admin y Responsable Producción ven Insumos activos/inactivos (REV06B G0).
-- **Unidades**: catálogo `UNIDAD_MEDIDA` de solo lectura y referencias históricas por FK; no se implementa CRUD ni conversión por inferencia.
+La ratificación permite concluir que UC50/51 están homologados al alcance B3 actual:
+- **UC50:** exclusivamente ADMINISTRADOR. Informa nombre, unidad registrada, umbral >= 0 y objetivo > umbral. Alta `INSUMO.activo=true` con `stockActual=0`; sin `MOVIMIENTO_INSUMO`, `COSTO_INSUMO_HISTORICO`, `SALDO_INICIAL`, compra ni ronda automática. `automatizacionCompraActiva=false` queda **ratificada expresamente** como excepción acotada al paso de captura de UC50 Real; el Administrador no informa ese booleano en esta operación B3 y UC31 gestionará su habilitación posterior.
+- **UC51:** exclusivamente ADMINISTRADOR. Modifica solo nombre y unidad; verifica nombre normalizado único, unidad existente y dependencias históricas antes de cambiar unidad. Preserva `stockActual`, costos, parámetros y estado. La búsqueda UC36 incluida funcionalmente se realiza mediante identificación/consulta interna antes de bloquear, sin atribuir GUI/HTTP B4.
+- **UC52/UC36:** se conservan según contratos G0 REV06B; no se inventa CRUD de unidades ni conversión automática.
 
-**Condición de cierre Issue #25:** contar con fichas de Fase4 de UC50/51 posteriores a la renumeración y una decisión explícita sobre RBAC, parámetros de alta, automatización, duplicados y campos mutables, o aprobar una RD acotando expresamente este contrato mínimo. Mientras ese soporte no exista, **Issue #25 continúa abierta como bloqueo documental**, aunque B1/B2 sean verdes. No equivale a no haber hecho la consolidación técnica.
+El `stockActual=0` **no** es una inmovilidad permanente del campo: indica ausencia de apertura física registrada al alta; UC42 podrá registrar movimientos reales posteriormente. La unicidad normalizada se controla en el servicio bajo protocolo cooperativo; no se declara una restricción SQL nueva.
+
+**Evidencia anterior a esta adenda documental:** SHA `c372aed91b719032efd678191c3614932b1bb62f`, B1/B2 **136/136 SUCCESS**, 3 rutas MR6, restauración 1.225 objetos y digests registrados en la PR. El nuevo SHA documental requiere repetición B1/B2 para ser gate final.
 
 ## Gate de integración obligatorio
 
