@@ -40,8 +40,10 @@ public class SeguridadHttpInterna {
     @Order(1)
     SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones) throws Exception {
         http.securityMatcher("/api/v1/**");
-        // La API no autentica cookies. El sitio web (otra cadena) conserva CSRF.
-        http.csrf(AbstractHttpConfigurer::disable);
+        // Los endpoints de /api/v1/** aceptan solo Bearer en Authorization.
+        // No se autentican mediante cookies: se excluyen de CSRF por ruta,
+        // mientras que /web/** conserva CSRF y su cadena independiente.
+        http.csrf(csrf -> csrf.ignoringRequestMatchers("/api/v1/**"));
         http.httpBasic(AbstractHttpConfigurer::disable);
         http.formLogin(AbstractHttpConfigurer::disable);
         http.logout(AbstractHttpConfigurer::disable);
