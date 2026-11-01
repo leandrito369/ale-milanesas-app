@@ -96,8 +96,8 @@ public class ActualizarPrecioVigenteService {
                 cerrable=p;
             }
         }
-        long idPrecio=siguiente("PRECIO_PRODUCTO","idPrecio");
-        long idAuditoria=siguiente("AUDITORIA_PRECIO","idAuditoriaPrecio");
+        long idPrecio=siguientePrecio();
+        long idAuditoria=siguienteAuditoria();
         Long idCerrado=null;
         if(cerrable!=null) {
             idCerrado=cerrable.idPrecio();
@@ -152,15 +152,19 @@ public class ActualizarPrecioVigenteService {
         return ahora;
     }
 
-    private long siguiente(String tabla,String columna) {
-        // Nombres literales internos, nunca provienen de parámetros del usuario.
-        if(!Set.of("PRECIO_PRODUCTO","AUDITORIA_PRECIO").contains(tabla)
-                || !Set.of("idPrecio","idAuditoriaPrecio").contains(columna))
-            throw new IllegalArgumentException("Identificador financiero invalido");
-        Long id=sql.getJdbcTemplate().queryForObject(
-                "SELECT COALESCE(MAX(\""+columna+"\"),0)+1 FROM \""+tabla+"\"",
-                Long.class);
-        if(id==null||id<=0)throw new IllegalStateException("Sin identificador de Precio");
-        return id;
+    private long siguientePrecio() {
+        Long valor=sql.getJdbcTemplate().queryForObject("""
+                SELECT COALESCE(MAX("idPrecio"),0)+1 FROM "PRECIO_PRODUCTO"
+                """,Long.class);
+        if(valor==null || valor<=0)throw new IllegalStateException("Sin ID de Precio");
+        return valor;
+    }
+
+    private long siguienteAuditoria() {
+        Long valor=sql.getJdbcTemplate().queryForObject("""
+                SELECT COALESCE(MAX("idAuditoriaPrecio"),0)+1 FROM "AUDITORIA_PRECIO"
+                """,Long.class);
+        if(valor==null || valor<=0)throw new IllegalStateException("Sin ID de Auditoria");
+        return valor;
     }
 }
