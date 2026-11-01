@@ -175,6 +175,11 @@ public class SeguridadWebInterna {
                             valor.principal(),null,
                             valor.roles().stream().map(SimpleGrantedAuthority::new).toList());
                     SecurityContextHolder.getContext().setAuthentication(auth);
+                } else if (!"/web/login".equals(req.getServletPath())) {
+                    // Cookie presentada pero expirada/revocada/ilegible:
+                    // 401 inmediato, nunca autoridad cacheada en HttpSession.
+                    res.sendError(401);
+                    return;
                 }
             }
             try { chain.doFilter(req,res); }
