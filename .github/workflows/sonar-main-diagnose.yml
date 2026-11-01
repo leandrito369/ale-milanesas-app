@@ -11,7 +11,7 @@ jobs:
       - name: Hallazgos publicos en main sin secretos
         run: |
           set -euo pipefail
-          code=$(curl -sSL --max-time 30 -o /tmp/sonar-main.json -w '%{http_code}' 'https://sonarcloud.io/api/issues/search?componentKeys=leandrito369_ale-milanesas-app&branch=main&resolved=false&ps=100')
+          code=$(curl -sSL --max-time 30 -o /tmp/sonar-main.json -w '%{http_code}' 'https://sonarcloud.io/api/issues/search?componentKeys=leandrito369_ale-milanesas-app&branch=main&resolved=false&types=VULNERABILITY&ps=100')
           echo "API status $code"
           test "$code" = 200
           python3 - <<'PY'
