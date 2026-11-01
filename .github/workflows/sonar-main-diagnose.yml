@@ -1,0 +1,24 @@
+name: Diagnostico SonarCloud main postmerge
+on:
+  push:
+    branches: [audit/b4-postmerge-sonar-2026-11-01]
+permissions:
+  contents: read
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hallazgos publicos en main sin secretos
+        run: |
+          set -euo pipefail
+          code=$(curl -sSL --max-time 30 -o /tmp/sonar-main.json -w '%{http_code}' 'https://sonarcloud.io/api/issues/search?componentKeys=leandrito369_ale-milanesas-app&branch=main&resolved=false&ps=100')
+          echo "API status $code"
+          test "$code" = 200
+          python3 - <<'PY'
+          import json
+          x=json.load(open('/tmp/sonar-main.json'))
+          print('Total:',x.get('total'))
+          for i in x.get('issues',[]):
+              print('rule=%s type=%s severity=%s path=%s line=%s message=%s' %
+                 (i.get('rule'),i.get('type'),i.get('severity'),i.get('component','').split(':')[-1],i.get('line'),i.get('message')))
+          PY
