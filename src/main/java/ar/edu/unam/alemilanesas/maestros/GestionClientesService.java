@@ -25,8 +25,9 @@ public class GestionClientesService {
     private static final Set<String> ALTA = Set.of("ADMINISTRADOR","VENDEDOR");
     private static final Set<String> MODIFICACION = Set.of("VENDEDOR");
     private static final Set<String> ADMIN = Set.of("ADMINISTRADOR");
+    private static final String ESTADO_ACTIVO = "ACTIVO";
     private static final String ESTADO_INACTIVO = "INACTIVO";
-    private static final Set<String> ESTADOS = Set.of("ACTIVO",ESTADO_INACTIVO);
+    private static final Set<String> ESTADOS = Set.of(ESTADO_ACTIVO,ESTADO_INACTIVO);
     private final NamedParameterJdbcTemplate sql;
     private final AutorizacionSesionInterna auth;
 
@@ -87,7 +88,7 @@ public class GestionClientesService {
                 :localidad,:provincia,:referencia,:zona,:dia,'ACTIVO','CUMPLIDOR',
                 clock_timestamp())
             """,args);
-        return new ResultadoCliente(siguiente,"ACTIVO","CUMPLIDOR",true,advertencias);
+        return new ResultadoCliente(siguiente,ESTADO_ACTIVO,"CUMPLIDOR",true,advertencias);
     }
 
     /** UC32 exclusivamente VENDEDOR; actualizar sólo identidad/domicilio. */
@@ -161,7 +162,7 @@ public class GestionClientesService {
         if(estadoPrevio.equals(nuevoEstado)) {
             return new EstadoCliente(idCliente,estadoPrevio,false,null);
         }
-        if("ACTIVO".equals(nuevoEstado)) {
+        if(ESTADO_ACTIVO.equals(nuevoEstado)) {
             // Validación de reactivación del contrato UC38 A3.
             validar(new DatosCliente((String)previo.get("nombres"),
                     (String)previo.get("apellidos"),(String)previo.get("telefonoPrincipal"),
