@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.ChronoUnit;
 import java.util.Set;
 import java.util.UUID;
 
@@ -148,6 +149,34 @@ class PreciosProductoServiceIntegrationTest {
         assertTrue(jdbc.queryForObject("""
             SELECT "vigenteHasta" FROM "PRECIO_PRODUCTO" WHERE "idPrecio"=19020
             """,(rs,i)->rs.getObject(1,OffsetDateTime.class)).isEqual(futuro(4)));
+    }
+
+    @Test void uc19DosInstantesDistintosEnNanosDelMismoMicrosegundoSonSolape() {
+        OffsetDateTime inicio=OffsetDateTime.now(ZoneOffset.UTC).plusDays(2)
+                .truncatedTo(ChronoUnit.MICROS);
+        OffsetDateTime primero=inicio.plusNanos(100);
+        OffsetDateTime segundo=inicio.plusNanos(800);
+
+        var creado=actualizar.actualizarPrecioVigente(
+                ADMIN,19101,new BigDecimal("100.00"),primero,null);
+        assertTrue(creado.vigenteDesde().isEqual(inicio));
+        assertEquals(1,contar("PRECIO_PRODUCTO"));
+
+        // Sin normalización PostgreSQL conserva ambos inicios como un mismo
+        // TIMESTAMPTZ y el servicio intentaba cerrar el precio a su propio
+        // instante inicial, violando ck_precio_producto_1.
+        assertThrows(IllegalArgumentException.class,()->actualizar.actualizarPrecioVigente(
+                ADMIN,19101,new BigDecimal("120.00"),segundo,null));
+        assertEquals(1,contar("PRECIO_PRODUCTO"));
+        assertEquals(1,contar("AUDITORIA_PRECIO"));
+        var guardado=jdbc.queryForObject("""
+                SELECT "vigenteDesde" FROM "PRECIO_PRODUCTO" WHERE "idPrecio"=?
+                """,(rs,i)->rs.getObject(1,OffsetDateTime.class),creado.idPrecio());
+        assertTrue(guardado.isEqual(inicio));
+
+        assertThrows(IllegalArgumentException.class,()->actualizar.actualizarPrecioVigente(
+                ADMIN,19102,new BigDecimal("5.00"),primero,segundo));
+        assertEquals(1,contar("PRECIO_PRODUCTO"));
     }
 
     @Test void uc19RechazosNoCreanPrecioNiAuditoria() {
