@@ -14,6 +14,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
 import org.springframework.context.annotation.Bean;
+import org.springframework.dao.DataAccessException;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpMethod;
@@ -101,7 +102,13 @@ public class SeguridadHttpInterna {
                         || header.length()<=7) {
                     rechazar(res); return;
                 }
-                var sesion=sesiones.validar(header.substring(7));
+                Optional<VerificadorSesionBearer.SesionAutorizada> sesion;
+                try {
+                    sesion=sesiones.validar(header.substring(7));
+                } catch (DataAccessException ex) {
+                    error(res,503,"AUTENTICACION_NO_DISPONIBLE");
+                    return;
+                }
                 if (sesion.isEmpty()) { rechazar(res); return; }
                 var s=sesion.get();
                 var auth=new UsernamePasswordAuthenticationToken(s.principal(),null,
@@ -134,6 +141,15 @@ public class SeguridadHttpInterna {
                        AND s."fechaHoraInicio"+interval '8 hours'>clock_timestamp()
                        AND s."fechaHoraRevocacion" IS NULL
                        AND u."estado"='HABILITADO'
+                       AND (
+                         NOT EXISTS (SELECT 1 FROM "USUARIO_ROL" r
+                                      WHERE r."idUsuario"=u."idUsuario"
+                                        AND r."codigoRol"='PROVEEDOR')
+                         OR EXISTS (SELECT 1 FROM "USUARIO_PROVEEDOR" up
+                                      JOIN "PROVEEDOR" p ON p."idProveedor"=up."idProveedor"
+                                     WHERE up."idUsuario"=u."idUsuario"
+                                       AND p."estado"='ACTIVO')
+                       )
                     """,new MapSqlParameterSource("huella",huella.get()));
             if (filas.isEmpty()) return Optional.empty();
             var primero=filas.getFirst();
