@@ -1,25 +1,26 @@
 package ar.edu.unam.alemilanesas.web;
 
 import java.net.URI;
-import org.springframework.boot.ApplicationArguments;
-import org.springframework.boot.ApplicationRunner;
+import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
+import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.annotation.Profile;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
 /**
  * El perfil prod no puede operar sin origen publico HTTPS y aislamiento
- * del puerto backend o sin lock singleton. No sustituye evidencia de red.
+ * del puerto backend o sin lock singleton. Se valida antes de arrancar Tomcat.
+ * No sustituye evidencia de red.
  */
 @Component
 @Profile("prod")
-public class PrecondicionesDespliegue implements ApplicationRunner {
+public class PrecondicionesDespliegue implements BeanFactoryPostProcessor {
     private final Environment env;
 
     public PrecondicionesDespliegue(Environment env) {this.env=env;}
 
     @Override
-    public void run(ApplicationArguments args) {
+    public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) {
         String origen=env.getProperty("ale.web.allowed-origin","");
         URI parsed;
         try {parsed=URI.create(origen);}
