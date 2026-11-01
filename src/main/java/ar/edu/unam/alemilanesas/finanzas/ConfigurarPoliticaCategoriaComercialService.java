@@ -116,7 +116,9 @@ public class ConfigurarPoliticaCategoriaComercialService {
         boolean sin="SIN_AJUSTE".equals(a.tipoAjuste());
         if(!(sin || "DESCUENTO".equals(a.tipoAjuste()) || "RECARGO".equals(a.tipoAjuste()))
            || (sin && a.porcentajeAjuste().signum()!=0)
-           || (!sin && a.porcentajeAjuste().signum()==0))
+           || (!sin && a.porcentajeAjuste().signum()==0)
+           || ("CUMPLIDOR".equals(categoria) && "RECARGO".equals(a.tipoAjuste()))
+           || ("EN_MORA".equals(categoria) && "DESCUENTO".equals(a.tipoAjuste())))
             throw new IllegalArgumentException("Tipo y porcentaje incompatibles: "+categoria);
     }
 }
