@@ -6,6 +6,11 @@ test "$#" -eq 2 || { echo 'Uso: package_bundle.sh SHA_40 URL_RUN' >&2; exit 2; }
 task_root=$(git rev-parse --show-toplevel)
 cd "$task_root"
 test "$(git rev-parse HEAD)" = "$1" || { echo 'HEAD no coincide con SHA' >&2; exit 2; }
+if ! git diff --quiet || ! git diff --cached --quiet \
+        || test -n "$(git ls-files --others --exclude-standard)"; then
+    echo 'Se requiere arbol limpio para atribuir el paquete al SHA' >&2
+    exit 2
+fi
 test -f target/ale-milanesas-app-0.1.0-SNAPSHOT.jar
 task_bundle=target/acceptance-bundle
 # Rechazar reutilizacion para no mezclar evidencias/artefactos de otro SHA.

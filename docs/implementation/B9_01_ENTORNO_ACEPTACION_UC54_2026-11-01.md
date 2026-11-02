@@ -27,7 +27,7 @@ mvn -B -ntp clean verify
 bash scripts/acceptance/package_bundle.sh "$(git rev-parse HEAD)" "<URL_RUN_O_REFERENCIA_LOCAL>"
 ```
 
-El manifiesto no acredita despliegue. Comprobar SonarCloud del mismo SHA ademas de B1; la huella MR5/F01 de B2 es independiente. El entorno del asistente tiene Java17, sin Maven/Docker: no se atribuye aqui un arranque de Java21 ni se inventa CI local.
+El empaquetador exige arbol Git limpio y SHA igual a HEAD, y rechaza una salida preexistente. En PR, GitHub prueba el commit de merge sintetico; para instalar preferir el artefacto de `main` posterior a la integracion. El manifiesto no acredita despliegue. Comprobar SonarCloud del mismo SHA ademas de B1; la huella MR5/F01 de B2 es independiente. El entorno del asistente tiene Java17, sin Maven/Docker: no se atribuye aqui un arranque de Java21 ni se inventa CI local.
 
 ## Contrato del entorno que debe aportar el operador
 
