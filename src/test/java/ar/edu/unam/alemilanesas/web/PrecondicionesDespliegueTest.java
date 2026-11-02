@@ -42,6 +42,13 @@ class PrecondicionesDespliegueTest {
                 ()->validador.postProcessBeanFactory(null));
     }
 
+    @Test void rechazaCambioEstadoExperimentalEnProduccion() {
+        var validador=new PrecondicionesDespliegue(base()
+                .withProperty("ale.http.writes.clientes-uc38-enabled","true"));
+        assertThrows(IllegalStateException.class,
+                ()->validador.postProcessBeanFactory(null));
+    }
+
     @Test void noAdmiteBackendPublicoNiEscalarSinLock() {
         var backendPublico=new PrecondicionesDespliegue(
                 base().withProperty("server.address","0.0.0.0"));

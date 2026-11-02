@@ -46,7 +46,8 @@ public class SeguridadHttpInterna {
     @SuppressWarnings("java:S4502")
     SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones,
             @Value("${ale.http.writes.clientes-uc02-enabled:false}") boolean habilitarAltaCliente,
-            @Value("${ale.http.writes.clientes-uc32-enabled:false}") boolean habilitarModificarCliente) {
+            @Value("${ale.http.writes.clientes-uc32-enabled:false}") boolean habilitarModificarCliente,
+            @Value("${ale.http.writes.clientes-uc38-enabled:false}") boolean habilitarEstadoCliente) {
         http.securityMatcher("/api/v1/**");
         // La API no autentica cookies. El sitio web (otra cadena) conserva CSRF.
         http.csrf(csrf -> csrf.ignoringRequestMatchers("/api/v1/**"));
@@ -81,6 +82,13 @@ public class SeguridadHttpInterna {
                             habilitarModificarCliente && auth.get().isAuthenticated() &&
                             auth.get().getAuthorities().stream().anyMatch(
                                 rol -> ROL_VENDEDOR.equals(rol.getAuthority()))))
+                // UC38: transición de estado solamente ADMINISTRADOR, flag independiente.
+                .requestMatchers(HttpMethod.PATCH, "/api/v1/clientes/*/estado")
+                    .access((auth,context) ->
+                        new org.springframework.security.authorization.AuthorizationDecision(
+                            habilitarEstadoCliente && auth.get().isAuthenticated() &&
+                            auth.get().getAuthorities().stream().anyMatch(
+                                rol -> ROL_ADMINISTRADOR.equals(rol.getAuthority()))))
                 // UC56 contextual + UC37: lectura mínima comercial sólo Admin.
                 .requestMatchers(HttpMethod.GET, "/api/v1/usuarios/proveedores")
                     .hasAuthority(ROL_ADMINISTRADOR)
