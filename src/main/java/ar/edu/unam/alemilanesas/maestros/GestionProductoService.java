@@ -34,6 +34,18 @@ public class GestionProductoService {
     public record DatosProducto(String nombre, String descripcion, String tipoProducto,
                                 String codigoUnidadVenta) {}
 
+    /** Coincidencia contextual UC35/BC07, sin costos, stock ni datos de autoridad. */
+    public static class ProductoDuplicadoException extends IllegalArgumentException {
+        private final transient BuscarProductoService.ProductoConsulta coincidencia;
+
+        public ProductoDuplicadoException(BuscarProductoService.ProductoConsulta coincidencia) {
+            super("Nombre normalizado duplicado incluso si el Producto esta inactivo");
+            this.coincidencia=coincidencia;
+        }
+
+        public BuscarProductoService.ProductoConsulta coincidencia() {return coincidencia;}
+    }
+
     @Transactional
     public ProductoGuardado gestionarProducto(UUID sesion, String nombre, String descripcion,
                                                String tipoProducto, String codigoUnidadVenta) {
@@ -153,14 +165,17 @@ public class GestionProductoService {
         if (n==null || n!=1) throw new IllegalArgumentException("Unidad de venta inexistente");
     }
     private void asegurarNombreUnico(String norm, Long excluir) {
-        Long id = sql.query("""
-                SELECT "idProducto" FROM "PRODUCTO"
+        var coincidencia = sql.query("""
+                SELECT "idProducto","nombre","descripcion","tipoProducto",
+                       "codigoUnidadVenta","activo" FROM "PRODUCTO"
                  WHERE "nombreNormalizado"=:norm AND "idProducto"<>:excluir
                  LIMIT 1
                 """, Map.of("norm",norm,"excluir",excluir==null?-1L:excluir),
-                rs -> rs.next()?rs.getLong(1):null);
-        if (id!=null) throw new IllegalArgumentException(
-                "Nombre normalizado duplicado incluso si el Producto está inactivo: "+id);
+                rs -> rs.next()?new BuscarProductoService.ProductoConsulta(
+                    rs.getLong("idProducto"),rs.getString("nombre"),rs.getString("descripcion"),
+                    rs.getString("tipoProducto"),rs.getString("codigoUnidadVenta"),
+                    rs.getBoolean("activo")):null);
+        if (coincidencia!=null) throw new ProductoDuplicadoException(coincidencia);
     }
 
     static String normalizarNombre(String nombre) {

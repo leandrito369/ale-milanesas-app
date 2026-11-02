@@ -206,6 +206,11 @@ class ConsultasI1HttpIntegrationTest {
     }
 
     @Test void escrituraHttpBloqueadaAunqueElTokenSeaValido() throws Exception {
+        mvc.perform(post("/api/v1/productos").header("Authorization",admin())
+                .contentType("application/json")
+                .content("{\"nombre\":\"Producto gate false\",\"tipoProducto\":\"REVENTA\",\"codigoUnidadVenta\":\"UN\"}"))
+                .andExpect(status().isForbidden());
+        assertEquals(0,jdbc.queryForObject("SELECT count(*) FROM \"PRODUCTO\"",Integer.class));
         mvc.perform(post("/api/v1/clientes").header("Authorization",admin()))
                 .andExpect(status().isForbidden());
         mvc.perform(put("/api/v1/insumos/44011").header("Authorization",admin()))

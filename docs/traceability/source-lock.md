@@ -44,3 +44,7 @@ La línea base G0 `source_commit=1263ffc17bd0eb7f3c69faaa9ff5ae556cf9de7e` **per
 En **UC-17/18/53/54** prevalecen esos PATCH sobre las firmas y literales REV02 del corte G0. Contratos y DSS/DS vigentes: `docs/08-diagramas/revision/REV02_SEGURIDAD/propuestos/` **en el commit posterior indicado**, no en el blob de G0. Fuente de las RD: `docs/01-gobierno/i1/`. La tabla `EVENTO_ASIGNACION_ROL.tipoEvento` continúa con `ASIGNACION/REVOCACION` de MR5; **el modelo físico MR5/F01 de G0 no fue modificado**.
 
 Esta adenda solo aplica a esos cuatro CU y no cambia las referencias canónicas del resto de las 67 operaciones. Cualquier futuro RD debe registrarse con su nuevo commit y PR; está prohibido reemplazar el `source_commit` de G0 por la punta móvil de `main`.
+
+## Adenda posterior G0 — RD-UC30-001 (31/10/2026)
+
+UC30/47/48 aplican la [RD-UC30-001](https://github.com/leandrito369/ale-milanesas/blob/4971625a215d94a8b9f6439d9b0836e0925ea1ad/docs/01-gobierno/b0/RD_UC30_001_TRAZABILIDAD_PRODUCTO_2026-10-31.md), commit documental `4971625a215d94a8b9f6439d9b0836e0925ea1ad`, ya utilizada por I1-03/PR18 e Issue19. Aclara trazabilidad como identidad estable, nombre normalizado unico/modificable y conservacion transaccional de historia; no aprueba eventos de auditoria del maestro ni V3. Se registra su referencia para B4-03-04; **G0 y MR5/F01 permanecen inmutables**.

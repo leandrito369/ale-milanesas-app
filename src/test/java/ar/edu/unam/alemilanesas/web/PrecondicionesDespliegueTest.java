@@ -33,7 +33,8 @@ class PrecondicionesDespliegueTest {
     @ParameterizedTest
     @ValueSource(strings={"ale.http.writes.clientes-uc02-enabled",
             "ale.http.writes.clientes-uc32-enabled",
-            "ale.http.writes.clientes-uc38-enabled"})
+            "ale.http.writes.clientes-uc38-enabled",
+            "ale.http.writes.productos-uc30-enabled"})
     void rechazaCualquierEscrituraExperimentalEnProduccion(String propiedad) {
         var validador=new PrecondicionesDespliegue(base().withProperty(propiedad,"true"));
         assertThrows(IllegalStateException.class,
@@ -50,5 +51,17 @@ class PrecondicionesDespliegueTest {
         assertThrows(IllegalStateException.class,()->backendPublico.postProcessBeanFactory(null));
         assertThrows(IllegalStateException.class,()->sinLock.postProcessBeanFactory(null));
         assertThrows(IllegalStateException.class,()->proxyNoConfiable.postProcessBeanFactory(null));
+    }
+
+    @Test void controladorUc30NoExisteEnProdAunqueSeSoliciteSuBandera() {
+        try(var ctx=new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
+            ctx.getEnvironment().setActiveProfiles("prod");
+            ctx.getEnvironment().getPropertySources().addFirst(
+                    new org.springframework.core.env.MapPropertySource("flag-test",
+                        java.util.Map.of("ale.http.writes.productos-uc30-enabled","true")));
+            ctx.register(RegistroProductoHttpController.class);
+            ctx.refresh();
+            assertTrue(ctx.getBeansOfType(RegistroProductoHttpController.class).isEmpty());
+        }
     }
 }

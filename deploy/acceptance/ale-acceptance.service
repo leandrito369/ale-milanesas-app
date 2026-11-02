@@ -9,7 +9,7 @@ User=ale-acceptance
 Group=ale-acceptance
 WorkingDirectory=/opt/ale/acceptance
 EnvironmentFile=/etc/ale/acceptance.env
-ExecStart=/usr/bin/java -jar /opt/ale/acceptance/app.jar --ale.http.writes.clientes-uc02-enabled=false --ale.http.writes.clientes-uc32-enabled=false --ale.http.writes.clientes-uc38-enabled=false
+ExecStart=/usr/bin/java -jar /opt/ale/acceptance/app.jar --ale.http.writes.clientes-uc02-enabled=false --ale.http.writes.clientes-uc32-enabled=false --ale.http.writes.clientes-uc38-enabled=false --ale.http.writes.productos-uc30-enabled=false
 # La perdida del lock exige diagnostico y reinicio MANUAL; no auto-reiniciar.
 Restart=no
 UMask=0077
