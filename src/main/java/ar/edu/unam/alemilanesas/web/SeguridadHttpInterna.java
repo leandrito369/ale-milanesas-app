@@ -81,6 +81,9 @@ public class SeguridadHttpInterna {
                             habilitarModificarCliente && auth.get().isAuthenticated() &&
                             auth.get().getAuthorities().stream().anyMatch(
                                 rol -> ROL_VENDEDOR.equals(rol.getAuthority()))))
+                // UC56 contextual + UC37: lectura mínima comercial sólo Admin.
+                .requestMatchers(HttpMethod.GET, "/api/v1/usuarios/proveedores")
+                    .hasAuthority(ROL_ADMINISTRADOR)
                 .requestMatchers(HttpMethod.GET, "/api/v1/clientes")
                     .hasAnyAuthority(ROL_ADMINISTRADOR,ROL_VENDEDOR)
                 .requestMatchers(HttpMethod.GET,"/api/v1/insumos","/api/v1/unidades")
