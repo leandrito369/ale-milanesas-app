@@ -37,6 +37,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 public class SeguridadHttpInterna {
     public static final String ROL_CAMBIO_PENDIENTE = "UC53_RESTRINGIDO";
     private static final String ROL_ADMINISTRADOR = "ADMINISTRADOR";
+    private static final String ROL_VENDEDOR = "VENDEDOR";
 
     @Bean
     @Order(1)
@@ -44,7 +45,8 @@ public class SeguridadHttpInterna {
     // Cadena /web/** conserva CSRF y prueba negativa de cookies en API.
     @SuppressWarnings("java:S4502")
     SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones,
-            @Value("${ale.http.writes.clientes-uc02-enabled:false}") boolean habilitarAltaCliente) {
+            @Value("${ale.http.writes.clientes-uc02-enabled:false}") boolean habilitarAltaCliente,
+            @Value("${ale.http.writes.clientes-uc32-enabled:false}") boolean habilitarModificarCliente) {
         http.securityMatcher("/api/v1/**");
         // La API no autentica cookies. El sitio web (otra cadena) conserva CSRF.
         http.csrf(csrf -> csrf.ignoringRequestMatchers("/api/v1/**"));
@@ -71,9 +73,16 @@ public class SeguridadHttpInterna {
                             habilitarAltaCliente && auth.get().isAuthenticated() &&
                             auth.get().getAuthorities().stream().anyMatch(
                                 rol -> ROL_ADMINISTRADOR.equals(rol.getAuthority()) ||
-                                       "VENDEDOR".equals(rol.getAuthority()))))
+                                       ROL_VENDEDOR.equals(rol.getAuthority()))))
+                // UC32 solamente VENDEDOR, nunca Administrador; flag independiente.
+                .requestMatchers(HttpMethod.PUT, "/api/v1/clientes/*")
+                    .access((auth,context) ->
+                        new org.springframework.security.authorization.AuthorizationDecision(
+                            habilitarModificarCliente && auth.get().isAuthenticated() &&
+                            auth.get().getAuthorities().stream().anyMatch(
+                                rol -> ROL_VENDEDOR.equals(rol.getAuthority()))))
                 .requestMatchers(HttpMethod.GET, "/api/v1/clientes")
-                    .hasAnyAuthority(ROL_ADMINISTRADOR,"VENDEDOR")
+                    .hasAnyAuthority(ROL_ADMINISTRADOR,ROL_VENDEDOR)
                 .requestMatchers(HttpMethod.GET,"/api/v1/insumos","/api/v1/unidades")
                     .hasAnyAuthority(ROL_ADMINISTRADOR,"RESPONSABLE_PRODUCCION")
                 .anyRequest().denyAll());
