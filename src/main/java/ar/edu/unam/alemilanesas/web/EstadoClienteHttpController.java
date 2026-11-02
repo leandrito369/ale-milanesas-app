@@ -26,6 +26,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @ConditionalOnProperty(prefix="ale.http.writes", name="clientes-uc38-enabled",
         havingValue="true")
 public class EstadoClienteHttpController {
+    private static final String NUEVO_ESTADO = "nuevoEstado";
+    private static final String MOTIVO = "motivo";
     private final GestionClientesService clientes;
 
     public EstadoClienteHttpController(GestionClientesService clientes) {
@@ -44,16 +46,16 @@ public class EstadoClienteHttpController {
             throw new SecurityException("Sesion no valida");
         }
         // Lista blanca: ni el actor, ni idCliente, ni otras propiedades se toman del JSON.
-        if (datos==null || !datos.containsKey("nuevoEstado") || datos.size()>2
+        if (datos==null || !datos.containsKey(NUEVO_ESTADO) || datos.size()>2
                 || !datos.keySet().stream().allMatch(
-                    clave -> "nuevoEstado".equals(clave) || "motivo".equals(clave))
-                || !(datos.get("nuevoEstado") instanceof String estado)
+                    clave -> NUEVO_ESTADO.equals(clave) || MOTIVO.equals(clave))
+                || !(datos.get(NUEVO_ESTADO) instanceof String estado)
                 || !("ACTIVO".equals(estado) || "INACTIVO".equals(estado))
-                || (datos.get("motivo")!=null && !(datos.get("motivo") instanceof String))) {
+                || (datos.get(MOTIVO)!=null && !(datos.get(MOTIVO) instanceof String))) {
             throw new IllegalArgumentException("Solicitud invalida");
         }
-        String nuevoEstado=(String)datos.get("nuevoEstado");
-        String motivo=(String)datos.get("motivo");
+        String nuevoEstado=(String)datos.get(NUEVO_ESTADO);
+        String motivo=(String)datos.get(MOTIVO);
         var resultado=clientes.cambiarEstadoCliente(actor.idSesion(),idCliente,nuevoEstado,motivo);
         return ResponseEntity.ok().cacheControl(CacheControl.noStore())
                 .body(new EstadoConfirmado(resultado.idCliente(),resultado.estado(),
@@ -64,25 +66,27 @@ public class EstadoClienteHttpController {
 /** Errores genéricos sin SQL, PII ni detalle de identidad del actor. */
 @RestControllerAdvice(assignableTypes=EstadoClienteHttpController.class)
 class ErroresEstadoClienteHttp {
+    private static final String CODIGO = "codigo";
+
     @ExceptionHandler({IllegalArgumentException.class, HttpMessageNotReadableException.class})
     ResponseEntity<Map<String,String>> invalidos(Exception ex) {
         HttpStatus estado="Cliente inexistente".equals(ex.getMessage())
                 ? HttpStatus.NOT_FOUND : HttpStatus.BAD_REQUEST;
         return ResponseEntity.status(estado).cacheControl(CacheControl.noStore())
-                .body(Map.of("codigo",estado==HttpStatus.NOT_FOUND
+                .body(Map.of(CODIGO,estado==HttpStatus.NOT_FOUND
                         ? "CLIENTE_NO_ENCONTRADO" : "SOLICITUD_INVALIDA"));
     }
 
     @ExceptionHandler(SecurityException.class)
     ResponseEntity<Map<String,String>> prohibido() {
         return ResponseEntity.status(HttpStatus.FORBIDDEN).cacheControl(CacheControl.noStore())
-                .body(Map.of("codigo","OPERACION_PROHIBIDA"));
+                .body(Map.of(CODIGO,"OPERACION_PROHIBIDA"));
     }
 
     @ExceptionHandler(DataAccessException.class)
     ResponseEntity<Map<String,String>> persistencia() {
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
                 .cacheControl(CacheControl.noStore())
-                .body(Map.of("codigo","PERSISTENCIA_NO_DISPONIBLE"));
+                .body(Map.of(CODIGO,"PERSISTENCIA_NO_DISPONIBLE"));
     }
 }
