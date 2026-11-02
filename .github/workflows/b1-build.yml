@@ -7,12 +7,17 @@ on:
       - '.github/workflows/b1-build.yml'
       - 'docs/implementation/**'
       - 'compose.yaml'
+      - 'deploy/acceptance/**'
+      - 'scripts/acceptance/**'
   push:
     branches: [main]
     paths:
       - 'pom.xml'
       - 'src/**'
       - '.github/workflows/b1-build.yml'
+      - 'docs/implementation/B9_01_*.md'
+      - 'deploy/acceptance/**'
+      - 'scripts/acceptance/**'
   workflow_dispatch:
 
 permissions:
@@ -37,6 +42,15 @@ jobs:
         run: mvn -B -ntp clean verify
       - name: Resumen cuantitativo JaCoCo de líneas y ramas
         run: python3 scripts/testing/report_coverage.py
+      - name: Preparar paquete de aceptacion trazable al SHA probado
+        run: bash scripts/acceptance/package_bundle.sh "$GITHUB_SHA" "https://github.com/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+      - name: Publicar JAR, configuracion y actas de aceptacion
+        uses: actions/upload-artifact@v4
+        with:
+          name: ale-acceptance-${{ github.sha }}
+          path: target/acceptance-bundle/
+          if-no-files-found: error
+          retention-days: 14
       - name: Attach test reports even after failure
         if: always()
         uses: actions/upload-artifact@v4
