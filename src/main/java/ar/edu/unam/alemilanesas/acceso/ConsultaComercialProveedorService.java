@@ -45,7 +45,7 @@ public class ConsultaComercialProveedorService {
                 || nombre.chars().anyMatch(Character::isISOControl))) {
             throw new IllegalArgumentException("Filtro de cuenta inválido");
         }
-        if (cuit!=null && !cuit.matches("[0-9]{11}")) {
+        if (cuit!=null && !cuit.matches("\\d{11}")) {
             throw new IllegalArgumentException("CUIT inválido");
         }
         if (idUsuario==null && nombre==null && cuit==null) {
