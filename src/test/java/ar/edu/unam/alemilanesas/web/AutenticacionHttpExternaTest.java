@@ -266,6 +266,29 @@ class AutenticacionHttpExternaTest {
         String tokenProveedor=login(userProv,claveProv);
         assertEquals(403,enviar(ruta,"GET",null,
                 Map.of("Authorization","Bearer "+tokenProveedor)).statusCode());
+        long vendedorId=admin+1_000_000L;
+        String usuarioVendedor="vendedor_verificacion_"+admin;
+        String claveVendedor="ClaveVendedor_"+admin;
+        transactions.executeWithoutResult(tx -> {
+            jdbc.update("""
+                    INSERT INTO "ROL"("codigoRol","nombreMostrado")
+                    VALUES('VENDEDOR','Vendedor E2E UC54')
+                    ON CONFLICT("codigoRol") DO NOTHING
+                    """);
+            jdbc.update("""
+                    INSERT INTO "USUARIO"("idUsuario","nombreUsuario",
+                        "credencialProtegida","estado",
+                        "cambioCredencialPendiente","fechaHoraAlta")
+                    VALUES(?,?,?,'HABILITADO',false,clock_timestamp())
+                    """,vendedorId,usuarioVendedor,encoder.encode(claveVendedor));
+            jdbc.update("""
+                    INSERT INTO "USUARIO_ROL"("idUsuario","codigoRol","fechaHoraAsignacion")
+                    VALUES(?,'VENDEDOR',clock_timestamp())
+                    """,vendedorId);
+        });
+        String tokenVendedor=login(usuarioVendedor,claveVendedor);
+        assertEquals(403,enviar(ruta,"GET",null,
+                Map.of("Authorization","Bearer "+tokenVendedor)).statusCode());
         String tokenAdmin=login(userAdmin,claveAdmin);
         for(String filtro:List.of("/api/v1/usuarios/proveedores",
                                   "/api/v1/usuarios/proveedores?cuit=ABC",
