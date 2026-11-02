@@ -5,9 +5,9 @@
 ## Estado del proyecto
 
 - **G0 aprobado documentalmente** el 29/10/2026 en el [repositorio de análisis](https://github.com/leandrito369/ale-milanesas).
-- **B1 / I0 — arquitectura ejecutable:** se prepara un monolito modular Java 21 / Spring Boot 4.1.2 con siete módulos lógicos, pantalla Thymeleaf informativa, Spring Security cerrada, PostgreSQL 17.11 en Docker Compose y Testcontainers.
-- **No hay funcionalidades de negocio implementadas**. La app no permite cargar Pedidos, registrar Cobros ni acceder a datos de Clientes.
-- **B2 pendiente:** Flyway incluido pero deshabilitado (`spring.flyway.enabled=false`); **no** se despliegan todavía las 60 tablas de MR5/MR6.
+- **B1/B2 integrados:** monolito modular Java 21 / Spring Boot 4.1.2, PostgreSQL 17.11, Flyway V1 MR5 + V2 F01 y pruebas Testcontainers. No equivale a certificación productiva.
+- **B3/B4 incrementales:** autenticación UC01/53/54 y consultas autorizadas; PR #39 integrada con consulta comercial ADMIN contextual UC56/37. UC02/UC32 HTTP experimentales permanecen apagadas y excluidas de `prod`. Consultar trazabilidad por operación; no se declara completo I1 ni el circuito Pedido/Cobro.
+- **Aceptación B8/B9:** [paquete, entorno y responsables](docs/implementation/B9_01_ENTORNO_ACEPTACION_UC54_2026-11-01.md). CI B1 publica JAR/configuración/actas con SHA y checksums. Host/FQDN/certificado/operadores pendientes; UC54 humana **0/4**, infraestructura **NO CERTIFICADA**.
 - **BC06:** 18 escenarios funcionales pendientes, 0 ejecutados. **CR-B0-F04-001** pendiente de diseño físico.
 
 ## Cómo arrancar y verificar
@@ -34,15 +34,15 @@ Una vez iniciado: `http://localhost:8080/` (informativo) y `/actuator/health` (d
 
 **La documentación de requisitos, CU, DSS/DS, RD/RP/CR y modelo conceptual/relacional canónico vive exclusivamente en `ale-milanesas`.** Los cambios funcionales deben aprobarse allí antes de propagarse a esta aplicación.
 
-## B2 — Migraciones físicas en revisión (29/10/2026)
+## B2 — Registro histórico de revisión (29/10/2026)
 
-Se prepararon en la **PR de B2** las migraciones `V1__baseline_mr5.sql` y `V2__f01_cobro_estados.sql`, extraídas de G0 con cambios mecánicos limitados a delimitadores transaccionales y directiva psql. `spring.flyway.enabled=true` **únicamente en esta rama pendiente de merge**. [ADR-IMP-002](docs/architecture/ADR-IMP-002_BASELINE_MR5_F01.md) · [ensayo y límites](docs/implementation/B2_MIGRACIONES_MR5_F01.md). El esquema de aplicación es `ale_gestion` y la metadata de Flyway **no** se cuenta dentro de las 60 tablas de negocio. Si CI no verifica equivalencia triple de MR6 y F01, NO fusionar; aplicación real y BC-06 continúan pendientes.
+Las migraciones `V1__baseline_mr5.sql` y `V2__f01_cobro_estados.sql` fueron extraídas de G0 con cambios mecánicos limitados a delimitadores transaccionales y directiva psql y ya están integradas. `spring.flyway.enabled=true` en `main`. [ADR-IMP-002](docs/architecture/ADR-IMP-002_BASELINE_MR5_F01.md) · [ensayo y límites](docs/implementation/B2_MIGRACIONES_MR5_F01.md). El esquema de aplicación es `ale_gestion` y la metadata de Flyway **no** se cuenta dentro de las 60 tablas de negocio. Se conserva el gate B2 de equivalencia triple MR6/F01; BC06 sigue pendiente de E2E originales.
 
 ## Propuesta B4-02D — Hardening operativo y gate anterior a B4-03
 
-**No está incorporado en `main`:** [PR #32](https://github.com/leandrito369/ale-milanesas-app/pull/32) es Draft y depende de [PR #31](https://github.com/leandrito369/ale-milanesas-app/pull/31), PR #30, PR #29 y PR #27. No habilita escrituras HTTP comerciales.
+**Integrado en `main`:** cadena [PR #27/#29/#30/#31/#32](https://github.com/leandrito369/ale-milanesas-app/pull/32). El gate de infraestructura real y aceptación humana continúa abierto en #28. No habilita escrituras HTTP comerciales.
 
-El perfil `prod` propuesto acepta exclusivamente un ingreso Nginx TLS en el mismo host, backend Java vinculado a `127.0.0.1`, origen HTTPS `ALE_PUBLIC_ORIGIN` obligatorio y un lock de sesión PostgreSQL que impide iniciar dos instancias simultáneas. Un filtro falla cerrado cuando se pierde la conexión de ese lock. Nginx aplica tasa compartida por IP a POST de login; dentro de la JVM se conserva el límite por cuenta.
+El perfil `prod` acepta exclusivamente un ingreso Nginx TLS en el mismo host, backend Java vinculado a `127.0.0.1`, origen HTTPS `ALE_PUBLIC_ORIGIN` obligatorio y un lock de sesión PostgreSQL que impide iniciar dos instancias simultáneas. Un filtro falla cerrado cuando se pierde la conexión de ese lock. Nginx aplica tasa compartida por IP a POST de login; dentro de la JVM se conserva el límite por cuenta.
 
 Para ensayar el perímetro con Docker y certificado autofirmado **exclusivamente de CI**, ejecutar:
 
