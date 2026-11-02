@@ -9,6 +9,7 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -218,6 +219,98 @@ class AutenticacionHttpExternaTest {
                 Map.of("nombreUsuario",userProv,"credencial",claveProv)).statusCode());
         String nuevo=login(userProv,claveNueva);
         assertNotEquals(token,nuevo);
+    }
+
+    @Test
+    void uc54ConsultaComercialSoloAdminMuestraCuentaYProveedorSinSecretos() throws Exception {
+        String tokenAdmin=login(userAdmin,claveAdmin);
+        String cuit=jdbc.queryForObject("""
+                SELECT "cuit" FROM "PROVEEDOR" WHERE "idProveedor"=?
+                """,String.class,prov+1);
+        String ruta="/api/v1/usuarios/proveedores?idUsuario="+prov;
+        var vista=enviar(ruta,"GET",null,Map.of("Authorization","Bearer "+tokenAdmin));
+        assertEquals(200,vista.statusCode(),vista.body());
+        assertTrue(vista.headers().firstValue("Cache-Control").orElse("").contains("no-store"));
+        var listado=json.readTree(vista.body());
+        assertEquals(1,listado.size());
+        var item=listado.get(0);
+        assertEquals(prov,item.get("idUsuario").asLong());
+        assertEquals(userProv,item.get("nombreUsuario").asText());
+        assertEquals("HABILITADO",item.get("estadoUsuario").asText());
+        assertTrue(item.get("cambioCredencialPendiente").asBoolean());
+        assertEquals(prov+1,item.get("idProveedor").asLong());
+        assertEquals(cuit,item.get("cuit").asText());
+        assertEquals("Proveedor E2E "+admin,item.get("razonSocial").asText());
+        assertEquals("ACTIVO",item.get("estadoProveedor").asText());
+        assertFalse(vista.body().contains("credencialProtegida"));
+        assertFalse(vista.body().contains("tokenProtegido"));
+        assertFalse(vista.body().contains("accessToken"));
+        assertFalse(vista.body().contains("nombreComercial"));
+        var filtrado=enviar("/api/v1/usuarios/proveedores?cuit="+cuit,"GET",null,
+                Map.of("Authorization","Bearer "+tokenAdmin));
+        assertEquals(200,filtrado.statusCode(),filtrado.body());
+        assertEquals(1,json.readTree(filtrado.body()).size());
+        var noExiste=enviar("/api/v1/usuarios/proveedores?idUsuario=999999999","GET",null,
+                Map.of("Authorization","Bearer "+tokenAdmin));
+        assertEquals(200,noExiste.statusCode(),noExiste.body());
+        assertEquals(0,json.readTree(noExiste.body()).size());
+    }
+
+    @Test
+    void uc54ConsultaComercialNoPermiteCookieNiProveedorNiFiltrosInvalidos()
+            throws Exception {
+        String ruta="/api/v1/usuarios/proveedores?idUsuario="+prov;
+        assertEquals(401,enviar(ruta,"GET",null,Map.of()).statusCode());
+        assertEquals(401,enviar(ruta,"GET",null,
+                Map.of("Cookie","__Host-ale_session=no-valida")).statusCode());
+        String tokenProveedor=login(userProv,claveProv);
+        assertEquals(403,enviar(ruta,"GET",null,
+                Map.of("Authorization","Bearer "+tokenProveedor)).statusCode());
+        String tokenAdmin=login(userAdmin,claveAdmin);
+        for(String filtro:List.of("/api/v1/usuarios/proveedores",
+                                  "/api/v1/usuarios/proveedores?cuit=ABC",
+                                  "/api/v1/usuarios/proveedores?nombreUsuario=ab",
+                                  "/api/v1/usuarios/proveedores?idUsuario=-1")) {
+            var rechazo=enviar(filtro,"GET",null,
+                    Map.of("Authorization","Bearer "+tokenAdmin));
+            assertEquals(400,rechazo.statusCode(),rechazo.body());
+            assertTrue(rechazo.headers().firstValue("Cache-Control")
+                    .orElse("").contains("no-store"));
+        }
+    }
+
+    /**
+     * Recorrido automatizado con identidades sintéticas; NO constituye
+     * verificación comercial humana, canal real de entrega ni aceptación E2E.
+     */
+    @Test
+    void uc54SimulacionTecnicaConsultaRestableceRestringeCambiaYReingresa()
+            throws Exception {
+        String adminToken=login(userAdmin,claveAdmin);
+        String previoProveedor=login(userProv,claveProv);
+        var identificacion=enviar("/api/v1/usuarios/proveedores?idUsuario="+prov,
+                "GET",null,Map.of("Authorization","Bearer "+adminToken));
+        assertEquals(200,identificacion.statusCode(),identificacion.body());
+        assertEquals(prov,json.readTree(identificacion.body()).get(0)
+                .get("idUsuario").asLong());
+        String temporal="TemporalVerificada_"+prov;
+        assertEquals(204,postJson("/api/v1/usuarios/"+prov+"/restablecer-acceso",
+                adminToken,Map.of("identidadComercialVerificada",true,
+                                  "credencialTemporal",temporal)).statusCode());
+        assertEquals(401,enviar("/api/v1/usuarios/proveedores?idUsuario="+prov,
+                "GET",null,Map.of("Authorization","Bearer "+previoProveedor)).statusCode());
+        String restringido=login(userProv,temporal);
+        assertEquals(403,enviar("/api/v1/usuarios/proveedores?idUsuario="+prov,
+                "GET",null,Map.of("Authorization","Bearer "+restringido)).statusCode());
+        String definitiva="ClaveFinalSegura_"+prov;
+        assertEquals(204,postJson("/api/v1/auth/password/change",restringido,
+                Map.of("nuevaCredencial",definitiva,
+                       "confirmacionNuevaCredencial",definitiva)).statusCode());
+        assertEquals(401,postJson("/api/v1/auth/renew",restringido,Map.of()).statusCode());
+        String operativo=login(userProv,definitiva);
+        assertEquals(43,operativo.length());
+        assertEquals(403,enviar("/api/v1/usuarios/proveedores?idUsuario="+prov,
+                "GET",null,Map.of("Authorization","Bearer "+operativo)).statusCode());
     }
 
     @Test
