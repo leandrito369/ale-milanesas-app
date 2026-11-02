@@ -21,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class GestionProductoService {
     private static final Set<String> ADMIN = Set.of("ADMINISTRADOR");
     private static final Set<String> TIPOS = Set.of("ELABORADO", "REVENTA");
+    private static final String TIPO_PRODUCTO = "tipoProducto";
+    private static final String CODIGO_UNIDAD_VENTA = "codigoUnidadVenta";
     private final NamedParameterJdbcTemplate sql;
     private final AutorizacionSesionInterna autorizacion;
 
@@ -82,8 +84,8 @@ public class GestionProductoService {
         String nombreNorm = normalizarNombre(d.nombre());
         exigirUnidad(d.codigoUnidadVenta());
         asegurarNombreUnico(nombreNorm, idProducto);
-        boolean cambiaTipoUnidad = !Objects.equals(p.get("tipoProducto"), d.tipoProducto())
-                || !Objects.equals(p.get("codigoUnidadVenta"), d.codigoUnidadVenta());
+        boolean cambiaTipoUnidad = !Objects.equals(p.get(TIPO_PRODUCTO), d.tipoProducto())
+                || !Objects.equals(p.get(CODIGO_UNIDAD_VENTA), d.codigoUnidadVenta());
         if (cambiaTipoUnidad && tieneHistoria(idProducto)) {
             throw new IllegalArgumentException(
                     "Producto con historia: registrar otro mediante UC-30; no cambiar tipo/unidad");
@@ -117,8 +119,8 @@ public class GestionProductoService {
         if (nuevoActivo) {
             // A3 UC48: corregir por UC47 antes de reactivar una ficha inválida.
             DatosProducto actual=validar(new DatosProducto((String)p.get("nombre"),
-                (String)p.get("descripcion"),(String)p.get("tipoProducto"),
-                (String)p.get("codigoUnidadVenta")));
+                (String)p.get("descripcion"),(String)p.get(TIPO_PRODUCTO),
+                (String)p.get(CODIGO_UNIDAD_VENTA)));
             exigirUnidad(actual.codigoUnidadVenta());
             if (!normalizarNombre(actual.nombre()).equals(p.get("nombreNormalizado"))) {
                 throw new IllegalArgumentException("Ficha inconsistente: corregir mediante UC-47");
@@ -173,7 +175,7 @@ public class GestionProductoService {
                 """, Map.of("norm",norm,"excluir",excluir==null?-1L:excluir),
                 rs -> rs.next()?new BuscarProductoService.ProductoConsulta(
                     rs.getLong("idProducto"),rs.getString("nombre"),rs.getString("descripcion"),
-                    rs.getString("tipoProducto"),rs.getString("codigoUnidadVenta"),
+                    rs.getString(TIPO_PRODUCTO),rs.getString(CODIGO_UNIDAD_VENTA),
                     rs.getBoolean("activo")):null);
         if (coincidencia!=null) throw new ProductoDuplicadoException(coincidencia);
     }
