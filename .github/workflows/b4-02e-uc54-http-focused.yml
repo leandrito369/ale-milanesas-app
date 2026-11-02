@@ -1,0 +1,34 @@
+name: B4-02E - UC54 identificacion comercial HTTP
+on:
+  pull_request:
+    paths:
+      - 'src/main/java/ar/edu/unam/alemilanesas/acceso/ConsultaComercialProveedorService.java'
+      - 'src/main/java/ar/edu/unam/alemilanesas/web/ConsultaComercialProveedorHttpController.java'
+      - 'src/main/java/ar/edu/unam/alemilanesas/web/SeguridadHttpInterna.java'
+      - 'src/test/java/ar/edu/unam/alemilanesas/web/AutenticacionHttpExternaTest.java'
+      - '.github/workflows/b4-02e-uc54-http-focused.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  uc54-http-real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 17
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Verificar Docker
+        run: docker info --format '{{.ServerVersion}}'
+      - name: HTTP real UC54 visible, login, cambio de clave y errores
+        run: mvn -B -ntp -Dtest=AutenticacionHttpExternaTest,BuscarUsuarioServiceIntegrationTest test
+      - name: Adjuntar reportes de test
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b4-02e-uc54-http
+          path: target/surefire-reports/
+          if-no-files-found: warn

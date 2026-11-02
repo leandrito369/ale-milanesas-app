@@ -1,0 +1,26 @@
+name: B4-02E - Diagnostico SonarCloud PR39
+on:
+  push:
+    branches: [feat/b4-02e-uc54-verificacion-comercial-visible-2026-11-01]
+permissions:
+  contents: read
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Identificar issues abiertos en PR39
+        run: |
+          set -euo pipefail
+          code=$(curl -sSL --max-time 25 -o /tmp/issues.json -w '%{http_code}' 'https://sonarcloud.io/api/issues/search?componentKeys=leandrito369_ale-milanesas-app&pullRequest=39&resolved=false&ps=100')
+          echo "SonarCloud HTTP $code"
+          test "$code" = 200
+          python3 - <<'PY'
+          import json
+          data=json.load(open('/tmp/issues.json'))
+          print('Hallazgos:',data.get('total'))
+          for i in data.get('issues',[]):
+              print('regla=%s tipo=%s gravedad=%s archivo=%s linea=%s mensaje=%s' % (
+                  i.get('rule'),i.get('type'),i.get('severity'),
+                  i.get('component','').split(':')[-1],i.get('line'),i.get('message')))
+          PY
