@@ -31,7 +31,7 @@
 7. Dos PATCH concurrentes al mismo destino: una transición real y un no-op; una sola fila histórica.
 8. `PrecondicionesDespliegueTest`: `prod` rechaza flag UC38 activo, aunque otros flags queden apagados.
 
-**Gate de CI pendiente:** B1 Java21/Testcontainers/JaCoCo; B2 MR5/F01/MR6, SonarCloud y regresión UC02/UC32/UC53/CSRF sobre **SHA final de la PR**. No anticipar PASS. El HTTP de loopback no certifica TLS/DNS/Nginx/firewall/singleton/429 ni los **0/4 E2E humanos UC54**; [Issue #28](https://github.com/leandrito369/ale-milanesas-app/issues/28) debe seguir abierta. BC06 original 0/18 E2E; no se acredita. Prohibida activación productiva y merge sin revisión/autorización.
+**Gate de CI pendiente:** B1 Java21/Testcontainers/JaCoCo; B2 MR5/F01/MR6, SonarCloud y workflow focalizado `B4-03-03 - UC38 HTTP real y regresion` (incluye UC02/UC32/autenticación) sobre **SHA final de la PR**. No anticipar PASS. El HTTP de loopback no certifica TLS/DNS/Nginx/firewall/singleton/429 ni los **0/4 E2E humanos UC54**; [Issue #28](https://github.com/leandrito369/ale-milanesas-app/issues/28) debe seguir abierta. BC06 original 0/18 E2E; no se acredita. Prohibida activación productiva y merge sin revisión/autorización.
 
 ## Trazabilidad
 
