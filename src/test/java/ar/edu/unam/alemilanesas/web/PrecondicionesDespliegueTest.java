@@ -1,6 +1,8 @@
 package ar.edu.unam.alemilanesas.web;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.env.MockEnvironment;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -28,16 +30,12 @@ class PrecondicionesDespliegueTest {
         }
     }
 
-    @Test void rechazaEscrituraExperimentalEnProduccion() {
-        var validador=new PrecondicionesDespliegue(base()
-                .withProperty("ale.http.writes.clientes-uc02-enabled","true"));
-        assertThrows(IllegalStateException.class,
-                ()->validador.postProcessBeanFactory(null));
-    }
-
-    @Test void rechazaModificacionExperimentalEnProduccion() {
-        var validador=new PrecondicionesDespliegue(base()
-                .withProperty("ale.http.writes.clientes-uc32-enabled","true"));
+    @ParameterizedTest
+    @ValueSource(strings={"ale.http.writes.clientes-uc02-enabled",
+            "ale.http.writes.clientes-uc32-enabled",
+            "ale.http.writes.clientes-uc38-enabled"})
+    void rechazaCualquierEscrituraExperimentalEnProduccion(String propiedad) {
+        var validador=new PrecondicionesDespliegue(base().withProperty(propiedad,"true"));
         assertThrows(IllegalStateException.class,
                 ()->validador.postProcessBeanFactory(null));
     }
