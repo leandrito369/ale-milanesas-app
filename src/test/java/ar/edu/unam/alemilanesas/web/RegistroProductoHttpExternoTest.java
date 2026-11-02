@@ -201,6 +201,7 @@ class RegistroProductoHttpExternoTest {
         int antes=productos();
         for(Object payload:List.of(
                 Map.of(),datos(" ","REVENTA"),datos("X".repeat(151),"REVENTA"),
+                datos("X\nY","REVENTA"),
                 datos("Invalido "+base,"MIXTO"),datos("Invalido "+base,"reventa"),
                 Map.of("nombre",123,"tipoProducto","REVENTA","codigoUnidadVenta","UN"),
                 Map.of("nombre","Invalido "+base,"tipoProducto","REVENTA","codigoUnidadVenta",true),
@@ -268,7 +269,7 @@ class RegistroProductoHttpExternoTest {
         String vendedorActual=tx.execute(status -> sesion(base,UUID.randomUUID()));
         assertEquals(403,enviar(vendedorActual,body).statusCode());
         jdbc.update("""
-                UPDATE "USUARIO" SET "estado"='DESHABILITADO',"fechaHoraBaja"=clock_timestamp()
+                UPDATE "USUARIO" SET "estado"='DESHABILITADO',"fechaHoraDeshabilitacion"=clock_timestamp()
                  WHERE "idUsuario"=?
                 """,base);
         assertEquals(401,enviar(vendedorActual,body).statusCode());
