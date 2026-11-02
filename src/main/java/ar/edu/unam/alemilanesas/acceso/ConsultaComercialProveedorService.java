@@ -54,7 +54,8 @@ public class ConsultaComercialProveedorService {
         var params=new MapSqlParameterSource()
                 .addValue("idUsuario",idUsuario,Types.BIGINT)
                 .addValue("nombre",nombre,Types.VARCHAR)
-                .addValue("cuit",cuit,Types.VARCHAR);
+                .addValue("cuit",cuit,Types.VARCHAR)
+                .addValue("limite",MAX_RESULTADOS,Types.INTEGER);
         List<IdentidadComercial> resultado=sql.query("""
                 SELECT u."idUsuario",u."nombreUsuario",
                        u."estado" AS "estadoUsuario",u."cambioCredencialPendiente",
@@ -73,7 +74,7 @@ public class ConsultaComercialProveedorService {
                         OR position(lower(:nombre) IN lower(u."nombreUsuario"))>0)
                    AND (CAST(:cuit AS VARCHAR(11)) IS NULL OR p."cuit"=:cuit)
                  ORDER BY u."idUsuario"
-                 LIMIT 25
+                 LIMIT :limite
                 """,params,(rs,n)->new IdentidadComercial(
                 rs.getLong("idUsuario"),rs.getString("nombreUsuario"),
                 rs.getString("estadoUsuario"),rs.getBoolean("cambioCredencialPendiente"),
