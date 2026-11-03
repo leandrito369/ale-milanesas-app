@@ -1,0 +1,23 @@
+name: B4-03-04 - Diagnostico SonarCloud PR44
+on:
+  push:
+    branches: [feat/b4-03-04-uc30-producto-http-2026-11-02]
+permissions:
+  contents: read
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Identificar avisos abiertos en PR44
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error --max-time 25 'https://sonarcloud.io/api/issues/search?componentKeys=leandrito369_ale-milanesas-app&pullRequest=44&resolved=false&ps=100' -o /tmp/sonar44.json
+          python3 - <<'PY'
+          import json
+          data=json.load(open('/tmp/sonar44.json'))
+          print('Hallazgos:',data.get('total'))
+          for i in data.get('issues',[]):
+              print('regla=%s archivo=%s linea=%s mensaje=%s' % (
+                  i.get('rule'),i.get('component'),i.get('line'),i.get('message')))
+          PY

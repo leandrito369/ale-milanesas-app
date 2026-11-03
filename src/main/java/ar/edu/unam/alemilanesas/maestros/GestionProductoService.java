@@ -21,6 +21,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class GestionProductoService {
     private static final Set<String> ADMIN = Set.of("ADMINISTRADOR");
     private static final Set<String> TIPOS = Set.of("ELABORADO", "REVENTA");
+    private static final String TIPO_PRODUCTO = "tipoProducto";
+    private static final String CODIGO_UNIDAD_VENTA = "codigoUnidadVenta";
     private final NamedParameterJdbcTemplate sql;
     private final AutorizacionSesionInterna autorizacion;
 
@@ -33,6 +35,18 @@ public class GestionProductoService {
     public record ProductoGuardado(long idProducto, boolean activo, boolean huboCambio) {}
     public record DatosProducto(String nombre, String descripcion, String tipoProducto,
                                 String codigoUnidadVenta) {}
+
+    /** Coincidencia contextual UC35/BC07, sin costos, stock ni datos de autoridad. */
+    public static class ProductoDuplicadoException extends IllegalArgumentException {
+        private final transient BuscarProductoService.ProductoConsulta coincidencia;
+
+        public ProductoDuplicadoException(BuscarProductoService.ProductoConsulta coincidencia) {
+            super("Nombre normalizado duplicado incluso si el Producto esta inactivo");
+            this.coincidencia=coincidencia;
+        }
+
+        public BuscarProductoService.ProductoConsulta coincidencia() {return coincidencia;}
+    }
 
     @Transactional
     public ProductoGuardado gestionarProducto(UUID sesion, String nombre, String descripcion,
@@ -70,8 +84,8 @@ public class GestionProductoService {
         String nombreNorm = normalizarNombre(d.nombre());
         exigirUnidad(d.codigoUnidadVenta());
         asegurarNombreUnico(nombreNorm, idProducto);
-        boolean cambiaTipoUnidad = !Objects.equals(p.get("tipoProducto"), d.tipoProducto())
-                || !Objects.equals(p.get("codigoUnidadVenta"), d.codigoUnidadVenta());
+        boolean cambiaTipoUnidad = !Objects.equals(p.get(TIPO_PRODUCTO), d.tipoProducto())
+                || !Objects.equals(p.get(CODIGO_UNIDAD_VENTA), d.codigoUnidadVenta());
         if (cambiaTipoUnidad && tieneHistoria(idProducto)) {
             throw new IllegalArgumentException(
                     "Producto con historia: registrar otro mediante UC-30; no cambiar tipo/unidad");
@@ -105,8 +119,8 @@ public class GestionProductoService {
         if (nuevoActivo) {
             // A3 UC48: corregir por UC47 antes de reactivar una ficha inválida.
             DatosProducto actual=validar(new DatosProducto((String)p.get("nombre"),
-                (String)p.get("descripcion"),(String)p.get("tipoProducto"),
-                (String)p.get("codigoUnidadVenta")));
+                (String)p.get("descripcion"),(String)p.get(TIPO_PRODUCTO),
+                (String)p.get(CODIGO_UNIDAD_VENTA)));
             exigirUnidad(actual.codigoUnidadVenta());
             if (!normalizarNombre(actual.nombre()).equals(p.get("nombreNormalizado"))) {
                 throw new IllegalArgumentException("Ficha inconsistente: corregir mediante UC-47");
@@ -153,14 +167,17 @@ public class GestionProductoService {
         if (n==null || n!=1) throw new IllegalArgumentException("Unidad de venta inexistente");
     }
     private void asegurarNombreUnico(String norm, Long excluir) {
-        Long id = sql.query("""
-                SELECT "idProducto" FROM "PRODUCTO"
+        var coincidencia = sql.query("""
+                SELECT "idProducto","nombre","descripcion","tipoProducto",
+                       "codigoUnidadVenta","activo" FROM "PRODUCTO"
                  WHERE "nombreNormalizado"=:norm AND "idProducto"<>:excluir
                  LIMIT 1
                 """, Map.of("norm",norm,"excluir",excluir==null?-1L:excluir),
-                rs -> rs.next()?rs.getLong(1):null);
-        if (id!=null) throw new IllegalArgumentException(
-                "Nombre normalizado duplicado incluso si el Producto está inactivo: "+id);
+                rs -> rs.next()?new BuscarProductoService.ProductoConsulta(
+                    rs.getLong("idProducto"),rs.getString("nombre"),rs.getString("descripcion"),
+                    rs.getString(TIPO_PRODUCTO),rs.getString(CODIGO_UNIDAD_VENTA),
+                    rs.getBoolean("activo")):null);
+        if (coincidencia!=null) throw new ProductoDuplicadoException(coincidencia);
     }
 
     static String normalizarNombre(String nombre) {
