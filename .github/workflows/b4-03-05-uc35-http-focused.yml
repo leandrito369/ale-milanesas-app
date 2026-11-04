@@ -23,18 +23,8 @@ jobs:
           java-version: '21'
           cache: maven
       - name: HTTP UC35 + regresion Productos/gates/auth
-        run: >
-          mvn -B -ntp
-          -Dtest=ConsultaProductoHttpExternoTest,
-          RegistroProductoHttpExternoTest,
-          GestionProductoServiceIntegrationTest,
-          ProductoConcurrenciaIntegrationTest,
-          PreciosProductoServiceIntegrationTest,
-          PrecioProductoConcurrenciaIntegrationTest,
-          PrecondicionesDespliegueTest,
-          ConsultasI1HttpIntegrationTest,
-          AutenticacionHttpExternaTest
-          test
+        run: |
+          mvn -B -ntp -Dtest=ConsultaProductoHttpExternoTest,RegistroProductoHttpExternoTest,GestionProductoServiceIntegrationTest,ProductoConcurrenciaIntegrationTest,PreciosProductoServiceIntegrationTest,PrecioProductoConcurrenciaIntegrationTest,PrecondicionesDespliegueTest,ConsultasI1HttpIntegrationTest,AutenticacionHttpExternaTesttest
       - name: Reportes reales
         if: always()
         uses: actions/upload-artifact@v4
