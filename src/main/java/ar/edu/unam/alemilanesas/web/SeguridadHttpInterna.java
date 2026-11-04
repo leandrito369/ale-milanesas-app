@@ -102,6 +102,8 @@ public class SeguridadHttpInterna {
                     .hasAuthority(ROL_ADMINISTRADOR)
                 .requestMatchers(HttpMethod.GET, "/api/v1/clientes")
                     .hasAnyAuthority(ROL_ADMINISTRADOR,ROL_VENDEDOR)
+                .requestMatchers(HttpMethod.GET, "/api/v1/productos")
+                    .hasAnyAuthority(ROL_ADMINISTRADOR, ROL_VENDEDOR)
                 .requestMatchers(HttpMethod.GET,"/api/v1/insumos","/api/v1/unidades")
                     .hasAnyAuthority(ROL_ADMINISTRADOR,"RESPONSABLE_PRODUCCION")
                 .anyRequest().denyAll());
