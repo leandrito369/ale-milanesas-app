@@ -1,0 +1,44 @@
+name: B4-03-05 - UC35 buscar Producto HTTP
+on:
+  pull_request:
+    paths:
+      - 'src/main/java/ar/edu/unam/alemilanesas/maestros/BuscarProductoService.java'
+      - 'src/main/java/ar/edu/unam/alemilanesas/web/ConsultaProductoHttpController.java'
+      - 'src/main/java/ar/edu/unam/alemilanesas/web/SeguridadHttpInterna.java'
+      - 'src/test/java/ar/edu/unam/alemilanesas/web/ConsultaProductoHttpExternoTest.java'
+      - 'src/test/java/ar/edu/unam/alemilanesas/web/RegistroProductoHttpExternoTest.java'
+      - '.github/workflows/b4-03-05-uc35-http-focused.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  uc35-http-real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: HTTP UC35 + regresion Productos/gates/auth
+        run: >
+          mvn -B -ntp
+          -Dtest=ConsultaProductoHttpExternoTest,
+          RegistroProductoHttpExternoTest,
+          GestionProductoServiceIntegrationTest,
+          ProductoConcurrenciaIntegrationTest,
+          PreciosProductoServiceIntegrationTest,
+          PrecioProductoConcurrenciaIntegrationTest,
+          PrecondicionesDespliegueTest,
+          ConsultasI1HttpIntegrationTest,
+          AutenticacionHttpExternaTest
+          test
+      - name: Reportes reales
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b4-03-05-uc35-http
+          path: target/surefire-reports/
+          if-no-files-found: warn
