@@ -239,7 +239,7 @@ class RegistroProductoHttpExternoTest {
                 .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build();
         assertEquals(401,http.send(cookie,HttpResponse.BodyHandlers.ofString()).statusCode());
         for(String ruta:List.of(RUTA,"/api/v1/productos/1","/api/v1/clientes")) {
-            String metodo=ruta.equals(RUTA)?"GET":ruta.contains("productos")?"PUT":"POST";
+            String metodo=ruta.equals(RUTA)?"DELETE":ruta.contains("productos")?"PUT":"POST";
             var req=HttpRequest.newBuilder(URI.create("http://127.0.0.1:"+port+ruta))
                     .header("Authorization","Bearer "+admin).header("Content-Type","application/json")
                     .method(metodo,HttpRequest.BodyPublishers.ofString("{}")).build();
