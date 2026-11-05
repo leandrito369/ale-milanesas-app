@@ -4,7 +4,7 @@
 **Rama:** `feat/b4-03-05-uc35-producto-http-2026-11-03`
 **Base:** `main` @ `2e16a65` (acta PR #45 mergeada)
 **source_commit (G0):** `1263ffc17bd0eb7f3c69faaa9ff5ae556cf9de7e` (inmutable)
-**governance_commit:** `<hash del commit de este documento>`
+**governance_commit:** `8122b2ac97b059c317f5474d0932ad5553b8c824`
 **Estado:** implementado; pendiente de activación por pausa de despliegue.
 
 ## 1. Alcance y fuentes normativas
