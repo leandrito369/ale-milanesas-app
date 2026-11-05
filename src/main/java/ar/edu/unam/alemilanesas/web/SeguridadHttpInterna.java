@@ -49,7 +49,8 @@ public class SeguridadHttpInterna {
             @Value("${ale.http.writes.clientes-uc32-enabled:false}") boolean habilitarModificarCliente,
             @Value("${ale.http.writes.clientes-uc38-enabled:false}") boolean habilitarEstadoCliente,
             @Value("${ale.http.writes.productos-uc30-enabled:false}") boolean habilitarAltaProducto,
-            @Value("${ale.http.writes.productos-uc47-enabled:false}") boolean habilitarModificarProducto) {
+            @Value("${ale.http.writes.productos-uc47-enabled:false}") boolean habilitarModificarProducto,
+            @Value("${ale.http.writes.productos-uc48-enabled:false}") boolean habilitarEstadoProducto) {
         http.securityMatcher("/api/v1/**");
         // La API no autentica cookies. El sitio web (otra cadena) conserva CSRF.
         http.csrf(csrf -> csrf.ignoringRequestMatchers("/api/v1/**"));
@@ -110,6 +111,13 @@ public class SeguridadHttpInterna {
                     .access((auth,context) ->
                         new org.springframework.security.authorization.AuthorizationDecision(
                             habilitarModificarProducto && auth.get().isAuthenticated() &&
+                            auth.get().getAuthorities().stream().anyMatch(
+                                rol -> ROL_ADMINISTRADOR.equals(rol.getAuthority()))))
+                // UC48 (RD-UC30-001): PATCH estado solo ADMIN bajo gate no-prod.
+                .requestMatchers(HttpMethod.PATCH, "/api/v1/productos/*/estado")
+                    .access((auth,context) ->
+                        new org.springframework.security.authorization.AuthorizationDecision(
+                            habilitarEstadoProducto && auth.get().isAuthenticated() &&
                             auth.get().getAuthorities().stream().anyMatch(
                                 rol -> ROL_ADMINISTRADOR.equals(rol.getAuthority()))))
                 .requestMatchers(HttpMethod.GET,"/api/v1/insumos","/api/v1/unidades")
