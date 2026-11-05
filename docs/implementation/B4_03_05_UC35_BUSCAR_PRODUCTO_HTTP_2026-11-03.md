@@ -1,33 +1,62 @@
-Closes #<ISSUE_UC35>
+# B4-03-05 / UC-35 — Buscar Producto HTTP (solo lectura, Admin y Vendedor)
 
-## Alcance
-Exposición HTTP de solo lectura de `UC-35 — Buscar Producto` en `GET /api/v1/productos`,
-delegando en `BuscarProductoService.buscarProducto` (B3). Sin cambios en esquema `MR-5`/`F01`,
-sin activar `UC-30` en producción.
+**Issue:** #46
+**Rama:** `feat/b4-03-05-uc35-producto-http-2026-11-03`
+**Base:** `main` @ `2e16a65` (acta PR #45 mergeada)
+**source_commit (G0):** `1263ffc17bd0eb7f3c69faaa9ff5ae556cf9de7e` (inmutable)
+**governance_commit:** `<hash del commit de este documento>`
+**Estado:** implementado; pendiente de activación por pausa de despliegue.
 
-## Cambios
-- [x] `ConsultaProductoHttpController` con lista blanca `idProducto|nombre|tipoProducto|activo`.
-- [x] `SeguridadHttpInterna`: GET autorizado a `ADMINISTRADOR` y `VENDEDOR` (`RD-RP007-002`).
-- [x] Ajuste del test de UC-30 (`RegistroProductoHttpExternoTest`) — ya no espera 403 en GET, verifica DELETE/PUT bloqueados.
-- [x] Suite `ConsultaProductoHttpExternoTest` (RANDOM_PORT + PostgreSQL 17.11 Testcontainers).
-- [x] Workflow focalizado `.github/workflows/b4-03-05-uc35-http-focused.yml`.
-- [x] Trazabilidad en `docs/implementation/B4_03_05_UC35_BUSCAR_PRODUCTO_HTTP_2026-11-03.md`.
+## 1. Alcance y fuentes normativas
 
-## Invariantes
-- Nunca expone `stockActualReventa`, `costoPromedioActualReventa`, `nombreNormalizado`.
-- `Cache-Control: no-store` en 200/400/403/503.
-- No habilita PUT/PATCH/DELETE (UC-47/UC-48).
+- **Contrato canónico:** `docs/08-diagramas/consolidacion-b0/CONTRATOS_REV06A_NUEVE_OPERACIONES_B0_ACTUALIZADO.md` §1 (`buscarProducto`)
+- **Ficha Fase 4:** `UC-35 — Buscar Producto` (Alto Nivel, Extendido y Real)
+- **Decisión RBAC:** `RD-RP007-002` — solo `ADMINISTRADOR` y `VENDEDOR`
+- **Proyección segura:** `BC-07` + `RD-UC30-001` (nunca `stockActualReventa`, `costoPromedioActualReventa` ni `nombreNormalizado`)
+- **Esquema:** tabla `"PRODUCTO"` del baseline `MR-5` / `F01` — **sin cambios**
+- **Línea base:** `G0` — **sin modificar**
 
-## Bloqueo de despliegue
+## 2. Contrato HTTP
+
+`GET /api/v1/productos`
+
+| Aspecto | Detalle |
+|---|---|
+| Autenticación | `Bearer` vigente, `cambioCredencialPendiente = false` |
+| Roles | `ADMINISTRADOR`, `VENDEDOR` |
+| Parámetros (whitelist) | `idProducto` (Long > 0), `nombre` (String), `tipoProducto` (`ELABORADO`\|`REVENTA`), `activo` (`true`\|`false`) |
+| Respuesta 200 | Array de 6 campos: `idProducto, nombre, descripcion, tipoProducto, codigoUnidadVenta, activo` |
+| Respuesta 400 | `{"codigo":"SOLICITUD_INVALIDA"}` |
+| Respuesta 401 | Sin token, cookie `__Host-ale_session`, UUID crudo o sesión revocada |
+| Respuesta 403 | Rol no autorizado o cambio pendiente |
+| Respuesta 503 | `{"codigo":"PERSISTENCIA_NO_DISPONIBLE"}` |
+| Cache | `Cache-Control: no-store` en todas las respuestas |
+
+## 3. Matriz CU → Servicio → DB → API → Test
+
+| Capa | Elemento | Archivo |
+|---|---|---|
+| CU | UC-35 Buscar Producto | ficha Fase 4 |
+| Servicio | `BuscarProductoService.buscarProducto(UUID, CriterioProducto)` | `maestros/BuscarProductoService.java:34` |
+| DB | `SELECT ... FROM "PRODUCTO" p WHERE 1=1 ...` (sin cambios de esquema) | `BuscarProductoService.java:44` |
+| API | `ConsultaProductoHttpController.buscar(...)` | `web/ConsultaProductoHttpController.java` |
+| Seguridad | matcher `GET /api/v1/productos` | `web/SeguridadHttpInterna.java:105` |
+| Test HTTP | `ConsultaProductoHttpExternoTest` | `web/ConsultaProductoHttpExternoTest.java` |
+| Regresión UC-30 | `RegistroProductoHttpExternoTest` | `web/RegistroProductoHttpExternoTest.java` |
+
+## 4. Invariantes preservados
+
+- No expone `stockActualReventa`, `costoPromedioActualReventa` ni `nombreNormalizado`.
+- No habilita `PUT` / `PATCH` / `DELETE` de Productos (`UC-47`, `UC-48`).
+- No activa `UC-30` en producción (gate apagado por defecto).
+- `Cache-Control: no-store` en todas las respuestas.
+
+## 5. Bloqueo de despliegue
+
 Entorno **PAUSADO** por el responsable (02/11/2026). Issue #28 permanece **ABIERTA**.
 
-## Dependencias
-- **PR #44 / Issue #43** (UC-30, mergeado `b19c950` el 2026-11-03): provee `RegistroProductoHttpExternoTest` y `RegistroProductoHttpController`.
-- **PR #45** (acta de revisión, `docs/traceability/ACTA_REVISION_PR44_2026-11-03.md`): autoriza el merge controlado bajo pausa de despliegue.
-- **Issue #28** (pausa de despliegue): permanece ABIERTA.
+## 6. Dependencias
 
-## Checklist
-- [ ] `mvn -Dtest=ConsultaProductoHttpExternoTest,RegistroProductoHttpExternoTest test` verde en local
-- [ ] Workflow `b4-03-05-uc35-http-focused` verde en CI
-- [ ] Revisión de código por pares
-- [ ] Issue #<ISSUE_UC35> vinculada con `Closes #<ISSUE_UC35>`
+- **PR #44 / Issue #43** (UC-30): mergeado en `main` como `b19c950`.
+- **PR #45** (acta de revisión): mergeado en `main` como `2e16a65`.
+- **Issue #46** (esta implementación): PR #47.
