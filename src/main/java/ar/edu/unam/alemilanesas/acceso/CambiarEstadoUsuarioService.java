@@ -11,7 +11,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /**
  * UC-55 cambiarEstadoUsuario incluye la localizacion por UC-56.
- * Servicio exclusivamente B3; una UUID de sesion no es un token HTTP.
+ * Servicio B3 reutilizado por B4 bajo gate; una UUID de sesion no es un token HTTP.
  *
  * Se toman los locks en orden compatible con UC-17/UC-18:
  * 9172001 -> 60505,7 -> USUARIO objetivo FOR UPDATE.
