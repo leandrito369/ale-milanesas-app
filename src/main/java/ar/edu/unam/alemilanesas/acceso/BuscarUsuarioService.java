@@ -15,11 +15,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * B3 / I1-01, primera operación de acceso: UC-56 buscarUsuario.
+ * B3 / I1-01: UC-56 buscarUsuario.
  *
- * RESTRICCIÓN: solo invocación interna desde una capa B4 autenticada y
- * validada; no existe todavía endpoint ni tokens de autenticación operativos.
- * Revalida sesión interna y rol ADMINISTRADOR en la base al consultar.
+ * RESTRICCIÓN: invocación desde capa autenticada; B4 verifica el Bearer y
+ * este servicio revalida sesión interna y rol ADMINISTRADOR en PostgreSQL.
  */
 @Service
 public class BuscarUsuarioService {
@@ -41,6 +40,10 @@ public class BuscarUsuarioService {
             throw new IllegalArgumentException("Sesión y criterios requeridos");
         }
         autorizacion.exigirRoles(idSesionUsuario, Set.of("ADMINISTRADOR"));
+        if (criterios.nombreUsuario() == null && criterios.estado() == null
+                && criterios.codigoRol() == null) {
+            throw new IllegalArgumentException("Se requiere al menos un criterio de busqueda");
+        }
 
         var parametros = new MapSqlParameterSource();
         var consulta = new StringBuilder("""
