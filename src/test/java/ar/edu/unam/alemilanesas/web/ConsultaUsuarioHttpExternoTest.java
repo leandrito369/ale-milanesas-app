@@ -81,21 +81,21 @@ class ConsultaUsuarioHttpExternoTest {
                         INSERT INTO "USUARIO"("idUsuario","nombreUsuario","credencialProtegida",
                             "estado","cambioCredencialPendiente","fechaHoraAlta")
                         VALUES(?,?,'HASH_SINTETICO',?,?,clock_timestamp())
-                        "", base + i, "usuario_uc56_http_" + (base + i),
+                        """, base + i, "usuario_uc56_http_" + (base + i),
                         i == 2 ? "DESHABILITADO" : "HABILITADO", i == 6);
                 jdbc.update("""
                         INSERT INTO "USUARIO_ROL"("idUsuario","codigoRol","fechaHoraAsignacion")
                         VALUES(?,?,clock_timestamp())
-                        "", base + i, roles[i]);
+                        """, base + i, roles[i]);
             }
             jdbc.update("""
                     INSERT INTO "PROVEEDOR"("idProveedor","cuit","razonSocial","estado","fechaHoraAlta")
                     VALUES(?,?,'Proveedor ficticio UC56','ACTIVO',clock_timestamp())
-                    "", base + 50, String.format("%011d", 30000000000L + base));
+                    """, base + 50, String.format("%011d", 30000000000L + base));
             jdbc.update("""
                     INSERT INTO "USUARIO_PROVEEDOR"("idUsuario","idProveedor","fechaHoraVinculacion")
                     VALUES(?,?,clock_timestamp())
-                    "", base + 5, base + 50);
+                    """, base + 5, base + 50);
 
             sesionAdmin = UUID.randomUUID();
             admin = nuevaSesion(base, sesionAdmin);
@@ -114,7 +114,7 @@ class ConsultaUsuarioHttpExternoTest {
                     "fechaHoraInicio","fechaHoraExpiracion")
                 VALUES(?,?,?,clock_timestamp()-interval '1 minute',
                            clock_timestamp()+interval '29 minutes')
-                "", idSesion, idUsuario, TokenSesionInterna.huella(token).orElseThrow());
+                """, idSesion, idUsuario, TokenSesionInterna.huella(token).orElseThrow());
         return token;
     }
 
@@ -218,7 +218,7 @@ class ConsultaUsuarioHttpExternoTest {
         tx.executeWithoutResult(s -> jdbc.update("""
                 UPDATE "SESION_USUARIO" SET "fechaHoraRevocacion"=clock_timestamp()
                  WHERE "idSesionUsuario"=?
-                "", sesionAdmin));
+                """, sesionAdmin));
         assertEquals(401, get(admin, "nombreUsuario=" + base).statusCode());
     }
 
