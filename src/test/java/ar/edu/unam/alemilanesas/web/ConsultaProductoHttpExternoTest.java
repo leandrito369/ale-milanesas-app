@@ -225,12 +225,14 @@ class ConsultaProductoHttpExternoTest {
     void cambioDeRolEnCalienteActualizaAutorizacion() throws Exception {
         // produccion NO puede consultar
         assertEquals(403, get(produccion, "idProducto=" + idElaboradoActivo).statusCode());
-        // le asignamos rol VENDEDOR en caliente
+        // le asignamos rol VENDEDOR en caliente; el trigger MR5 tg_mr5_revocar_sesiones_roles revoca la sesion previa
         tx.executeWithoutResult(s -> jdbc.update(
                 "INSERT INTO \"USUARIO_ROL\"(\"idUsuario\",\"codigoRol\",\"fechaHoraAsignacion\") VALUES(?,?,clock_timestamp())",
                 base + 2, "VENDEDOR"));
-        // ahora sí puede
-        assertEquals(200, get(produccion, "idProducto=" + idElaboradoActivo).statusCode());
+        assertEquals(401, get(produccion, "idProducto=" + idElaboradoActivo).statusCode());
+        // una nueva sesion del mismo usuario ahora sí puede consultar
+        String nuevaSesion = tx.execute(s -> sesion(base + 2, UUID.randomUUID()));
+        assertEquals(200, get(nuevaSesion, "idProducto=" + idElaboradoActivo).statusCode());
     }
 
     @Test
