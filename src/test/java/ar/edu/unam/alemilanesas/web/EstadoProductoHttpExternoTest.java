@@ -246,4 +246,68 @@ class EstadoProductoHttpExternoTest {
         assertEquals("PRODUCTO_FICHA_INVALIDA",json.readTree(r.body()).get(CODIGO).asText());
         assertTrue(r.headers().firstValue("Cache-Control").orElse("").contains("no-store"));
     }
+
+    @ParameterizedTest
+    @ValueSource(strings={
+            "{JSON_ROTO",
+            "{}",
+            "{\"activo\":\"true\"}",
+            "{\"activo\":1}",
+            "{\"activo\":null}",
+            "{\"activo\":true,\"extra\":1}",
+            "{\"activo\":true,\"activo\":false}",
+            "{\"otro\":true}"
+    })
+    void bodyInvalidoEs400(String cuerpo) throws Exception {
+        var r=patch(admin,idActivo,cuerpo);
+        assertEquals(400,r.statusCode(),cuerpo+" -> "+r.body());
+        assertEquals("SOLICITUD_INVALIDA",json.readTree(r.body()).get(CODIGO).asText());
+        assertTrue(r.headers().firstValue("Cache-Control").orElse("").contains("no-store"));
+    }
+
+    @Test
+    void idNegativoEs400() throws Exception {
+        var r=patch(admin,-1L,CAMBIO_TRUE);
+        assertEquals(400,r.statusCode(),r.body());
+    }
+
+    @Test
+    void productoInexistenteEs404() throws Exception {
+        var r=patch(admin,999999999L,CAMBIO_TRUE);
+        assertEquals(404,r.statusCode(),r.body());
+        assertEquals("PRODUCTO_NO_ENCONTRADO",json.readTree(r.body()).get(CODIGO).asText());
+    }
+
+    @Test
+    void sinTokenEs401() throws Exception {
+        assertEquals(401,patch(null,idActivo,CAMBIO_TRUE).statusCode());
+    }
+
+    @Test
+    void rolesNoAutorizadosEs403() throws Exception {
+        for (String token:List.of(vendedor,produccion,repartidor,proveedor,pendiente)) {
+            assertEquals(403,patch(token,idActivo,CAMBIO_TRUE).statusCode());
+        }
+        var advice=new ErroresEstadoProductoHttp();
+        assertEquals(403,advice.prohibido().getStatusCode().value());
+        assertEquals(503,advice.persistencia().getStatusCode().value());
+        var env=new MockEnvironment()
+                .withProperty("server.address","127.0.0.1")
+                .withProperty("server.forward-headers-strategy","native")
+                .withProperty("ale.security.singleton-db-guard","true")
+                .withProperty("ale.web.allowed-origin","https://ale.example.invalid")
+                .withProperty("ale.http.writes.productos-uc48-enabled","true");
+        assertThrows(IllegalStateException.class,
+                ()->new PrecondicionesDespliegue(env).postProcessBeanFactory(null));
+    }
+
+    @Test
+    void cookieEnLugarDeBearerEs401() throws Exception {
+        var request=HttpRequest.newBuilder(URI.create(
+                "http://127.0.0.1:"+port+RUTA+"/"+idActivo+"/estado"))
+                .header("Content-Type","application/json")
+                .header("Cookie","__Host-ale_session="+admin)
+                .method("PATCH",HttpRequest.BodyPublishers.ofString(CAMBIO_TRUE)).build();
+        assertEquals(401,http.send(request,HttpResponse.BodyHandlers.ofString()).statusCode());
+    }
 }
