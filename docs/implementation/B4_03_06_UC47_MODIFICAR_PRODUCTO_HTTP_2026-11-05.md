@@ -4,7 +4,8 @@
 **Rama:** `feat/b4-03-06-uc47-producto-put-2026-11-05`
 **Base:** `main` @ `d25ec9c` (PR #48 mergeado)
 **source_commit (G0):** `1263ffc17bd0eb7f3c69faaa9ff5ae556cf9de7e` (inmutable)
-**governance_commit:** `62c11a73053edcc91499a1ab1438b1945a9ad547`
+**RD específica:** `RD-UC30-001` @ `4971625a215d94a8b9f6439d9b0836e0925ea1ad`
+**governance_commit:** `27738b089afdd2698cdae915f75c0e8089a6248a` (acta RD-B0-G0-001)
 **Estado:** implementado; pendiente de activación por pausa de despliegue.
 
 ## 1. Alcance y fuentes normativas
