@@ -60,3 +60,9 @@ Entorno **PAUSADO** por el responsable (02/11/2026). Issue #28 permanece **ABIER
 - **PR #44 / Issue #43** (UC-30): mergeado en `main` como `b19c950`.
 - **PR #45** (acta de revisión): mergeado en `main` como `2e16a65`.
 - **Issue #46** (esta implementación): PR #47.
+
+# ## Notas de comportamiento observado
+# - El trigger `tg_mr5_revocar_sesiones_roles` (baseline `MR-5`) revoca automáticamente
+#   todas las sesiones activas del usuario cuando se modifican sus roles. Comportamiento
+#   cubierto por el test `cambioDeRolEnCalienteActualizaAutorizacion` (commit `73cf49a`).
+# - Cualquier UC futuro que modifique `USUARIO_ROL` debe contemplar esta revocación.
