@@ -192,9 +192,11 @@ class EstadoProductoHttpExternoTest {
                     INSERT INTO "POLITICA_CATEGORIA_COMERCIAL"("idPoliticaComercial",
                         "diasToleranciaMora","vigenteDesde","vigenteHasta",
                         "fechaHoraRegistro","idUsuarioRegistro")
-                    VALUES(?,7,'2026-01-01T00:00:00Z','2026-01-02T00:00:00Z',
+                    VALUES(?,7,
+                        TIMESTAMPTZ '2026-01-01T00:00:00Z' + (? * INTERVAL '1 second'),
+                        TIMESTAMPTZ '2026-01-01T00:00:00Z' + ((? + 1) * INTERVAL '1 second'),
                         clock_timestamp(),?)
-                    """,idPolitica,base);
+                    """,idPolitica,base,base,base);
             jdbc.update("""
                     INSERT INTO "PEDIDO"("idPedido","idCliente","idUsuarioCreador",
                         "fechaHoraCarga","fechaReparto","canalOrigen","estado",
