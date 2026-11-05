@@ -1,0 +1,33 @@
+name: B4-03-07 - UC48 cambiar estado Producto HTTP
+on:
+  pull_request:
+    paths:
+      - 'src/main/java/ar/edu/unam/alemilanesas/maestros/GestionProductoService.java'
+      - 'src/main/java/ar/edu/unam/alemilanesas/web/EstadoProductoHttpController.java'
+      - 'src/main/java/ar/edu/unam/alemilanesas/web/SeguridadHttpInterna.java'
+      - 'src/main/java/ar/edu/unam/alemilanesas/web/PrecondicionesDespliegue.java'
+      - 'src/test/java/ar/edu/unam/alemilanesas/web/EstadoProductoHttpExternoTest.java'
+      - '.github/workflows/b4-03-07-uc48-http-focused.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  uc48-http-real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: HTTP UC48 y regresion Productos/gates/auth
+        run: mvn -B -ntp -Dtest=EstadoProductoHttpExternoTest,ConsultaProductoHttpExternoTest,RegistroProductoHttpExternoTest,ModificacionProductoHttpExternoTest,GestionProductoServiceIntegrationTest,ProductoConcurrenciaIntegrationTest,PrecondicionesDespliegueTest,ConsultasI1HttpIntegrationTest,AutenticacionHttpExternaTest test
+      - name: Reportes reales
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: b4-03-07-uc48-http
+          path: target/surefire-reports/
+          if-no-files-found: warn
