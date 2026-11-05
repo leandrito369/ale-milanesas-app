@@ -177,18 +177,60 @@ class ConsultaProductoHttpExternoTest {
             "idProducto=0",
             "idProducto=-5",
             "idProducto=abc",
+            "idProducto=%20",
             "idProducto=1&idProducto=2",
             "activo=si",
             "activo=1",
             "tipoProducto=MIXTO",
             "tipoProducto=elaborado",
-            "nombre=%00"
+            "nombre=%00",
+            "nombre=%20%20"
     })
     void rechazaCriteriosYParametrosInvalidosCon400(String queryInvalida) throws Exception {
         var r = get(admin, queryInvalida);
         assertEquals(400, r.statusCode(), queryInvalida + " -> " + r.body());
         assertTrue(r.headers().firstValue("Cache-Control").orElse("").contains("no-store"));
         assertEquals("SOLICITUD_INVALIDA", json.readTree(r.body()).get("codigo").asText());
+    }
+
+    @Test
+    void filtraPorActivoFalseDevuelveSoloInactivos() throws Exception {
+        var r = get(vendedor, "nombre=Extra%20" + base + "&activo=false");
+        assertEquals(200, r.statusCode(), r.body());
+        var arr = json.readTree(r.body());
+        assertEquals(1, arr.size(), r.body());
+        assertEquals(idReventaInactivo, arr.get(0).get("idProducto").asLong());
+        assertFalse(arr.get(0).get("activo").asBoolean());
+        assertTrue(r.headers().firstValue("Cache-Control").orElse("").contains("no-store"));
+    }
+
+    @Test
+    void rechazaNombreMayorA150CaracteresCon400() throws Exception {
+        String nombreLargo = "a".repeat(151);
+        var r = get(admin, "nombre=" + nombreLargo);
+        assertEquals(400, r.statusCode(), r.body());
+        assertEquals("SOLICITUD_INVALIDA", json.readTree(r.body()).get("codigo").asText());
+    }
+
+    @Test
+    void sesionRevocadaEnCalienteDevuelve401() throws Exception {
+        tx.executeWithoutResult(s -> jdbc.update(
+                "UPDATE \"SESION_USUARIO\" SET \"fechaHoraRevocacion\"=clock_timestamp() WHERE \"idSesionUsuario\"=?",
+                sesionAdmin));
+        var r = get(admin, "idProducto=" + idElaboradoActivo);
+        assertEquals(401, r.statusCode(), r.body());
+    }
+
+    @Test
+    void cambioDeRolEnCalienteActualizaAutorizacion() throws Exception {
+        // produccion NO puede consultar
+        assertEquals(403, get(produccion, "idProducto=" + idElaboradoActivo).statusCode());
+        // le asignamos rol VENDEDOR en caliente
+        tx.executeWithoutResult(s -> jdbc.update(
+                "INSERT INTO \"USUARIO_ROL\"(\"idUsuario\",\"codigoRol\",\"fechaHoraAsignacion\") VALUES(?,?,clock_timestamp())",
+                base + 2, "VENDEDOR"));
+        // ahora sí puede
+        assertEquals(200, get(produccion, "idProducto=" + idElaboradoActivo).statusCode());
     }
 
     @Test
