@@ -15,7 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
  * UC-17 crearUsuario incluye las asignaciones iniciales UC-18.
  * Contratos REV02 + RD-UC17-001/RD-UC18-001 (29/10/2026).
  *
- * Solo B3 interno: UUID de sesión NO es un token de API, pendiente B4.
+ * Servicio B3 invocado desde canal B4 autenticado: UUID de sesion NO es
+ * token de API; el adaptador HTTP resuelve Bearer y roles antes de invocar.
  * El sistema revalida autorización del Administrador en PostgreSQL.
  * Sin migraciones, secuencias ni columnas nuevas.
  */

@@ -34,7 +34,8 @@ class PrecondicionesDespliegueTest {
     @ValueSource(strings={"ale.http.writes.clientes-uc02-enabled",
             "ale.http.writes.clientes-uc32-enabled",
             "ale.http.writes.clientes-uc38-enabled",
-            "ale.http.writes.productos-uc30-enabled"})
+            "ale.http.writes.productos-uc30-enabled",
+            "ale.http.writes.usuarios-uc17-enabled"})
     void rechazaCualquierEscrituraExperimentalEnProduccion(String propiedad) {
         var validador=new PrecondicionesDespliegue(base().withProperty(propiedad,"true"));
         assertThrows(IllegalStateException.class,
@@ -62,6 +63,18 @@ class PrecondicionesDespliegueTest {
             ctx.register(RegistroProductoHttpController.class);
             ctx.refresh();
             assertTrue(ctx.getBeansOfType(RegistroProductoHttpController.class).isEmpty());
+        }
+    }
+
+    @Test void controladorUc17NoExisteEnProdAunqueSeSoliciteSuBandera() {
+        try(var ctx=new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
+            ctx.getEnvironment().setActiveProfiles("prod");
+            ctx.getEnvironment().getPropertySources().addFirst(
+                    new org.springframework.core.env.MapPropertySource("flag-uc17",
+                        java.util.Map.of("ale.http.writes.usuarios-uc17-enabled","true")));
+            ctx.register(RegistroUsuarioHttpController.class);
+            ctx.refresh();
+            assertTrue(ctx.getBeansOfType(RegistroUsuarioHttpController.class).isEmpty());
         }
     }
 }
