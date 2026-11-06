@@ -15,8 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * UC-18 / RD-UC18-001: gestionar las asociaciones vigentes Usuario–Rol.
  *
- * Solo B3 interno, sin endpoint HTTP. El UUID de sesión no es autenticación
- * remota: la validación criptográfica pertenece a B4.
+ * Lógica B3 invocada también por B4 bajo gate no-prod. El UUID de sesión
+ * no es autenticación remota: la validación criptográfica pertenece a B4.
  *
  * Los locks se adquieren en el MISMO orden que UC-17: identificadores
  * (9172001), luego invariante F07/MR5 (60505,7).

@@ -89,3 +89,7 @@ El corte [Issue #54](https://github.com/leandrito369/ale-milanesas-app/issues/54
 ## I1-01 / B4 — UC17 Crear Usuario (corte en revisión, no productivo)
 
 [Issue #56](https://github.com/leandrito369/ale-milanesas-app/issues/56): propuesta de `POST /api/v1/usuarios`, exclusiva de ADMINISTRADOR, que reutiliza `CrearUsuarioService` y la inclusión UC-18 para asignación inicial de Roles. Tiene bandera `ale.http.writes.usuarios-uc17-enabled=false` por defecto, exclusión `!prod` y veto de arranque productivo. [Contrato HTTP, pruebas previstas y trazabilidad](docs/implementation/I1_01_B4_UC17_CREAR_USUARIO_HTTP_2026-11-05.md). **Compilación local no ejecutada; delegada a CI según autorización de Lean.** No altera MR5, las migraciones ni el despliegue pausado (#28).
+
+## I1-01 / B4 — UC18 Gestionar Asignaciones de Roles (solo prueba no-prod)
+
+[Issue #58](https://github.com/leandrito369/ale-milanesas-app/issues/58): `PATCH /api/v1/usuarios/{idUsuario}/roles`, exclusivamente `ADMINISTRADOR`, sobre el servicio transaccional B3 de UC-18. Aplica un delta de Roles, audita `ASIGNACION/REVOCACION`, respeta F07 y no modifica el catálogo ni vínculos de PROVEEDOR. Activo únicamente con `ale.http.writes.usuarios-uc18-enabled=true` en perfil no productivo; apagado por defecto y rechazado en `prod`. [Contrato, trazabilidad y pruebas](docs/implementation/I1_01_B4_UC18_GESTION_ROLES_HTTP_2026-11-05.md). Publicación en PR draft sujeta a CI y aprobación humana; **no** modifica MR5/F01 ni adelanta la propuesta `PARTIDA_INSUMO`.
