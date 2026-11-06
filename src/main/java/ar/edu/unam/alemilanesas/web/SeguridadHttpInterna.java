@@ -52,7 +52,8 @@ public class SeguridadHttpInterna {
             @Value("${ale.http.writes.productos-uc47-enabled:false}") boolean habilitarModificarProducto,
             @Value("${ale.http.writes.productos-uc48-enabled:false}") boolean habilitarEstadoProducto,
             @Value("${ale.http.writes.usuarios-uc17-enabled:false}") boolean habilitarAltaUsuario,
-            @Value("${ale.http.writes.usuarios-uc18-enabled:false}") boolean habilitarGestionRoles) {
+            @Value("${ale.http.writes.usuarios-uc18-enabled:false}") boolean habilitarGestionRoles,
+            @Value("${ale.http.writes.usuarios-uc55-enabled:false}") boolean habilitarEstadoUsuario) {
         http.securityMatcher("/api/v1/**");
         // La API no autentica cookies. El sitio web (otra cadena) conserva CSRF.
         http.csrf(csrf -> csrf.ignoringRequestMatchers("/api/v1/**"));
@@ -83,6 +84,13 @@ public class SeguridadHttpInterna {
                     .access((auth,context) ->
                         new org.springframework.security.authorization.AuthorizationDecision(
                             habilitarGestionRoles && auth.get().isAuthenticated() &&
+                            auth.get().getAuthorities().stream().anyMatch(
+                                rol -> ROL_ADMINISTRADOR.equals(rol.getAuthority()))))
+                // UC55: estado de cuenta, exclusivo ADMIN con su propio gate.
+                .requestMatchers(HttpMethod.PATCH, "/api/v1/usuarios/*/estado")
+                    .access((auth,context) ->
+                        new org.springframework.security.authorization.AuthorizationDecision(
+                            habilitarEstadoUsuario && auth.get().isAuthenticated() &&
                             auth.get().getAuthorities().stream().anyMatch(
                                 rol -> ROL_ADMINISTRADOR.equals(rol.getAuthority()))))
                 // B4-03-01: flag falso por defecto; no hay autorizaciones

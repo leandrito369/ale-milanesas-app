@@ -38,7 +38,8 @@ class PrecondicionesDespliegueTest {
             "ale.http.writes.productos-uc47-enabled",
             "ale.http.writes.productos-uc48-enabled",
             "ale.http.writes.usuarios-uc17-enabled",
-            "ale.http.writes.usuarios-uc18-enabled"})
+            "ale.http.writes.usuarios-uc18-enabled",
+            "ale.http.writes.usuarios-uc55-enabled"})
     void rechazaCualquierEscrituraExperimentalEnProduccion(String propiedad) {
         var validador=new PrecondicionesDespliegue(base().withProperty(propiedad,"true"));
         assertThrows(IllegalStateException.class,
@@ -90,6 +91,18 @@ class PrecondicionesDespliegueTest {
             ctx.register(GestionRolesHttpController.class);
             ctx.refresh();
             assertTrue(ctx.getBeansOfType(GestionRolesHttpController.class).isEmpty());
+        }
+    }
+
+    @Test void controladorUc55NoExisteEnProdAunqueSeSoliciteSuBandera() {
+        try(var ctx=new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
+            ctx.getEnvironment().setActiveProfiles("prod");
+            ctx.getEnvironment().getPropertySources().addFirst(
+                    new org.springframework.core.env.MapPropertySource("flag-uc55",
+                        java.util.Map.of("ale.http.writes.usuarios-uc55-enabled","true")));
+            ctx.register(EstadoUsuarioHttpController.class);
+            ctx.refresh();
+            assertTrue(ctx.getBeansOfType(EstadoUsuarioHttpController.class).isEmpty());
         }
     }
 }
