@@ -102,6 +102,9 @@ public class SeguridadHttpInterna {
                 // UC56 contextual + UC37: lectura mínima comercial sólo Admin.
                 .requestMatchers(HttpMethod.GET, "/api/v1/usuarios/proveedores")
                     .hasAuthority(ROL_ADMINISTRADOR)
+                // UC56 directo: busqueda de cuentas solo ADMIN, sin herencia de otros roles.
+                .requestMatchers(HttpMethod.GET, "/api/v1/usuarios")
+                    .hasAuthority(ROL_ADMINISTRADOR)
                 .requestMatchers(HttpMethod.GET, "/api/v1/clientes")
                     .hasAnyAuthority(ROL_ADMINISTRADOR,ROL_VENDEDOR)
                 .requestMatchers(HttpMethod.GET, "/api/v1/productos")

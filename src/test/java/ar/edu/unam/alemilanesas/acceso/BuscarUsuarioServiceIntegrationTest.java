@@ -108,4 +108,10 @@ class BuscarUsuarioServiceIntegrationTest {
         assertThrows(IllegalArgumentException.class, () -> servicio.buscarUsuario(sesionAdmin,
                 new CriterioBusquedaUsuario(null,null,"SUPERADMIN")));
     }
+
+    @Test
+    void administradorNoPuedeEnumerarUsuariosSinCriterios() {
+        assertThrows(IllegalArgumentException.class, () -> servicio.buscarUsuario(sesionAdmin,
+                new CriterioBusquedaUsuario(null, null, null)));
+    }
 }
