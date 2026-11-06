@@ -8,18 +8,14 @@ import java.util.Set;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
-import org.springframework.dao.DataAccessException;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /** I1-01 / UC-17 (+ UC-18 inicial): alta administrativa solo en pruebas no productivas. */
 @RestController
@@ -78,30 +74,5 @@ public class RegistroUsuarioHttpController {
         return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
                 .body(new AltaConfirmada(creado.idUsuario(), creado.estado(),
                         creado.cambioCredencialPendiente(), creado.roles()));
-    }
-}
-
-/** Errores deliberadamente neutros: no devolver nombres existentes, hashes ni SQL. */
-@RestControllerAdvice(assignableTypes = RegistroUsuarioHttpController.class)
-class ErroresRegistroUsuarioHttp {
-    private static final String CODIGO = "codigo";
-
-    @ExceptionHandler({IllegalArgumentException.class, HttpMessageNotReadableException.class})
-    ResponseEntity<Map<String, String>> invalidos() {
-        return ResponseEntity.badRequest().cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO, "SOLICITUD_INVALIDA"));
-    }
-
-    @ExceptionHandler(SecurityException.class)
-    ResponseEntity<Map<String, String>> prohibido() {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO, "OPERACION_PROHIBIDA"));
-    }
-
-    @ExceptionHandler(DataAccessException.class)
-    ResponseEntity<Map<String, String>> persistencia() {
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO, "PERSISTENCIA_NO_DISPONIBLE"));
     }
 }

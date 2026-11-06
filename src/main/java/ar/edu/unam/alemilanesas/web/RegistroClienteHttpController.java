@@ -1,17 +1,16 @@
 package ar.edu.unam.alemilanesas.web;
 
 import ar.edu.unam.alemilanesas.maestros.GestionClientesService;
+import ar.edu.unam.alemilanesas.web.comun.ErroresHttpGlobales;
 import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
-import org.springframework.dao.DataAccessException;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -57,44 +56,18 @@ public class RegistroClienteHttpController {
         }
         return actor.idSesion();
     }
-
-
 }
 
 /** Respuestas deliberadamente genéricas; jamás devuelven SQL ni PII. */
 @RestControllerAdvice(assignableTypes=RegistroClienteHttpController.class)
-class ErroresRegistroClienteHttp {
-    private static final String CODIGO = "codigo";
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    ResponseEntity<Map<String,String>> invalidos(IllegalArgumentException ex) {
-        boolean repetido=ex instanceof GestionClientesService.ClienteDuplicadoException;
-        boolean inactivo=repetido &&
-                ((GestionClientesService.ClienteDuplicadoException)ex).inactivo();
-        String codigo;
-        if (inactivo) {
-            codigo="CLIENTE_INACTIVO_REQUIERE_ADMINISTRADOR";
-        } else if (repetido) {
-            codigo="CLIENTE_DUPLICADO";
-        } else {
-            codigo="SOLICITUD_INVALIDA";
+class ErroresRegistroClienteHttp extends ErroresHttpGlobales {
+    @Override
+    public ResponseEntity<Map<String,String>> invalidos(Exception ex) {
+        if (ex instanceof GestionClientesService.ClienteDuplicadoException dup) {
+            return respuesta(HttpStatus.CONFLICT, dup.inactivo()
+                    ? "CLIENTE_INACTIVO_REQUIERE_ADMINISTRADOR"
+                    : "CLIENTE_DUPLICADO");
         }
-        return ResponseEntity.status(repetido ? HttpStatus.CONFLICT : HttpStatus.BAD_REQUEST)
-                .cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,codigo));
-    }
-
-    @ExceptionHandler(SecurityException.class)
-    ResponseEntity<Map<String,String>> prohibido() {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"OPERACION_PROHIBIDA"));
-    }
-
-    @ExceptionHandler(DataAccessException.class)
-    ResponseEntity<Map<String,String>> persistencia() {
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"PERSISTENCIA_NO_DISPONIBLE"));
+        return super.invalidos(ex);
     }
 }

@@ -6,7 +6,6 @@ import java.util.Set;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
-import org.springframework.dao.DataAccessException;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -66,42 +65,19 @@ public class ModificacionProductoHttpController {
 
 /** Nunca copiar mensajes de excepcion/SQL ni atributos financieros a la respuesta. */
 @RestControllerAdvice(assignableTypes=ModificacionProductoHttpController.class)
-class ErroresModificacionProductoHttp {
-    private static final String CODIGO="codigo";
-
-    @ExceptionHandler(GestionProductoService.ProductoDuplicadoException.class)
-    ResponseEntity<Map<String,Object>> duplicado(GestionProductoService.ProductoDuplicadoException ex) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"PRODUCTO_DUPLICADO","coincidencia",ex.coincidencia()));
-    }
-
+class ErroresModificacionProductoHttp extends ErroresRegistroProductoHttp {
+    @Override
     @ExceptionHandler({IllegalArgumentException.class,HttpMessageNotReadableException.class})
-    ResponseEntity<Map<String,String>> invalidos(Exception ex) {
-        HttpStatus estado=HttpStatus.BAD_REQUEST;
-        String codigo="SOLICITUD_INVALIDA";
+    public ResponseEntity<Map<String,String>> invalidos(Exception ex) {
         if (ex instanceof IllegalArgumentException && ex.getMessage()!=null) {
             String msg=ex.getMessage();
             if ("Producto inexistente".equals(msg)) {
-                estado=HttpStatus.NOT_FOUND;
-                codigo="PRODUCTO_NO_ENCONTRADO";
-            } else if (msg.startsWith("Producto con historia:")) {
-                estado=HttpStatus.CONFLICT;
-                codigo="PRODUCTO_CON_DEPENDENCIAS";
+                return respuesta(HttpStatus.NOT_FOUND,"PRODUCTO_NO_ENCONTRADO");
+            }
+            if (msg.startsWith("Producto con historia:")) {
+                return respuesta(HttpStatus.CONFLICT,"PRODUCTO_CON_DEPENDENCIAS");
             }
         }
-        return ResponseEntity.status(estado).cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,codigo));
-    }
-
-    @ExceptionHandler(SecurityException.class)
-    ResponseEntity<Map<String,String>> prohibido() {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"OPERACION_PROHIBIDA"));
-    }
-
-    @ExceptionHandler(DataAccessException.class)
-    ResponseEntity<Map<String,String>> persistencia() {
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"PERSISTENCIA_NO_DISPONIBLE"));
+        return super.invalidos(ex);
     }
 }

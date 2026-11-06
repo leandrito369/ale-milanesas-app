@@ -1,17 +1,16 @@
 package ar.edu.unam.alemilanesas.web;
 
 import ar.edu.unam.alemilanesas.maestros.GestionClientesService;
+import ar.edu.unam.alemilanesas.web.comun.ErroresHttpGlobales;
 import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
-import org.springframework.dao.DataAccessException;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -60,35 +59,15 @@ public class ModificacionClienteHttpController {
 
 /** Sin nombres, teléfonos ni detalles SQL en las respuestas de error. */
 @RestControllerAdvice(assignableTypes=ModificacionClienteHttpController.class)
-class ErroresModificacionClienteHttp {
-    private static final String CODIGO="codigo";
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    ResponseEntity<Map<String,String>> invalidos(IllegalArgumentException ex) {
-        HttpStatus estado=HttpStatus.BAD_REQUEST;
-        String codigo="SOLICITUD_INVALIDA";
+class ErroresModificacionClienteHttp extends ErroresHttpGlobales {
+    @Override
+    public ResponseEntity<Map<String,String>> invalidos(Exception ex) {
         if (ex instanceof GestionClientesService.ClienteDuplicadoException) {
-            estado=HttpStatus.CONFLICT;
-            codigo="CLIENTE_DUPLICADO";
-        } else if ("Cliente inexistente".equals(ex.getMessage())) {
-            estado=HttpStatus.NOT_FOUND;
-            codigo="CLIENTE_NO_ENCONTRADO";
+            return respuesta(HttpStatus.CONFLICT, "CLIENTE_DUPLICADO");
         }
-        return ResponseEntity.status(estado).cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,codigo));
-    }
-
-    @ExceptionHandler(SecurityException.class)
-    ResponseEntity<Map<String,String>> prohibido() {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"OPERACION_PROHIBIDA"));
-    }
-
-    @ExceptionHandler(DataAccessException.class)
-    ResponseEntity<Map<String,String>> persistencia() {
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"PERSISTENCIA_NO_DISPONIBLE"));
+        if ("Cliente inexistente".equals(ex != null ? ex.getMessage() : null)) {
+            return respuesta(HttpStatus.NOT_FOUND, "CLIENTE_NO_ENCONTRADO");
+        }
+        return super.invalidos(ex);
     }
 }
