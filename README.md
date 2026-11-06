@@ -85,3 +85,7 @@ El procedimiento de despliegue, límites del control, matriz de aceptación y la
 ## I1-01 / B4 — UC56 Buscar Usuario (corte de consulta ADMIN)
 
 El corte [Issue #54](https://github.com/leandrito369/ale-milanesas-app/issues/54) en la rama `feat/i1-01-uc56-buscar-usuario-http-2026-11-05` prepara `GET /api/v1/usuarios` para ADMINISTRADOR, con al menos un filtro (`nombreUsuario`, `estado`, `codigoRol`), proyección de siete campos REV02 ratificada por Lean y sin secretos. El servicio B3 rechaza búsquedas sin filtros; el endpoint comercial `/api/v1/usuarios/proveedores` se conserva. [Trazabilidad, contrato y pruebas previstas](docs/implementation/I1_01_B4_UC56_BUSCAR_USUARIO_HTTP_2026-11-05.md). **Estado: sin compilación local; CI y revisión humana pendientes; no habilita despliegue.** La RD-UC56-001 del repositorio documental está pendiente de integración.
+
+## I1-01 / B4 — UC17 Crear Usuario (corte en revisión, no productivo)
+
+[Issue #56](https://github.com/leandrito369/ale-milanesas-app/issues/56): propuesta de `POST /api/v1/usuarios`, exclusiva de ADMINISTRADOR, que reutiliza `CrearUsuarioService` y la inclusión UC-18 para asignación inicial de Roles. Tiene bandera `ale.http.writes.usuarios-uc17-enabled=false` por defecto, exclusión `!prod` y veto de arranque productivo. [Contrato HTTP, pruebas previstas y trazabilidad](docs/implementation/I1_01_B4_UC17_CREAR_USUARIO_HTTP_2026-11-05.md). **Compilación local no ejecutada; delegada a CI según autorización de Lean.** No altera MR5, las migraciones ni el despliegue pausado (#28).
