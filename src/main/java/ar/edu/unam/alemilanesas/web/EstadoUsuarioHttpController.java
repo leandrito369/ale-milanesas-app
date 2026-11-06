@@ -1,13 +1,13 @@
 package ar.edu.unam.alemilanesas.web;
 
 import ar.edu.unam.alemilanesas.acceso.CambiarEstadoUsuarioService;
+import ar.edu.unam.alemilanesas.web.comun.ErroresHttpGlobales;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
-import org.springframework.dao.DataAccessException;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -62,9 +62,7 @@ public class EstadoUsuarioHttpController {
 
 /** Respuestas neutras, salvo los IDs de Pedidos que exige A4/RD-RP009-001. */
 @RestControllerAdvice(assignableTypes=EstadoUsuarioHttpController.class)
-class ErroresEstadoUsuarioHttp {
-    private static final String CODIGO="codigo";
-
+class ErroresEstadoUsuarioHttp extends ErroresHttpGlobales {
     @ExceptionHandler(CambiarEstadoUsuarioService.RepartidorConPedidosPendientesException.class)
     ResponseEntity<Map<String,Object>> pedidosAReasignar(
             CambiarEstadoUsuarioService.RepartidorConPedidosPendientesException ex) {
@@ -73,41 +71,24 @@ class ErroresEstadoUsuarioHttp {
                         "pedidosPendientes",ex.pedidosPendientes()));
     }
 
+    @Override
     @ExceptionHandler({IllegalArgumentException.class,HttpMessageNotReadableException.class})
-    ResponseEntity<Map<String,String>> invalidos(Exception ex) {
-        HttpStatus estado=HttpStatus.BAD_REQUEST;
-        String codigo="SOLICITUD_INVALIDA";
+    public ResponseEntity<Map<String,String>> invalidos(Exception ex) {
         if (ex instanceof IllegalArgumentException && ex.getMessage()!=null) {
             if ("Usuario inexistente".equals(ex.getMessage())) {
-                estado=HttpStatus.NOT_FOUND;
-                codigo="USUARIO_NO_ENCONTRADO";
-            } else if ("No puede deshabilitarse el ultimo ADMINISTRADOR habilitado"
+                return respuesta(HttpStatus.NOT_FOUND,"USUARIO_NO_ENCONTRADO");
+            }
+            if ("No puede deshabilitarse el ultimo ADMINISTRADOR habilitado"
                     .equals(ex.getMessage())
                     || "El Proveedor ya posee otra cuenta habilitada".equals(ex.getMessage())) {
-                estado=HttpStatus.CONFLICT;
-                codigo="ESTADO_USUARIO_BLOQUEADO";
+                return conflicto();
             }
         }
-        return ResponseEntity.status(estado).cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,codigo));
-    }
-
-    @ExceptionHandler(SecurityException.class)
-    ResponseEntity<Map<String,String>> prohibido() {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"OPERACION_PROHIBIDA"));
+        return super.invalidos(ex);
     }
 
     @ExceptionHandler(IllegalStateException.class)
     ResponseEntity<Map<String,String>> conflicto() {
-        return ResponseEntity.status(HttpStatus.CONFLICT).cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"ESTADO_USUARIO_BLOQUEADO"));
-    }
-
-    @ExceptionHandler(DataAccessException.class)
-    ResponseEntity<Map<String,String>> persistencia() {
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"PERSISTENCIA_NO_DISPONIBLE"));
+        return respuesta(HttpStatus.CONFLICT,"ESTADO_USUARIO_BLOQUEADO");
     }
 }

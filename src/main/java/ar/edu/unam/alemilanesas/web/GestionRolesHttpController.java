@@ -1,6 +1,7 @@
 package ar.edu.unam.alemilanesas.web;
 
 import ar.edu.unam.alemilanesas.acceso.GestionarAsignacionesRolesService;
+import ar.edu.unam.alemilanesas.web.comun.ErroresHttpGlobales;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -8,11 +9,8 @@ import java.util.Set;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
-import org.springframework.dao.DataAccessException;
 import org.springframework.http.CacheControl;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -79,25 +77,9 @@ public class GestionRolesHttpController {
 
 /** Errores HTTP neutros: sin SQL, credenciales, tokens ni detalle de roles. */
 @RestControllerAdvice(assignableTypes=GestionRolesHttpController.class)
-class ErroresGestionRolesHttp {
-    private static final String CODIGO="codigo";
-
-    @ExceptionHandler({IllegalArgumentException.class,HttpMessageNotReadableException.class})
-    ResponseEntity<Map<String,String>> invalidos() {
-        return ResponseEntity.badRequest().cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"SOLICITUD_INVALIDA"));
-    }
-
-    @ExceptionHandler(SecurityException.class)
-    ResponseEntity<Map<String,String>> prohibido() {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"OPERACION_PROHIBIDA"));
-    }
-
-    @ExceptionHandler({DataAccessException.class,IllegalStateException.class})
-    ResponseEntity<Map<String,String>> persistencia() {
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"PERSISTENCIA_NO_DISPONIBLE"));
+class ErroresGestionRolesHttp extends ErroresHttpGlobales {
+    @ExceptionHandler(IllegalStateException.class)
+    ResponseEntity<Map<String,String>> estadoInvalido() {
+        return persistencia();
     }
 }

@@ -1,16 +1,15 @@
 package ar.edu.unam.alemilanesas.web;
 
 import ar.edu.unam.alemilanesas.maestros.GestionProductoService;
+import ar.edu.unam.alemilanesas.web.comun.ErroresHttpGlobales;
 import java.util.Map;
 import java.util.Set;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
-import org.springframework.dao.DataAccessException;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -64,30 +63,10 @@ public class RegistroProductoHttpController {
 
 /** Nunca copiar mensajes de excepcion/SQL ni atributos financieros a la respuesta. */
 @RestControllerAdvice(assignableTypes=RegistroProductoHttpController.class)
-class ErroresRegistroProductoHttp {
-    private static final String CODIGO="codigo";
-
+class ErroresRegistroProductoHttp extends ErroresHttpGlobales {
     @ExceptionHandler(GestionProductoService.ProductoDuplicadoException.class)
     ResponseEntity<Map<String,Object>> duplicado(GestionProductoService.ProductoDuplicadoException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT).cacheControl(CacheControl.noStore())
                 .body(Map.of(CODIGO,"PRODUCTO_DUPLICADO","coincidencia",ex.coincidencia()));
-    }
-
-    @ExceptionHandler({IllegalArgumentException.class,HttpMessageNotReadableException.class})
-    ResponseEntity<Map<String,String>> invalidos() {
-        return ResponseEntity.badRequest().cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"SOLICITUD_INVALIDA"));
-    }
-
-    @ExceptionHandler(SecurityException.class)
-    ResponseEntity<Map<String,String>> prohibido() {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"OPERACION_PROHIBIDA"));
-    }
-
-    @ExceptionHandler(DataAccessException.class)
-    ResponseEntity<Map<String,String>> persistencia() {
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"PERSISTENCIA_NO_DISPONIBLE"));
     }
 }

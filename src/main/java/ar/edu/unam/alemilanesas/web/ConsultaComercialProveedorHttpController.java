@@ -2,15 +2,14 @@ package ar.edu.unam.alemilanesas.web;
 
 import ar.edu.unam.alemilanesas.acceso.ConsultaComercialProveedorService;
 import ar.edu.unam.alemilanesas.acceso.TokenSesionInterna;
+import ar.edu.unam.alemilanesas.web.comun.ErroresHttpGlobales;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.dao.DataAccessException;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
-import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -49,26 +48,9 @@ public class ConsultaComercialProveedorHttpController {
 
 /** Errores neutros: no filtrar datos comerciales ni detalles de SQL. */
 @RestControllerAdvice(assignableTypes=ConsultaComercialProveedorHttpController.class)
-class ErroresConsultaComercialProveedorHttp {
-    private static final String CODIGO="codigo";
-
-    @ExceptionHandler(IllegalArgumentException.class)
-    ResponseEntity<Map<String,String>> invalidos() {
-        return ResponseEntity.badRequest().cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"SOLICITUD_INVALIDA"));
-    }
-
-    @ExceptionHandler(DataAccessException.class)
-    ResponseEntity<Map<String,String>> persistencia() {
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"CONSULTA_NO_DISPONIBLE"));
-    }
-
-    @ExceptionHandler(SecurityException.class)
-    ResponseEntity<Map<String,String>> prohibido() {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"OPERACION_PROHIBIDA"));
+class ErroresConsultaComercialProveedorHttp extends ErroresHttpGlobales {
+    @Override
+    public ResponseEntity<Map<String,String>> persistencia() {
+        return respuesta(HttpStatus.SERVICE_UNAVAILABLE, "CONSULTA_NO_DISPONIBLE");
     }
 }

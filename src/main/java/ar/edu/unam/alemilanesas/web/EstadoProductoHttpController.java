@@ -1,13 +1,13 @@
 package ar.edu.unam.alemilanesas.web;
 
 import ar.edu.unam.alemilanesas.maestros.GestionProductoService;
+import ar.edu.unam.alemilanesas.web.comun.ErroresHttpGlobales;
 import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
-import org.springframework.dao.DataAccessException;
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -59,39 +59,21 @@ public class EstadoProductoHttpController {
 
 /** Respuestas acotadas: nunca mostrar detalles SQL, credenciales ni datos del Producto. */
 @RestControllerAdvice(assignableTypes=EstadoProductoHttpController.class)
-class ErroresEstadoProductoHttp {
-    private static final String CODIGO="codigo";
-
+class ErroresEstadoProductoHttp extends ErroresHttpGlobales {
+    @Override
     @ExceptionHandler({IllegalArgumentException.class,HttpMessageNotReadableException.class})
-    ResponseEntity<Map<String,String>> invalidos(Exception ex) {
-        HttpStatus estado=HttpStatus.BAD_REQUEST;
-        String codigo="SOLICITUD_INVALIDA";
+    public ResponseEntity<Map<String,String>> invalidos(Exception ex) {
         if (ex instanceof IllegalArgumentException && ex.getMessage()!=null) {
             String mensaje=ex.getMessage();
             if ("Producto inexistente".equals(mensaje)) {
-                estado=HttpStatus.NOT_FOUND;
-                codigo="PRODUCTO_NO_ENCONTRADO";
-            } else if ("Ficha inconsistente: corregir mediante UC-47".equals(mensaje)
+                return respuesta(HttpStatus.NOT_FOUND,"PRODUCTO_NO_ENCONTRADO");
+            }
+            if ("Ficha inconsistente: corregir mediante UC-47".equals(mensaje)
                     || "Unidad de venta inexistente".equals(mensaje)
                     || "Datos obligatorios/tipo/unidad inválidos".equals(mensaje)) {
-                estado=HttpStatus.CONFLICT;
-                codigo="PRODUCTO_FICHA_INVALIDA";
+                return respuesta(HttpStatus.CONFLICT,"PRODUCTO_FICHA_INVALIDA");
             }
         }
-        return ResponseEntity.status(estado).cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,codigo));
-    }
-
-    @ExceptionHandler(SecurityException.class)
-    ResponseEntity<Map<String,String>> prohibido() {
-        return ResponseEntity.status(HttpStatus.FORBIDDEN).cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"OPERACION_PROHIBIDA"));
-    }
-
-    @ExceptionHandler(DataAccessException.class)
-    ResponseEntity<Map<String,String>> persistencia() {
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-                .cacheControl(CacheControl.noStore())
-                .body(Map.of(CODIGO,"PERSISTENCIA_NO_DISPONIBLE"));
+        return super.invalidos(ex);
     }
 }
