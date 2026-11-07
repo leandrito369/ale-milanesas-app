@@ -109,6 +109,22 @@ class TrazabilidadPartidasMigrationTest {
         return value;
     }
 
+    private void rechaza(String sqlState, Runnable operation) {
+        jdbc.execute((org.springframework.jdbc.core.ConnectionCallback<Void>) connection -> {
+            var savepoint = connection.setSavepoint();
+            try {
+                var error = assertThrows(DataIntegrityViolationException.class, operation::run);
+                var cause = assertInstanceOf(java.sql.SQLException.class, error.getMostSpecificCause());
+                assertEquals(sqlState, cause.getSQLState());
+            } finally {
+                // Cada rechazo esperado aborta la transacción hasta recuperar el savepoint.
+                connection.rollback(savepoint);
+                connection.releaseSavepoint(savepoint);
+            }
+            return null;
+        });
+    }
+
     private static String sha256Classpath(String path) throws Exception {
         MessageDigest digest = MessageDigest.getInstance("SHA-256");
         try (InputStream in = new ClassPathResource(path).getInputStream()) {
@@ -140,7 +156,7 @@ class TrazabilidadPartidasMigrationTest {
 
     @Test
     void checksFuncionanEnPartidaInsumo() {
-        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
+        rechaza("23514", () -> jdbc.update("""
             INSERT INTO "PARTIDA_INSUMO" (
                 "idInsumo", "codigoLote", "fechaHoraRegistro",
                 "cantidadInicial", "cantidadDisponible"
@@ -148,7 +164,7 @@ class TrazabilidadPartidasMigrationTest {
             VALUES (9001, 'LOTE-CERO', now(), 0.000, 0.000)
             """));
 
-        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
+        rechaza("23514", () -> jdbc.update("""
             INSERT INTO "PARTIDA_INSUMO" (
                 "idInsumo", "codigoLote", "fechaHoraRegistro",
                 "cantidadInicial", "cantidadDisponible"
@@ -156,7 +172,7 @@ class TrazabilidadPartidasMigrationTest {
             VALUES (9001, 'LOTE-EXCESO', now(), 10.000, 10.001)
             """));
 
-        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
+        rechaza("23514", () -> jdbc.update("""
             INSERT INTO "PARTIDA_INSUMO" (
                 "idInsumo", "codigoLote", "fechaFabricacion", "fechaVencimiento",
                 "fechaHoraRegistro", "cantidadInicial", "cantidadDisponible"
@@ -190,7 +206,7 @@ class TrazabilidadPartidasMigrationTest {
             """);
 
         // Rechaza partida de insumo 9002 imputada a movimiento del insumo 9001
-        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
+        rechaza("23503", () -> jdbc.update("""
             INSERT INTO "DETALLE_MOVIMIENTO_PARTIDA" (
                 "idMovimientoInsumo", "idPartidaInsumo", "idInsumo", "cantidadAplicada"
             )
@@ -198,7 +214,7 @@ class TrazabilidadPartidasMigrationTest {
             """));
 
         // Rechaza declarar insumo 9002 cuando el movimiento 9201 pertenece a 9001
-        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
+        rechaza("23503", () -> jdbc.update("""
             INSERT INTO "DETALLE_MOVIMIENTO_PARTIDA" (
                 "idMovimientoInsumo", "idPartidaInsumo", "idInsumo", "cantidadAplicada"
             )
@@ -218,6 +234,11 @@ class TrazabilidadPartidasMigrationTest {
     @Test
     void backfillCreoPartidasBackfillV2ParaInsumosConStockPositivo() {
         String schemaBackfill = "ale_v3_backfill_test";
+        // Confirmar la fixture antes del DDL: la transacción del test no debe
+        // retener bloqueos sobre INSUMO mientras Flyway agrega su FK desde otra conexión.
+        JdbcTemplate backfill = new JdbcTemplate(
+                new org.springframework.jdbc.datasource.DriverManagerDataSource(
+                        database.getJdbcUrl(), database.getUsername(), database.getPassword()));
         Flyway.configure()
                 .dataSource(dataSource)
                 .createSchemas(true)
@@ -228,11 +249,11 @@ class TrazabilidadPartidasMigrationTest {
                 .load()
                 .migrate();
 
-        jdbc.update("""
+        backfill.update("""
             INSERT INTO ale_v3_backfill_test."UNIDAD_MEDIDA" ("codigoUnidad", "nombre")
             VALUES ('KG', 'Kilogramo')
             """);
-        jdbc.update("""
+        backfill.update("""
             INSERT INTO ale_v3_backfill_test."INSUMO" (
                 "idInsumo", "nombre", "codigoUnidadMedida",
                 "stockActual", "umbralMinimo", "nivelObjetivoReposicion",
@@ -347,7 +368,7 @@ class TrazabilidadPartidasMigrationTest {
             )
             """);
 
-        assertThrows(DataIntegrityViolationException.class, () -> jdbc.update("""
+        rechaza("23514", () -> jdbc.update("""
             INSERT INTO "DETALLE_MOVIMIENTO_PARTIDA" (
                 "idMovimientoInsumo", "idPartidaInsumo", "idInsumo", "cantidadAplicada"
             )
