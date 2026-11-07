@@ -103,3 +103,9 @@ El corte [Issue #54](https://github.com/leandrito369/ale-milanesas-app/issues/54
 Corte no-prod exclusivo de Responsable de Producción, con orden obligatoria,
 unidad base y trazabilidad MR-6. El endpoint permanece apagado por defecto.
 [Flujo, fuentes, límites y pruebas reproducibles](docs/implementation/B4_04_UC08_INSUMO_INGRESO_STOCK.md).
+
+## B4-05 — UC08 REVENTA: ingreso de stock por compra
+
+Recepción no-prod exclusiva de Producción, con proveedor directo obligatorio,
+promedio móvil decimal y sin Orden de Compra. Apagada por defecto.
+[Fuentes, flujo y pruebas reproducibles](docs/implementation/B4_05_UC08_REVENTA_INGRESO_STOCK.md).
