@@ -35,3 +35,8 @@ server:
         secure: true
         http-only: true
         same-site: strict
+
+ale:
+  http:
+    writes:
+      compras-uc08-insumo-enabled: false

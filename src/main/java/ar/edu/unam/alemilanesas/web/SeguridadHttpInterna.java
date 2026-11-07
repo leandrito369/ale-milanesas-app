@@ -45,6 +45,7 @@ public class SeguridadHttpInterna {
     // Cadena /web/** conserva CSRF y prueba negativa de cookies en API.
     @SuppressWarnings("java:S4502")
     SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones,
+            @Value("${ale.http.writes.compras-uc08-insumo-enabled:false}") boolean habilitarIngresoStockInsumo,
             @Value("${ale.http.writes.clientes-uc02-enabled:false}") boolean habilitarAltaCliente,
             @Value("${ale.http.writes.clientes-uc32-enabled:false}") boolean habilitarModificarCliente,
             @Value("${ale.http.writes.clientes-uc38-enabled:false}") boolean habilitarEstadoCliente,
@@ -149,6 +150,13 @@ public class SeguridadHttpInterna {
                                 rol -> ROL_ADMINISTRADOR.equals(rol.getAuthority()))))
                 .requestMatchers(HttpMethod.GET,"/api/v1/insumos","/api/v1/unidades")
                     .hasAnyAuthority(ROL_ADMINISTRADOR,"RESPONSABLE_PRODUCCION")
+                // UC08 INSUMO: exclusivo Responsable de Producción, gate independiente.
+                .requestMatchers(HttpMethod.POST, "/api/v1/compras/recepciones-insumo")
+                    .access((auth,context) ->
+                        new org.springframework.security.authorization.AuthorizationDecision(
+                            habilitarIngresoStockInsumo && auth.get().isAuthenticated() &&
+                            auth.get().getAuthorities().stream().anyMatch(
+                                rol -> "RESPONSABLE_PRODUCCION".equals(rol.getAuthority()))))
                 .anyRequest().denyAll());
         http.exceptionHandling(e->e
                 .authenticationEntryPoint((req,res,ex)->rechazar(res))

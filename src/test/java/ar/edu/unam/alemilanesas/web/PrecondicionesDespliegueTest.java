@@ -31,7 +31,8 @@ class PrecondicionesDespliegueTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings={"ale.http.writes.clientes-uc02-enabled",
+    @ValueSource(strings={"ale.http.writes.compras-uc08-insumo-enabled",
+            "ale.http.writes.clientes-uc02-enabled",
             "ale.http.writes.clientes-uc32-enabled",
             "ale.http.writes.clientes-uc38-enabled",
             "ale.http.writes.productos-uc30-enabled",
