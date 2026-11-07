@@ -34,8 +34,9 @@ class RegistrarIngresoStockInsumoServiceIntegrationTest {
     void igual(String esperado,BigDecimal actual) { assertEquals(0,new BigDecimal(esperado).compareTo(actual)); }
     void stock(String esperado) { igual(esperado,numero("SELECT \"stockActual\" FROM \"INSUMO\" WHERE \"idInsumo\"=?",f.base)); }
     void rechazo(String mensaje,RegistrarIngresoStockInsumoService.DatosIngreso d) {
+        var sesion=f.produccion();
         assertEquals(mensaje,assertThrows(IllegalArgumentException.class,
-                ()->servicio.registrarIngresoStockPorCompra(f.produccion(),d)).getMessage());
+                ()->servicio.registrarIngresoStockPorCompra(sesion,d)).getMessage());
         stock("10");
     }
     @Test void ingresoSimpleCreaRecepcionMovimientoPartidaYDetalle() {
@@ -108,10 +109,11 @@ class RegistrarIngresoStockInsumoServiceIntegrationTest {
         var r=ingreso("5");
         igual("5",numero("SELECT \"cantidadDisponible\" FROM \"PARTIDA_INSUMO\" WHERE \"idPartidaInsumo\"=?",r.idPartidaInsumo()));
         // Un segundo ingreso sobre una partida ya llena debe ser rechazado por el CHECK de V3.
+        long movimiento=r.idMovimientoInsumo();
         assertThrows(DataAccessException.class,()->j.update("""
                 UPDATE "DETALLE_MOVIMIENTO_PARTIDA" SET "cantidadAplicada"="cantidadAplicada"+1
                 WHERE "idMovimientoInsumo"=?
-                """,r.idMovimientoInsumo()));
+                """,movimiento));
         igual("5",numero("SELECT \"cantidadDisponible\" FROM \"PARTIDA_INSUMO\" WHERE \"idPartidaInsumo\"=?",r.idPartidaInsumo()));
     }
     @Test void rollbackSiFallaMitadNoPersisteNada() {
@@ -147,8 +149,11 @@ class RegistrarIngresoStockInsumoServiceIntegrationTest {
         j.update("UPDATE \"INSUMO\" SET \"activo\"=false WHERE \"idInsumo\"=?",f.base);rechazo("Insumo inactivo",d);
     }
     @Test void rechazaRolVendedorRepartidorProveedor() {
-        for (String rol:new String[]{"VENDEDOR","ADMINISTRADOR","REPARTIDOR","PROVEEDOR"})
-            assertThrows(SecurityException.class,()->servicio.registrarIngresoStockPorCompra(f.sesiones.get(rol),f.datos("5")));
-        assertThrows(SecurityException.class,()->servicio.registrarIngresoStockPorCompra(null,f.datos("5")));stock("10");
+        var datos=f.datos("5");
+        for (String rol:new String[]{"VENDEDOR","ADMINISTRADOR","REPARTIDOR","PROVEEDOR"}) {
+            var sesion=f.sesiones.get(rol);
+            assertThrows(SecurityException.class,()->servicio.registrarIngresoStockPorCompra(sesion,datos));
+        }
+        assertThrows(SecurityException.class,()->servicio.registrarIngresoStockPorCompra(null,datos));stock("10");
     }
 }

@@ -14,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 /** UC08 INSUMO, REV03B §7 / H01-H02 / RD-RP022-001 y MR-6. Sin REVENTA. */
 @Service
 public class RegistrarIngresoStockInsumoService {
+    private static final String ESTADO = "estado";
     private static final Set<String> PRODUCCION = Set.of("RESPONSABLE_PRODUCCION");
     private final NamedParameterJdbcTemplate sql;
     private final AutorizacionSesionInterna autorizacion;
@@ -59,8 +60,8 @@ public class RegistrarIngresoStockInsumoService {
                 """, p);
         if (ordenes.isEmpty()) throw new IllegalArgumentException("Orden de compra inexistente");
         var orden = ordenes.getFirst();
-        if ("CANCELADA".equals(orden.get("estado"))) throw new IllegalArgumentException("Orden cancelada");
-        if ("RECIBIDA".equals(orden.get("estado"))) throw new IllegalArgumentException("Orden ya recibida");
+        if ("CANCELADA".equals(orden.get(ESTADO))) throw new IllegalArgumentException("Orden cancelada");
+        if ("RECIBIDA".equals(orden.get(ESTADO))) throw new IllegalArgumentException("Orden ya recibida");
         if (((Number) orden.get("idInsumo")).longValue() != datos.idInsumo())
             throw new IllegalArgumentException("Orden de otro insumo");
         BigDecimal recibido = sql.queryForObject("""
@@ -80,9 +81,12 @@ public class RegistrarIngresoStockInsumoService {
                 SELECT GREATEST(clock_timestamp(), COALESCE(MAX("vigenteDesde") + interval '1 microsecond',
                     clock_timestamp())) FROM "COSTO_INSUMO_HISTORICO" WHERE "idInsumo"=:insumo
                 """, p, OffsetDateTime.class);
-        long recepcion = siguiente("RECEPCION_COMPRA", "idRecepcionCompra");
-        long movimiento = siguiente("MOVIMIENTO_INSUMO", "idMovimientoInsumo");
-        long partida = siguiente("PARTIDA_INSUMO", "idPartidaInsumo");
+        long recepcion = idValido(sql.getJdbcTemplate().queryForObject(
+                "SELECT COALESCE(MAX(\"idRecepcionCompra\"),0)+1 FROM \"RECEPCION_COMPRA\"", Long.class));
+        long movimiento = idValido(sql.getJdbcTemplate().queryForObject(
+                "SELECT COALESCE(MAX(\"idMovimientoInsumo\"),0)+1 FROM \"MOVIMIENTO_INSUMO\"", Long.class));
+        long partida = idValido(sql.getJdbcTemplate().queryForObject(
+                "SELECT COALESCE(MAX(\"idPartidaInsumo\"),0)+1 FROM \"PARTIDA_INSUMO\"", Long.class));
         Long secuencia = sql.queryForObject("""
                 SELECT COALESCE(MAX("numeroSecuenciaInsumo"),0)+1 FROM "MOVIMIENTO_INSUMO"
                 WHERE "idInsumo"=:insumo
@@ -135,7 +139,7 @@ public class RegistrarIngresoStockInsumoService {
             throw new IllegalStateException("Desglose de movimiento inconsistente");
         sql.update("UPDATE \"INSUMO\" SET \"stockActual\"=:stock WHERE \"idInsumo\"=:insumo", p);
         String estado = total.compareTo(ordenado) == 0 ? "RECIBIDA" : "PARCIALMENTE_RECIBIDA";
-        p.addValue("estado", estado);
+        p.addValue(ESTADO, estado);
         sql.update("UPDATE \"ORDEN_COMPRA\" SET \"estado\"=:estado WHERE \"idOrdenCompra\"=:orden", p);
         cerrarEpisodios(p);
         return new IngresoRegistrado(recepcion, movimiento, partida, estado);
@@ -154,10 +158,7 @@ public class RegistrarIngresoStockInsumoService {
                 """, p);
     }
 
-    private long siguiente(String tabla, String columna) {
-        // Identificadores exclusivamente constantes del servicio, nunca datos de entrada.
-        Long id = sql.getJdbcTemplate().queryForObject(
-                "SELECT COALESCE(MAX(\"" + columna + "\"),0)+1 FROM \"" + tabla + "\"", Long.class);
+    private static long idValido(Long id) {
         if (id == null || id <= 0) throw new IllegalStateException("Sin identificador");
         return id;
     }

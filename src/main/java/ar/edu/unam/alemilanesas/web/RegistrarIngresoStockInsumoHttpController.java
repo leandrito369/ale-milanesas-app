@@ -20,7 +20,8 @@ import org.springframework.web.bind.annotation.*;
 @Profile("!prod")
 @ConditionalOnProperty(prefix="ale.http.writes", name="compras-uc08-insumo-enabled", havingValue="true")
 public class RegistrarIngresoStockInsumoHttpController {
-    private static final Set<String> CAMPOS = Set.of("idInsumo", "idOrdenCompra", "cantidadRecibida",
+    private static final String ORDEN_COMPRA = "idOrdenCompra";
+    private static final Set<String> CAMPOS = Set.of("idInsumo", ORDEN_COMPRA, "cantidadRecibida",
             "codigoUnidadMedida", "costoUnitarioCompra", "comprobante");
     private final RegistrarIngresoStockInsumoService ingresos;
 
@@ -35,13 +36,13 @@ public class RegistrarIngresoStockInsumoHttpController {
             throw new SecurityException("Sesion no valida");
         if (datos == null || !CAMPOS.containsAll(datos.keySet()))
             throw new IllegalArgumentException("Solicitud invalida");
-        if (datos.get("idOrdenCompra") == null) throw new IllegalArgumentException("Orden de compra requerida");
+        if (datos.get(ORDEN_COMPRA) == null) throw new IllegalArgumentException("Orden de compra requerida");
         if (!datos.keySet().containsAll(CAMPOS)
                 || !(datos.get("codigoUnidadMedida") instanceof String unidad)
                 || !(datos.get("comprobante") instanceof String comprobante))
             throw new IllegalArgumentException("Solicitud invalida");
         var d = new RegistrarIngresoStockInsumoService.DatosIngreso(
-                entero(datos.get("idInsumo")), entero(datos.get("idOrdenCompra")),
+                entero(datos.get("idInsumo")), entero(datos.get(ORDEN_COMPRA)),
                 decimal(datos.get("cantidadRecibida")), unidad,
                 decimal(datos.get("costoUnitarioCompra")), comprobante);
         return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
