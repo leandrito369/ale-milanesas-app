@@ -51,8 +51,4 @@ UC30/47/48 aplican la [RD-UC30-001](https://github.com/leandrito369/ale-milanesa
 
 ## Adenda posterior G0 — RD-MR-PARTIDAS-001 (06/11/2026)
 
-UC08/09/28/31/36/42/51/64 aplican la [RD-MR-PARTIDAS-001](https://github.com/leandrito369/ale-milanesas/blob/<SHA_RD>/docs/01-gobierno/b0/RD_MR_PARTIDAS_001_AMPLIACION_MR_PARTIDA_INSUMO_2026-11-06.md), commit documental `<SHA_RD>`. Aclara trazabilidad física por partida/envase, vencimiento y apertura de Insumos; autoriza MR-6 (62 tablas) vía migración `V3__trazabilidad_partidas_insumo.sql`. No modifica el modelo físico MR5/F01 de G0. **G0 y MR5/F01 permanecen inmutables.**
-
-## Adenda posterior G0 — RD-MR-PARTIDAS-001 (06/11/2026)
-
 UC08/09/28/31/36/42/51/64 aplican la [RD-MR-PARTIDAS-001](https://github.com/leandrito369/ale-milanesas/blob/cd603d25addb4312d9bee62ec03514760f7e2894/docs/01-gobierno/b0/RD_MR_PARTIDAS_001_AMPLIACION_MR_PARTIDA_INSUMO_2026-11-06.md), commit documental `cd603d25addb4312d9bee62ec03514760f7e2894`. Aclara trazabilidad física por partida/envase, vencimiento y apertura de Insumos; autoriza MR-6 (62 tablas) vía migración `V3__trazabilidad_partidas_insumo.sql`. No modifica el modelo físico MR5/F01 de G0. **G0 y MR5/F01 permanecen inmutables.**
