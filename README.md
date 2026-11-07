@@ -97,3 +97,9 @@ El corte [Issue #54](https://github.com/leandrito369/ale-milanesas-app/issues/54
 ## I1-01 / B4 — UC55 Cambiar Estado de Usuario (solo prueba no-prod)
 
 [Issue #60](https://github.com/leandrito369/ale-milanesas-app/issues/60): `PATCH /api/v1/usuarios/{idUsuario}/estado` solo `ADMINISTRADOR`, con transiciones `HABILITADO/DESHABILITADO` sobre el servicio B3 ya integrado. Conserva Roles e historial, revoca sesiones al deshabilitar y protege último ADMINISTRADOR y la exclusividad PROVEEDOR. La [RD-RP009-001](docs/implementation/I1_01_B4_UC55_ESTADO_USUARIO_HTTP_2026-11-05.md) impide deshabilitar un Repartidor con Pedidos pendientes asignados: devuelve sus IDs para UC43, sin reasignación automática. Flag `ale.http.writes.usuarios-uc55-enabled=false`, controlador `!prod` y veto de arranque productivo. PR de revisión con CI delegado a GitHub Actions, sin fusión ni despliegue; MR5/F01 y propuesta `PARTIDA_INSUMO` sin cambios.
+
+## B4-04 — UC08 INSUMO: ingreso de stock por compra
+
+Corte no-prod exclusivo de Responsable de Producción, con orden obligatoria,
+unidad base y trazabilidad MR-6. El endpoint permanece apagado por defecto.
+[Flujo, fuentes, límites y pruebas reproducibles](docs/implementation/B4_04_UC08_INSUMO_INGRESO_STOCK.md).

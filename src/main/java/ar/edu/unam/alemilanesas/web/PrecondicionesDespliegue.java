@@ -59,6 +59,7 @@ public class PrecondicionesDespliegue implements BeanFactoryPostProcessor {
                 "ale.http.writes.usuarios-uc55-enabled",Boolean.class))) {
             throw new IllegalStateException("UC55 HTTP bloqueado en producción");
         }
+        vetarIngresoStockInsumo();
         String origen=env.getProperty("ale.web.allowed-origin","");
         URI parsed;
         try {parsed=URI.create(origen);}
@@ -79,4 +80,11 @@ public class PrecondicionesDespliegue implements BeanFactoryPostProcessor {
             throw new IllegalStateException("Aislamiento del backend y singleton requeridos");
         }
     }
+    private void vetarIngresoStockInsumo() {
+        if (Boolean.TRUE.equals(env.getProperty(
+                "ale.http.writes.compras-uc08-insumo-enabled",Boolean.class))) {
+            throw new IllegalStateException("UC08 INSUMO HTTP bloqueado en produccion");
+        }
+    }
+
 }
