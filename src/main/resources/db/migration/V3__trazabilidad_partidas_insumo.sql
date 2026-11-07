@@ -94,7 +94,7 @@ BEGIN
       FROM "MOVIMIENTO_INSUMO"
      WHERE "idMovimientoInsumo" = COALESCE(NEW."idMovimientoInsumo", OLD."idMovimientoInsumo");
 
-    IF v_tipo IN ('INGRESO_COMPRA', 'AJUSTE_POSITIVO') THEN
+    IF v_tipo IN ('INGRESO_COMPRA', 'AJUSTE_POSITIVO', 'SALDO_INICIAL') THEN
         v_delta := COALESCE(NEW."cantidadAplicada", 0) - COALESCE(OLD."cantidadAplicada", 0);
     ELSE
         v_delta := -1 * (COALESCE(NEW."cantidadAplicada", 0) - COALESCE(OLD."cantidadAplicada", 0));
