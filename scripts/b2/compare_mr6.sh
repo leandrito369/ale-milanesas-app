@@ -28,6 +28,10 @@ psql -X -v ON_ERROR_STOP=1 -d ale_mr5_referencia_ci \
   -f b2-logs/f01-pruebas-schema-app.sql \
   > b2-logs/referencia-f01-pruebas.log 2>&1
 grep -q 'F01 PASS' b2-logs/referencia-f01-pruebas.log
+psql -X -v ON_ERROR_STOP=1 -d ale_mr5_referencia_ci \
+  -c 'SET search_path TO ale_gestion, public;' \
+  -f src/main/resources/db/migration/V3__trazabilidad_partidas_insumo.sql \
+  > b2-logs/referencia-v3.log 2>&1
 
 # Ruta heredada 59 -> MR3 -> MR5 -> F01, sobre otra DB descartable.
 for rel in \
@@ -41,6 +45,10 @@ do
     -f "g0-source/docs/05-modelo-relacional/$rel" \
     >> b2-logs/incremental.log 2>&1
 done
+psql -X -v ON_ERROR_STOP=1 -d ale_mr5_incremental_ci \
+  -c 'SET search_path TO ale_gestion, public;' \
+  -f src/main/resources/db/migration/V3__trazabilidad_partidas_insumo.sql \
+  >> b2-logs/incremental.log 2>&1
 
 # Ejecutar Flyway REAL mediante Spring Boot arrancado en la tercera base.
 export ALE_DB_HOST=127.0.0.1
@@ -64,14 +72,14 @@ kill "$app_pid" 2>/dev/null || true
 wait "$app_pid" 2>/dev/null || true
 trap - EXIT
 
-# Verificar Flyway versión 1 y 2, datos del catálogo y restricción F01.
+# Verificar Flyway versión 1, 2 y 3, datos del catálogo y restricción F01.
 psql -X -v ON_ERROR_STOP=1 -d ale_mr5_flyway_ci -At -c "
  SELECT 'migraciones='||count(*) FROM ale_gestion.flyway_schema_history WHERE success = true AND type = 'SQL';
  SELECT 'tablas='||count(*) FROM information_schema.tables WHERE table_schema='ale_gestion' AND table_type='BASE TABLE' AND table_name <> 'flyway_schema_history';
  SELECT 'columnas='||count(*) FROM information_schema.columns WHERE table_schema='ale_gestion' AND table_name <> 'flyway_schema_history';
  SELECT 'fk='||count(*) FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname='ale_gestion' AND c.contype='f';
 " | tee b2-logs/flyway-catalogo.txt
-for expected in "migraciones=2" "tablas=60" "columnas=453" "fk=125"; do grep -qx "$expected" b2-logs/flyway-catalogo.txt; done
+for expected in "migraciones=3" "tablas=62" "columnas=467" "fk=129"; do grep -qx "$expected" b2-logs/flyway-catalogo.txt; done
 
 # Huella MR6 exacta: trasladar schema filtro y EXCLUIR solamente metadata Flyway.
 python3 scripts/b2/adapt_mr6_fingerprint.py \
@@ -113,6 +121,6 @@ psql -X -v ON_ERROR_STOP=1 -d ale_mr5_restaurada_ci \
 grep -q 'F01 PASS' b2-logs/restaurada-f01-pruebas.log
 psql -X -v ON_ERROR_STOP=1 -d ale_mr5_restaurada_ci -At -c \
   "SELECT count(*) FROM ale_gestion.flyway_schema_history WHERE success=true AND type='SQL';" \
-  | grep -qx '2'
+  | grep -qx '3'
 echo "PASS B2 backup/restore: objetos/columnas invariantes, CHECK normalizados, F01 y dato sintético preservados."
 

@@ -39,16 +39,16 @@ class B2SchemaMigrationTest {
 
     @Test
     void exactMr5CatalogAndF01Constraints() {
-        assertEquals(60, query("""
+        assertEquals(62, query("""
             SELECT count(*) FROM information_schema.tables
             WHERE table_schema='ale_gestion' AND table_type='BASE TABLE'
               AND table_name <> 'flyway_schema_history'
             """));
-        assertEquals(453, query("""
+        assertEquals(467, query("""
             SELECT count(*) FROM information_schema.columns
             WHERE table_schema='ale_gestion' AND table_name <> 'flyway_schema_history'
             """));
-        assertEquals(125, query("""
+        assertEquals(129, query("""
             SELECT count(*) FROM pg_constraint c
             JOIN pg_namespace n ON n.oid = c.connamespace
             WHERE n.nspname='ale_gestion' AND c.contype='f'
@@ -69,12 +69,12 @@ class B2SchemaMigrationTest {
 
     @Test
     void twoMigrationsCompleteAndRerunDoesNotRepeat() {
-        assertEquals(2, query("""
+        assertEquals(3, query("""
             SELECT count(*) FROM ale_gestion.flyway_schema_history
             WHERE success = true AND type = 'SQL'
             """));
         assertEquals(0, flyway.migrate().migrationsExecuted);
-        assertEquals(2, query("""
+        assertEquals(3, query("""
             SELECT count(*) FROM ale_gestion.flyway_schema_history
             WHERE success = true AND type = 'SQL'
             """));
