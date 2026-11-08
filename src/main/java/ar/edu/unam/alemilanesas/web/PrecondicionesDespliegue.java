@@ -62,6 +62,7 @@ public class PrecondicionesDespliegue implements BeanFactoryPostProcessor {
         vetarIngresoStockInsumo();
         vetarIngresoStockReventa();
         vetarAjusteInventario();
+        vetarPreciosUc19();
         String origen=env.getProperty("ale.web.allowed-origin","");
         URI parsed;
         try {parsed=URI.create(origen);}
@@ -99,6 +100,12 @@ public class PrecondicionesDespliegue implements BeanFactoryPostProcessor {
     private void vetarAjusteInventario() {
         if (Boolean.TRUE.equals(env.getProperty("ale.http.writes.compras-uc42-enabled",Boolean.class))) {
             throw new IllegalStateException("UC42 HTTP bloqueado en produccion");
+        }
+    }
+
+    private void vetarPreciosUc19() {
+        if (Boolean.TRUE.equals(env.getProperty("ale.http.writes.precios-uc19-enabled",Boolean.class))) {
+            throw new IllegalStateException("I1-04 UC-19 (precios) HTTP bloqueado en produccion");
         }
     }
 
