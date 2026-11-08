@@ -39,6 +39,7 @@ server:
 ale:
   http:
     writes:
+      precios-uc19-enabled: false
       compras-uc08-insumo-enabled: false
       compras-uc08-reventa-enabled: false
       compras-uc42-enabled: false
