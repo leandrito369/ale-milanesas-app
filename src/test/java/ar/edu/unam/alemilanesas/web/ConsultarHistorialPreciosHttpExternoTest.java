@@ -40,7 +40,7 @@ class ConsultarHistorialPreciosHttpExternoTest extends PreciosHttpSoporte {
     }
     @Test void getRetorna200ConHistorialCompleto() throws Exception {
         var nuevo=actualizar.actualizarPrecioVigente(f.sesiones.get("ADMINISTRADOR"),f.base,new BigDecimal("300"),futuro(2),null);
-        var r=get(admin(),"");respuesta(200,null,r);var d=json.readTree(r.body());
+        var r=get(admin(),"");assertRespuesta(200,null,r);var d=json.readTree(r.body());
         assertEquals(f.base,d.get("idProducto").asLong());
         assertEquals(f.base+21,d.get("idPrecioActual").asLong());
         assertNotNull(OffsetDateTime.parse(d.get("fechaConsulta").asString()));
@@ -53,40 +53,40 @@ class ConsultarHistorialPreciosHttpExternoTest extends PreciosHttpSoporte {
     }
     @Test void getConRangoValidoRetorna200() throws Exception {
         LocalDate hoy=LocalDate.now(ZoneId.of("America/Argentina/Buenos_Aires"));
-        var r=get(admin(),"?desde="+hoy+"&hasta="+hoy);respuesta(200,null,r);
+        var r=get(admin(),"?desde="+hoy+"&hasta="+hoy);assertRespuesta(200,null,r);
         var d=json.readTree(r.body());assertEquals(1,d.get("precios").size());assertEquals(1,d.get("auditorias").size());
         assertEquals(f.base+21,d.get("precios").get(0).get("idPrecio").asLong());
-        respuesta(200,null,get(admin(),"?desde="+hoy));respuesta(200,null,get(admin(),"?hasta="+hoy));
+        assertRespuesta(200,null,get(admin(),"?desde="+hoy));assertRespuesta(200,null,get(admin(),"?hasta="+hoy));
     }
     @Test void getConRangoInvalidoRetorna400() throws Exception {
-        respuesta(400,"RANGO_INVALIDO",get(admin(),"?desde=2026-12-10&hasta=2026-11-10"));
+        assertRespuesta(400,"RANGO_INVALIDO",get(admin(),"?desde=2026-12-10&hasta=2026-11-10"));
         for(String query:List.of("?desde=2026-02-30","?hasta=sin-fecha","?desde=","?desde=2026-11-10T00:00:00"))
-            respuesta(400,"SOLICITUD_INVALIDA",get(admin(),query));
-        respuesta(400,"SOLICITUD_INVALIDA",request(port,"GET","/api/v1/productos/no-es-id/precios",admin(),null,null));
-        respuesta(400,"SOLICITUD_INVALIDA",request(port,"GET","/api/v1/productos/0/precios",admin(),null,null));
+            assertRespuesta(400,"SOLICITUD_INVALIDA",get(admin(),query));
+        assertRespuesta(400,"SOLICITUD_INVALIDA",request(port,"GET","/api/v1/productos/no-es-id/precios",admin(),null,null));
+        assertRespuesta(400,"SOLICITUD_INVALIDA",request(port,"GET","/api/v1/productos/0/precios",admin(),null,null));
     }
     @Test void getConParametroDesconocidoRetorna400() throws Exception {
-        respuesta(400,"SOLICITUD_INVALIDA",get(admin(),"?intruso=1"));
-        respuesta(400,"SOLICITUD_INVALIDA",get(admin(),"?desde=2026-11-10&desde=2026-11-11"));
-        respuesta(400,"SOLICITUD_INVALIDA",get(admin(),"?hasta=2026-11-10&hasta=2026-11-10"));
+        assertRespuesta(400,"SOLICITUD_INVALIDA",get(admin(),"?intruso=1"));
+        assertRespuesta(400,"SOLICITUD_INVALIDA",get(admin(),"?desde=2026-11-10&desde=2026-11-11"));
+        assertRespuesta(400,"SOLICITUD_INVALIDA",get(admin(),"?hasta=2026-11-10&hasta=2026-11-10"));
     }
     @Test void getSinTokenRetorna401() throws Exception {
-        respuesta(401,"SESION_INVALIDA",get(null,""));
-        respuesta(401,"SESION_INVALIDA",request(port,"GET",ruta(),null,null,"JSESSIONID="+admin()));
+        assertRespuesta(401,"SESION_INVALIDA",get(null,""));
+        assertRespuesta(401,"SESION_INVALIDA",request(port,"GET",ruta(),null,null,"JSESSIONID="+admin()));
     }
     @Test void getConRolVendedorRetorna403() throws Exception {
         for(String rol:List.of("VENDEDOR","RESPONSABLE_PRODUCCION","REPARTIDOR","PROVEEDOR"))
-            respuesta(403,"OPERACION_PROHIBIDA",get(f.tokens.get(rol),""));
+            assertRespuesta(403,"OPERACION_PROHIBIDA",get(f.tokens.get(rol),""));
     }
     @Test void cacheControlNoStoreEnTodasLasRespuestas() throws Exception {
-        respuesta(200,null,get(admin(),""));respuesta(400,"RANGO_INVALIDO",get(admin(),"?desde=2026-12-10&hasta=2026-11-10"));
-        respuesta(401,"SESION_INVALIDA",get(null,""));respuesta(403,"OPERACION_PROHIBIDA",get(f.tokens.get("VENDEDOR"),""));
-        respuesta(400,"SOLICITUD_INVALIDA",request(port,"GET","/api/v1/productos/9223372036854775807/precios",admin(),null,null));
+        assertRespuesta(200,null,get(admin(),""));assertRespuesta(400,"RANGO_INVALIDO",get(admin(),"?desde=2026-12-10&hasta=2026-11-10"));
+        assertRespuesta(401,"SESION_INVALIDA",get(null,""));assertRespuesta(403,"OPERACION_PROHIBIDA",get(f.tokens.get("VENDEDOR"),""));
+        assertRespuesta(400,"SOLICITUD_INVALIDA",request(port,"GET","/api/v1/productos/9223372036854775807/precios",admin(),null,null));
         j.execute("ALTER TABLE \"PRECIO_PRODUCTO\" RENAME TO \"PRECIO_PRODUCTO_TEST_OFFLINE\"");
-        try {respuesta(503,"PERSISTENCIA_NO_DISPONIBLE",get(admin(),""));}
+        try {assertRespuesta(503,"PERSISTENCIA_NO_DISPONIBLE",get(admin(),""));}
         finally {j.execute("ALTER TABLE \"PRECIO_PRODUCTO_TEST_OFFLINE\" RENAME TO \"PRECIO_PRODUCTO\"");}
         long vacio=f.base+1;
-        var sinPrecio=request(port,"GET","/api/v1/productos/"+vacio+"/precios",admin(),null,null);respuesta(200,null,sinPrecio);
+        var sinPrecio=request(port,"GET","/api/v1/productos/"+vacio+"/precios",admin(),null,null);assertRespuesta(200,null,sinPrecio);
         var d=json.readTree(sinPrecio.body());assertTrue(d.get("idPrecioActual").isNull());
         assertEquals(0,d.get("precios").size());assertEquals(0,d.get("auditorias").size());
     }
