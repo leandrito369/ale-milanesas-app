@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -25,6 +26,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -166,9 +168,7 @@ public class SeguridadHttpInterna {
                 .requestMatchers(HttpMethod.POST, "/api/v1/categorias-comerciales/politicas")
                     .access((auth,context) ->
                         new org.springframework.security.authorization.AuthorizationDecision(
-                            habilitarCategoriasUc57 && auth.get().isAuthenticated() &&
-                            auth.get().getAuthorities().stream().anyMatch(
-                                rol -> ROL_ADMINISTRADOR.equals(rol.getAuthority()))))
+                            administradorAutenticado(habilitarCategoriasUc57,auth)))
                 .requestMatchers(HttpMethod.GET,"/api/v1/insumos","/api/v1/unidades")
                     .hasAnyAuthority(ROL_ADMINISTRADOR,"RESPONSABLE_PRODUCCION")
                 // UC08 INSUMO: exclusivo Responsable de Producción, gate independiente.
@@ -198,6 +198,13 @@ public class SeguridadHttpInterna {
         http.addFilterBefore(new FiltroSesionBearer(sesiones),
                 UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    private static boolean administradorAutenticado(boolean habilitado, Supplier<? extends Authentication> credenciales) {
+        if (!habilitado) return false;
+        Authentication autenticacion = credenciales.get();
+        return autenticacion.isAuthenticated() && autenticacion.getAuthorities().stream()
+                .anyMatch(rol -> ROL_ADMINISTRADOR.equals(rol.getAuthority()));
     }
 
     static void rechazar(HttpServletResponse res) throws IOException {
