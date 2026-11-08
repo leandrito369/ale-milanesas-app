@@ -41,3 +41,4 @@ ale:
     writes:
       compras-uc08-insumo-enabled: false
       compras-uc08-reventa-enabled: false
+      compras-uc42-enabled: false
