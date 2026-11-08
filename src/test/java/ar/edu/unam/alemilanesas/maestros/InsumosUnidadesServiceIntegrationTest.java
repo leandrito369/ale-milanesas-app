@@ -1,5 +1,8 @@
 package ar.edu.unam.alemilanesas.maestros;
 
+import ar.edu.unam.alemilanesas.abastecimiento.IngresoStockFixture;
+import ar.edu.unam.alemilanesas.abastecimiento.RegistrarIngresoStockInsumoService;
+import org.springframework.transaction.support.TransactionTemplate;
 import java.math.BigDecimal;
 import java.util.UUID;
 
@@ -32,6 +35,8 @@ class InsumosUnidadesServiceIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired GestionInsumosService gestion;
     @Autowired ConsultarInsumosUnidadesService consulta;
+    @Autowired RegistrarIngresoStockInsumoService ingresos;
+    @Autowired TransactionTemplate tx;
 
     static final UUID ADMIN=UUID.fromString("50510000-0000-4000-8000-000000000001");
     static final UUID PROD=UUID.fromString("50510000-0000-4000-8000-000000000002");
@@ -246,4 +251,27 @@ class InsumosUnidadesServiceIntegrationTest {
         assertThrows(IllegalArgumentException.class,()->gestion.cambiarEstadoInsumo(ADMIN,999999,false));
         assertEquals(1,contar("INSUMO"));
     }
+    @Test void dependenciasIncluyePartidasDeInsumo() {
+        var f=new IngresoStockFixture(jdbc,tx);
+        int antes=jdbc.queryForObject("SELECT count(*) FROM \"PARTIDA_INSUMO\" WHERE \"idInsumo\"=?",Integer.class,f.base);
+        var ingreso=ingresos.registrarIngresoStockPorCompra(f.produccion(),f.datos("5"));
+        assertEquals(1,jdbc.queryForObject("SELECT count(*) FROM \"PARTIDA_INSUMO\" WHERE \"idPartidaInsumo\"=? AND \"idInsumo\"=?",Integer.class,ingreso.idPartidaInsumo(),f.base));
+        var deps=gestion.cambiarEstadoInsumo(ADMIN,f.base,true).dependencias();
+        assertEquals(antes+1,deps.partidas());assertTrue(deps.tieneHistoria());
+    }
+
+    @Test void cambioDeUnidadBloqueadoSiTienePartidas() {
+        long id=alta("Insumo con partida agotada");
+        jdbc.update("""
+                INSERT INTO "PARTIDA_INSUMO" ("idPartidaInsumo","idInsumo","fechaHoraRegistro",
+                    "cantidadInicial","cantidadDisponible") VALUES (50599,?,now()-interval '1 day',1,0)
+                """,id);
+        var deps=gestion.cambiarEstadoInsumo(ADMIN,id,true).dependencias();
+        assertEquals(1,deps.partidas());assertTrue(deps.tieneHistoria());
+        assertEquals(0,deps.recetas()+deps.movimientos()+deps.recepciones()+deps.costos()+deps.proveedores()+deps.episodios());
+        var ex=assertThrows(IllegalArgumentException.class,()->gestion.modificarInsumo(ADMIN,id,"Otra unidad","G"));
+        assertEquals("Insumo con dependencias históricas: no cambiar unidad de medida",ex.getMessage());
+        assertEquals("KG",jdbc.queryForObject("SELECT \"codigoUnidadMedida\" FROM \"INSUMO\" WHERE \"idInsumo\"=?",String.class,id));
+    }
+
 }
