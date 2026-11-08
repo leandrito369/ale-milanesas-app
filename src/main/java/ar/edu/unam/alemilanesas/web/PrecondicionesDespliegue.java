@@ -66,6 +66,7 @@ public class PrecondicionesDespliegue implements BeanFactoryPostProcessor {
         vetarCategoriasUc57();
         vetarEscriturasInsumos();
         vetarPedidosUc03();
+        vetarPedidosUc43();
         String origen=env.getProperty("ale.web.allowed-origin","");
         URI parsed;
         try {parsed=URI.create(origen);}
@@ -115,6 +116,12 @@ public class PrecondicionesDespliegue implements BeanFactoryPostProcessor {
     private void vetarCategoriasUc57() {
         if (Boolean.TRUE.equals(env.getProperty("ale.http.writes.categorias-uc57-enabled",Boolean.class))) {
             throw new IllegalStateException("I1-05 UC-57 (categorías) HTTP bloqueado en produccion");
+        }
+    }
+
+    private void vetarPedidosUc43() {
+        if (Boolean.TRUE.equals(env.getProperty("ale.http.writes.pedidos-uc43-enabled",Boolean.class))) {
+            throw new IllegalStateException("I2-03 UC-43 (asignación de reparto) HTTP bloqueado en produccion");
         }
     }
 
