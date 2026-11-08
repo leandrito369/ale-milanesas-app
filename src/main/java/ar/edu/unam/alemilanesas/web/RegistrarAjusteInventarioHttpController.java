@@ -25,6 +25,10 @@ import tools.jackson.databind.json.JsonMapper;
 @ConditionalOnProperty(prefix="ale.http.writes",name="compras-uc42-enabled",havingValue="true")
 public class RegistrarAjusteInventarioHttpController {
     private static final String INVALIDA = "Solicitud invalida";
+    private static final String TIPO_ELEMENTO = "tipoElemento";
+    private static final String ID_ELEMENTO = "idElemento";
+    private static final String TIPO_MOVIMIENTO = "tipoMovimiento";
+    private static final String MOTIVO = "motivo";
     private static final String CANTIDAD = "cantidad";
     private static final String PARTIDAS = "partidas";
     private static final String COSTO = "costoValuacion";
@@ -32,8 +36,8 @@ public class RegistrarAjusteInventarioHttpController {
     private static final String LOTE = "codigoLote";
     private static final String VENCIMIENTO = "fechaVencimiento";
     private static final String APERTURA = "marcarApertura";
-    private static final Set<String> OBLIGATORIOS = Set.of("tipoElemento","idElemento","tipoMovimiento",CANTIDAD,"motivo",PARTIDAS);
-    private static final Set<String> CAMPOS = Set.of("tipoElemento","idElemento","tipoMovimiento",CANTIDAD,"motivo",COSTO,PARTIDAS);
+    private static final Set<String> OBLIGATORIOS = Set.of(TIPO_ELEMENTO,ID_ELEMENTO,TIPO_MOVIMIENTO,CANTIDAD,MOTIVO,PARTIDAS);
+    private static final Set<String> CAMPOS = Set.of(TIPO_ELEMENTO,ID_ELEMENTO,TIPO_MOVIMIENTO,CANTIDAD,MOTIVO,COSTO,PARTIDAS);
     private static final Set<String> CAMPOS_PARTIDA = Set.of(ID_PARTIDA,CANTIDAD,LOTE,VENCIMIENTO,APERTURA);
     private static final JsonMapper JSON = JsonMapper.builder()
             .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
@@ -53,8 +57,8 @@ public class RegistrarAjusteInventarioHttpController {
         if (d == null || !CAMPOS.containsAll(d.keySet()) || !d.keySet().containsAll(OBLIGATORIOS)
                 || !(d.get(PARTIDAS) instanceof List<?> lista)) throw new IllegalArgumentException(INVALIDA);
         var partidas = lista.stream().map(RegistrarAjusteInventarioHttpController::partida).toList();
-        var datos = new DatosAjuste(texto(d.get("tipoElemento")),entero(d.get("idElemento")),texto(d.get("tipoMovimiento")),
-                decimal(d.get(CANTIDAD)),texto(d.get("motivo")),d.get(COSTO) == null ? null : decimal(d.get(COSTO)),partidas);
+        var datos = new DatosAjuste(texto(d.get(TIPO_ELEMENTO)),entero(d.get(ID_ELEMENTO)),texto(d.get(TIPO_MOVIMIENTO)),
+                decimal(d.get(CANTIDAD)),texto(d.get(MOTIVO)),d.get(COSTO) == null ? null : decimal(d.get(COSTO)),partidas);
         return ResponseEntity.status(HttpStatus.CREATED).cacheControl(CacheControl.noStore())
                 .body(ajustes.registrarAjusteInventario(actor.idSesion(),datos));
     }

@@ -129,7 +129,8 @@ class RegistrarAjusteInventarioServiceIntegrationTest {
         registrar(f.inicial());long id=partida();
         // Inconsistencia histórica simulada: disponibilidad de partida superior al stock físico.
         j.update("UPDATE \"INSUMO\" SET \"stockActual\"=1 WHERE \"idInsumo\"=?",f.insumo);
-        var ex=assertThrows(DataIntegrityViolationException.class,()->registrar(f.datos("AJUSTE_NEGATIVO","2",null,List.of(descuento(id,"2",true)))));
+        var datos=f.datos("AJUSTE_NEGATIVO","2",null,List.of(descuento(id,"2",true)));
+        var ex=assertThrows(DataIntegrityViolationException.class,()->registrar(datos));
         assertTrue(ex.getMostSpecificCause().getMessage().contains("ck_insumo_0"));
         assertEquals(n("1.000"),stock());
         assertEquals(n("5.000"),j.queryForObject("SELECT \"cantidadDisponible\" FROM \"PARTIDA_INSUMO\" WHERE \"idPartidaInsumo\"=?",BigDecimal.class,id));
@@ -154,15 +155,19 @@ class RegistrarAjusteInventarioServiceIntegrationTest {
                 """);
         j.execute("CREATE TRIGGER uc42_test_fallo BEFORE INSERT ON \"DETALLE_MOVIMIENTO_PARTIDA\" FOR EACH ROW EXECUTE FUNCTION uc42_test_fallo()");
         try {
-            assertThrows(DataAccessException.class,()->registrar(f.datos("SALDO_INICIAL","12",n("2"),List.of(nueva("5"),nueva("7")))));
+            var datos=f.datos("SALDO_INICIAL","12",n("2"),List.of(nueva("5"),nueva("7")));
+            assertThrows(DataAccessException.class,()->registrar(datos));
             sinEfectos();
         } finally {
             j.execute("DROP TRIGGER uc42_test_fallo ON \"DETALLE_MOVIMIENTO_PARTIDA\"");j.execute("DROP FUNCTION uc42_test_fallo()");
         }
     }
     @Test void rechazaRolVendedorAdminRepartidorProveedor() {
-        for(String rol:List.of("VENDEDOR","ADMINISTRADOR","REPARTIDOR","PROVEEDOR"))
-            assertThrows(SecurityException.class,()->servicio.registrarAjusteInventario(f.compra.sesiones.get(rol),f.inicial()));
+        var datos=f.inicial();
+        for(String rol:List.of("VENDEDOR","ADMINISTRADOR","REPARTIDOR","PROVEEDOR")) {
+            var sesion=f.compra.sesiones.get(rol);
+            assertThrows(SecurityException.class,()->servicio.registrarAjusteInventario(sesion,datos));
+        }
         sinEfectos();
     }
 }
