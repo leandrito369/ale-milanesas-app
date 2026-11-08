@@ -138,3 +138,12 @@ POST `/api/v1/insumos`, PUT `/api/v1/insumos/{idInsumo}` y PATCH
 independientes y apagados por defecto. Las partidas MR-6 bloquean reinterpretar
 la unidad. UC36 conserva sus GET existentes.
 [Fuentes, refactor y pruebas](docs/implementation/I1_06_INSUMOS_B4_HTTP_2026-11-08.md).
+
+## I2-01 — UC03: cargar Pedido INTERNO
+
+`POST /api/v1/pedidos`, exclusivo de VENDEDOR, implementa B3 y B4 con
+`pedidos-uc03-enabled=false`, controller fuera de prod y veto al forzar el gate
+en producción. Congela precios, unidad, dirección y el total post-ajuste de
+UC16; una clave UUID ya aceptada devuelve el Pedido persistido con HTTP 200.
+La primera aceptación devuelve 201. Reprogramación y cliente offline quedan
+fuera de este corte. [Fuentes, decisiones, matriz CU→B3→DB→API→test y resultados](docs/implementation/I2_01_PEDIDOS_B4_HTTP_2026-11-08.md).
