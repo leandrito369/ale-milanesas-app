@@ -154,3 +154,10 @@ fuera de este corte. [Fuentes, decisiones, matriz CU→B3→DB→API→test y re
 con `pedidos-uc43-enabled=false` y triple gate no-prod. Preserva historial y
 comparte el protocolo de locks de UC55/UC18; evita asignaciones a un Repartidor
 que se está deshabilitando. [Fuentes, decisiones, límite de rutas y matriz CU→B3→DB→API→test](docs/implementation/I2_03_ASIGNACION_REPARTO_B4_HTTP_2026-11-08.md).
+
+## I2-02 — UC34: búsqueda de Pedidos
+
+`GET /api/v1/pedidos`, sin gate y solo lectura. ADMINISTRADOR y VENDEDOR tienen
+acceso directo; REPARTIDOR ve únicamente asignaciones vigentes propias, con
+proyección operativa sin categoría ni total. Producción contextual queda en
+403 hasta UC28. [Fuentes, proyecciones BC07, decisiones y matriz CU→B3→DB→API→test](docs/implementation/I2_02_BUSQUEDA_PEDIDOS_B4_HTTP_2026-11-08.md).
