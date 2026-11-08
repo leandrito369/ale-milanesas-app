@@ -166,6 +166,61 @@ mvn -B -ntp test-compile
 mvn -B -ntp -Dtest=CargarPedidoServiceIntegrationTest,CargarPedidoConcurrenciaIntegrationTest,CargarPedidoHttpExternoTest,CategoriaPoliticaServiceIntegrationTest,PoliticaCategoriaConcurrenciaIntegrationTest,EvaluadorCategoriaComercialInternoTest,CobroYCategoriaConciliacionIntegrationTest,PreciosProductoServiceIntegrationTest,PrecioProductoConcurrenciaIntegrationTest,PrecondicionesDespliegueTest,AutenticacionHttpExternaTest test
 ```
 
+## Desviaciones reconocidas y deuda técnica
+
+### DR1 — `RD-F04-006`: saldo exigible provisional
+
+**Documento:** `docs/01-gobierno/RD_F04_006_EVALUACION_DEUDA_NUEVOS_PEDIDOS_2026-10-26.md`
+en el repositorio `ale-milanesas`.
+
+**Lo que exige:** al evaluar deuda de un Cliente para un nuevo Pedido, usar el
+**saldo exigible provisional** calculado en servidor con pagos en tránsito
+vigentes validados e idempotentes. Cada pago se descuenta provisionalmente una
+sola vez. Capturas offline no alteran la evaluación central.
+
+**Lo que implementa I2-01:** `CargarPedidoService` clasifica al Cliente mediante
+`EvaluadorCategoriaComercialInterno` (UC-15, invocado por UC-16) y aplica el ajuste
+comercial según categoría (UC-16). **No recalcula el saldo exigible provisional
+con pagos en tránsito** porque ese componente de F04 (pagos/cuenta corriente)
+no está construido todavía. La categorización comercial no sustituye la
+evaluación de deuda provisional exigida por RD-F04-006.
+
+**Por qué es inevitable en este corte:** el propio `RD-F04-006` declara en su
+cabecera **“Estado técnico: pendiente de diseño físico, API y pruebas”**. El
+componente de pagos en tránsito y su integración pertenecen a bloques posteriores
+según el Plan Rector. `MOVIMIENTO_CUENTA` **ya existe** en V1 para contabilidad
+confirmada; lo pendiente es el diseño físico y la integración de pagos en
+tránsito con el cálculo provisional, sin alterar ese saldo contable definitivo.
+`PAGO_TRANSITO` no existe en V1/V2/V3 y esta documentación no aprueba una tabla
+con ese nombre. ADR-B1-05 / CR-B0-F04-001 no autoriza crear estructuras físicas
+F04 en este corte.
+
+**Mitigación y alcance:**
+
+- `RD-F04-006` explícitamente **no define nuevos criterios de bloqueo por deuda**:
+  “Umbrales de deuda, condiciones particulares de bloqueo y prioridad de reglas”
+  permanecen sujetos a políticas existentes y “no se inventan límites”. I2-01 no
+  introduce un umbral ni un bloqueo nuevo; el cálculo provisional aprobado
+  funcionalmente sigue pendiente de implementación.
+- `RD-F04-007` confirma que el recargo por categoría **EN_MORA permanece hasta la
+  reevaluación formal**, incluso si el saldo provisional queda cubierto. Esta
+  separación del ajuste comercial está cubierta por UC-15/16; un pago en tránsito
+  no suspende el recargo ni recategoriza automáticamente al Cliente.
+- Cuando F04 esté implementado, se agregará el cálculo de saldo provisional al
+  flujo de UC-03 en un corte posterior. Se registrará como `RD-UC03-002` o similar
+  si corresponde; este commit no crea ni ratifica una nueva RD.
+
+**Riesgo residual:** si un Cliente tiene deuda confirmada y un pago en tránsito
+validado la cubre parcial o totalmente, I2-01 no descuenta ese pago para evaluar
+el saldo exigible provisional. UC-15 reevalúa la categoría desde la deuda
+confirmada y UC-16 aplica el ajuste correspondiente; esa categorización no
+acredita el cumplimiento del cálculo provisional. No se presupone un umbral de
+bloqueo que la RD no define. La brecha queda pendiente de F04.
+
+**Estado:** deuda técnica diferida y documentada. **No bloquea el cierre técnico
+de I2-01.** No implica que RD-F04-006 esté implementada integralmente ni acredita
+su aceptación funcional o las pruebas F04 pendientes.
+
 ## Bloqueo y aceptación
 
 [Issue #28](https://github.com/leandrito369/ale-milanesas-app/issues/28) sigue
