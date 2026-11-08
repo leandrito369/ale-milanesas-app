@@ -61,6 +61,7 @@ public class PrecondicionesDespliegue implements BeanFactoryPostProcessor {
         }
         vetarIngresoStockInsumo();
         vetarIngresoStockReventa();
+        vetarAjusteInventario();
         String origen=env.getProperty("ale.web.allowed-origin","");
         URI parsed;
         try {parsed=URI.create(origen);}
@@ -92,6 +93,12 @@ public class PrecondicionesDespliegue implements BeanFactoryPostProcessor {
         if (Boolean.TRUE.equals(env.getProperty(
                 "ale.http.writes.compras-uc08-reventa-enabled",Boolean.class))) {
             throw new IllegalStateException("UC08 REVENTA HTTP bloqueado en produccion");
+        }
+    }
+
+    private void vetarAjusteInventario() {
+        if (Boolean.TRUE.equals(env.getProperty("ale.http.writes.compras-uc42-enabled",Boolean.class))) {
+            throw new IllegalStateException("UC42 HTTP bloqueado en produccion");
         }
     }
 

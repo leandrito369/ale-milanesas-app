@@ -18,11 +18,13 @@ public class RegistrarIngresoStockInsumoService {
     private static final Set<String> PRODUCCION = Set.of("RESPONSABLE_PRODUCCION");
     private final NamedParameterJdbcTemplate sql;
     private final AutorizacionSesionInterna autorizacion;
+    private final EpisodioFaltanteService episodios;
 
     public RegistrarIngresoStockInsumoService(NamedParameterJdbcTemplate sql,
-            AutorizacionSesionInterna autorizacion) {
+            AutorizacionSesionInterna autorizacion, EpisodioFaltanteService episodios) {
         this.sql = sql;
         this.autorizacion = autorizacion;
+        this.episodios = episodios;
     }
 
     public record DatosIngreso(long idInsumo, long idOrdenCompra, BigDecimal cantidadRecibida,
@@ -141,21 +143,8 @@ public class RegistrarIngresoStockInsumoService {
         String estado = total.compareTo(ordenado) == 0 ? "RECIBIDA" : "PARCIALMENTE_RECIBIDA";
         p.addValue(ESTADO, estado);
         sql.update("UPDATE \"ORDEN_COMPRA\" SET \"estado\"=:estado WHERE \"idOrdenCompra\"=:orden", p);
-        cerrarEpisodios(p);
+        episodios.evaluarCierre(datos.idInsumo(), fecha);
         return new IngresoRegistrado(recepcion, movimiento, partida, estado);
-    }
-
-    private void cerrarEpisodios(MapSqlParameterSource p) {
-        sql.update("""
-                UPDATE "EPISODIO_FALTANTE" e SET "fechaHoraCierre"=:fecha
-                WHERE e."idInsumo"=:insumo AND e."fechaHoraCierre" IS NULL
-                AND (SELECT "stockActual">="umbralMinimo" FROM "INSUMO" WHERE "idInsumo"=:insumo)
-                AND NOT EXISTS (SELECT 1 FROM "SOLICITUD_COTIZACION" s WHERE s."idEpisodio"=e."idEpisodio"
-                    AND s."estado" IN ('RECEPCION_ABIERTA','PENDIENTE_DECISION'))
-                AND NOT EXISTS (SELECT 1 FROM "SOLICITUD_COTIZACION" s
-                    JOIN "DECISION_COMPRA" d USING ("idSolicitud") JOIN "ORDEN_COMPRA" o USING ("idDecisionCompra")
-                    WHERE s."idEpisodio"=e."idEpisodio" AND o."estado" IN ('PENDIENTE','PARCIALMENTE_RECIBIDA'))
-                """, p);
     }
 
     private static long idValido(Long id) {

@@ -109,3 +109,10 @@ unidad base y trazabilidad MR-6. El endpoint permanece apagado por defecto.
 Recepción no-prod exclusiva de Producción, con proveedor directo obligatorio,
 promedio móvil decimal y sin Orden de Compra. Apagada por defecto.
 [Fuentes, flujo y pruebas reproducibles](docs/implementation/B4_05_UC08_REVENTA_INGRESO_STOCK.md).
+
+## B4-06 — UC42 INSUMO: ajuste de inventario
+
+`POST /api/v1/inventario/ajustes`, exclusivo de `RESPONSABLE_PRODUCCION`,
+con `compras-uc42-enabled=false` por defecto y bloqueo en prod.
+Admite saldo inicial y ajustes positivos/negativos por partidas; G4 sigue pendiente.
+[Fuentes, límites y pruebas reproducibles](docs/implementation/B4_06_UC42_AJUSTE_INVENTARIO.md).

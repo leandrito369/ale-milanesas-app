@@ -45,6 +45,7 @@ public class SeguridadHttpInterna {
     // Cadena /web/** conserva CSRF y prueba negativa de cookies en API.
     @SuppressWarnings("java:S4502")
     SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones,
+            @Value("${ale.http.writes.compras-uc42-enabled:false}") boolean habilitarAjusteInventario,
             @Value("${ale.http.writes.compras-uc08-reventa-enabled:false}") boolean habilitarIngresoStockReventa,
             @Value("${ale.http.writes.compras-uc08-insumo-enabled:false}") boolean habilitarIngresoStockInsumo,
             @Value("${ale.http.writes.clientes-uc02-enabled:false}") boolean habilitarAltaCliente,
@@ -163,6 +164,12 @@ public class SeguridadHttpInterna {
                     .access((auth,context) ->
                         new org.springframework.security.authorization.AuthorizationDecision(
                             habilitarIngresoStockReventa && auth.get().isAuthenticated() &&
+                            auth.get().getAuthorities().stream().anyMatch(
+                                rol -> "RESPONSABLE_PRODUCCION".equals(rol.getAuthority()))))
+                .requestMatchers(HttpMethod.POST, "/api/v1/inventario/ajustes")
+                    .access((auth,context) ->
+                        new org.springframework.security.authorization.AuthorizationDecision(
+                            habilitarAjusteInventario && auth.get().isAuthenticated() &&
                             auth.get().getAuthorities().stream().anyMatch(
                                 rol -> "RESPONSABLE_PRODUCCION".equals(rol.getAuthority()))))
                 .anyRequest().denyAll());
