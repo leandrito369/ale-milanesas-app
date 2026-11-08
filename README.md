@@ -123,3 +123,10 @@ Admite saldo inicial y ajustes positivos/negativos por partidas; G4 sigue pendie
 y bloqueo en prod. `GET` en la misma ruta consulta historial sin depender de la
 bandera de escritura. Ambos exclusivos de ADMINISTRADOR y delegados en B3.
 [Fuentes, rutas y pruebas reproducibles](docs/implementation/I1_04_PRECIOS_B4_HTTP_2026-11-08.md).
+
+## I1-05 — UC57: política de categoría por HTTP
+
+`POST /api/v1/categorias-comerciales/politicas`, exclusivo de ADMINISTRADOR,
+con `categorias-uc57-enabled=false` y bloqueo en prod. Delega en B3 y devuelve
+el cierre previo cuando corresponde. UC15/16 conservan invocación interna.
+[Fuentes, decisiones y pruebas](docs/implementation/I1_05_CATEGORIAS_B4_HTTP_2026-11-08.md).

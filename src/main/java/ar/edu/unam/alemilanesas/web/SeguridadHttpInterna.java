@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -25,6 +26,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -45,6 +47,7 @@ public class SeguridadHttpInterna {
     // Cadena /web/** conserva CSRF y prueba negativa de cookies en API.
     @SuppressWarnings("java:S4502")
     SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones,
+            @Value("${ale.http.writes.categorias-uc57-enabled:false}") boolean habilitarCategoriasUc57,
             @Value("${ale.http.writes.precios-uc19-enabled:false}") boolean habilitarPreciosUc19,
             @Value("${ale.http.writes.compras-uc42-enabled:false}") boolean habilitarAjusteInventario,
             @Value("${ale.http.writes.compras-uc08-reventa-enabled:false}") boolean habilitarIngresoStockReventa,
@@ -161,6 +164,11 @@ public class SeguridadHttpInterna {
                 // I1-04 UC20: lectura ADMIN, sin bandera de escritura.
                 .requestMatchers(HttpMethod.GET, "/api/v1/productos/*/precios")
                     .hasAuthority(ROL_ADMINISTRADOR)
+                // I1-05 UC57: configuración ADMIN bajo bandera independiente.
+                .requestMatchers(HttpMethod.POST, "/api/v1/categorias-comerciales/politicas")
+                    .access((auth,context) ->
+                        new org.springframework.security.authorization.AuthorizationDecision(
+                            administradorAutenticado(habilitarCategoriasUc57,auth)))
                 .requestMatchers(HttpMethod.GET,"/api/v1/insumos","/api/v1/unidades")
                     .hasAnyAuthority(ROL_ADMINISTRADOR,"RESPONSABLE_PRODUCCION")
                 // UC08 INSUMO: exclusivo Responsable de Producción, gate independiente.
@@ -190,6 +198,13 @@ public class SeguridadHttpInterna {
         http.addFilterBefore(new FiltroSesionBearer(sesiones),
                 UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    private static boolean administradorAutenticado(boolean habilitado, Supplier<? extends Authentication> credenciales) {
+        if (!habilitado) return false;
+        Authentication autenticacion = credenciales.get();
+        return autenticacion.isAuthenticated() && autenticacion.getAuthorities().stream()
+                .anyMatch(rol -> ROL_ADMINISTRADOR.equals(rol.getAuthority()));
     }
 
     static void rechazar(HttpServletResponse res) throws IOException {
