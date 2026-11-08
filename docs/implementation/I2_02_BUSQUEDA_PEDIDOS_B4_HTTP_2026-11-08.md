@@ -113,7 +113,9 @@ IDs positivos representables como Long; fecha ISO LocalDate; estado
 PENDIENTE/ENTREGADO/CANCELADO; canal INTERNO/ONLINE. Las fechas históricas son
 válidas para buscar. Se rechazan valores vacíos, parámetros repetidos,
 parámetros desconocidos, formatos inválidos y enums ajenos. Ningún valor
-recibido se concatena en SQL: las cláusulas son fijas y los valores se bindean.
+recibido se concatena en SQL: se utiliza una sentencia fija con predicados
+opcionales `CAST(:parametro AS tipo) IS NULL OR columna=:parametro` y valores
+bindeados con tipos JDBC explícitos. No hay formateo dinámico del SQL.
 Orden estable: `fechaHoraCarga DESC, idPedido DESC`, sin paginación añadida.
 
 Respuesta 200: array de resúmenes o `[]`. Advice acotado al controller:

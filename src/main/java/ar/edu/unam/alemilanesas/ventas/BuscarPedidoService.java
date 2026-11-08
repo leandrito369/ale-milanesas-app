@@ -15,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 /** UC34: selección de filas y de campos bajo el ámbito efectivo del actor, sin escrituras. */
 @Service
 public class BuscarPedidoService {
+    private static final String ID_PEDIDO="idPedido";
     private static final Set<String> ROLES=Set.of("ADMINISTRADOR","VENDEDOR","REPARTIDOR");
     private static final Set<String> ESTADOS=Set.of("PENDIENTE","ENTREGADO","CANCELADO");
     private static final Set<String> CANALES=Set.of("INTERNO","ONLINE");
@@ -39,8 +40,12 @@ public class BuscarPedidoService {
         autorizacion.exigirRoles(sesion,ROLES);
         var c=criterio==null?new CriterioBusquedaPedido(null,null,null,null,null):criterio;
         validar(c);
-        var parametros=new MapSqlParameterSource("sesion",sesion).addValue("solicitado",c.idPedido(),java.sql.Types.BIGINT);
-        String filtros=filtros(c,parametros);
+        var parametros=new MapSqlParameterSource("sesion",sesion)
+                .addValue(ID_PEDIDO,c.idPedido(),java.sql.Types.BIGINT)
+                .addValue("idCliente",c.idCliente(),java.sql.Types.BIGINT)
+                .addValue("fecha",c.fechaReparto(),java.sql.Types.DATE)
+                .addValue("estado",c.estado(),java.sql.Types.VARCHAR)
+                .addValue("canal",c.canalOrigen(),java.sql.Types.VARCHAR);
         // Actor, roles, ámbito y campos se leen en el mismo snapshot de la sentencia.
         // LEFT JOIN preserva un actor válido sin coincidencias: sesión revocada no equivale a lista vacía.
         String consulta="""
@@ -55,8 +60,8 @@ public class BuscarPedidoService {
                         AND s."fechaHoraExpiracion">clock_timestamp() AND s."fechaHoraInicio"+interval '8 hours'>clock_timestamp()
                 )
                 SELECT a.admin,a.vendedor,
-                    (a.admin OR a.vendedor OR CAST(:solicitado AS BIGINT) IS NULL OR EXISTS (
-                        SELECT 1 FROM "ASIGNACION_REPARTO" r WHERE r."idPedido"=:solicitado
+                    (a.admin OR a.vendedor OR CAST(:idPedido AS BIGINT) IS NULL OR EXISTS (
+                        SELECT 1 FROM "ASIGNACION_REPARTO" r WHERE r."idPedido"=:idPedido
                             AND r."idUsuarioRepartidor"=a."idUsuario" AND r."fechaHoraFin" IS NULL)) AS permitido,
                     p."idPedido",p."idCliente",p."fechaReparto",p."estado",p."canalOrigen",
                     CASE WHEN a.vendedor THEN p."categoriaComercialAplicada" END AS categoria,
@@ -68,22 +73,28 @@ public class BuscarPedidoService {
                     FROM "PEDIDO" p WHERE (a.admin OR a.vendedor OR EXISTS (
                         SELECT 1 FROM "ASIGNACION_REPARTO" r WHERE r."idPedido"=p."idPedido"
                             AND r."idUsuarioRepartidor"=a."idUsuario" AND r."fechaHoraFin" IS NULL))
-                """+filtros+"""
+                        AND (CAST(:idPedido AS BIGINT) IS NULL OR p."idPedido"=:idPedido)
+                        AND (CAST(:idCliente AS BIGINT) IS NULL OR p."idCliente"=:idCliente)
+                        AND (CAST(:fecha AS DATE) IS NULL OR p."fechaReparto"=:fecha)
+                        AND (CAST(:estado AS VARCHAR) IS NULL OR p."estado"=:estado)
+                        AND (CAST(:canal AS VARCHAR) IS NULL OR p."canalOrigen"=:canal)
                 ) p ON true WHERE a.admin OR a.vendedor OR a.repartidor
                 ORDER BY p."fechaHoraCarga" DESC,p."idPedido" DESC
                 """;
         List<Optional<PedidoResumen>> filas=sql.query(consulta,parametros,(rs,n)->{
             if (!rs.getBoolean("permitido")) throw new SecurityException("Pedido fuera del ambito autorizado");
-            if (rs.getObject("idPedido")==null) return Optional.empty();
+            if (rs.getObject(ID_PEDIDO)==null) return Optional.empty();
             return Optional.of(proyectar(rs));
         });
         if (filas.isEmpty()) throw new SecurityException("Sesion o ambito no autorizado");
         return filas.stream().flatMap(Optional::stream).toList();
     }
     private static PedidoResumen proyectar(ResultSet rs) throws SQLException {
-        long pedido=rs.getLong("idPedido");long cliente=rs.getLong("idCliente");
+        long pedido=rs.getLong(ID_PEDIDO);
+        long cliente=rs.getLong("idCliente");
         LocalDate fecha=rs.getObject("fechaReparto",LocalDate.class);
-        String estado=rs.getString("estado");String canal=rs.getString("canalOrigen");
+        String estado=rs.getString("estado");
+        String canal=rs.getString("canalOrigen");
         if (rs.getBoolean("vendedor")) return new PedidoComercial(pedido,cliente,fecha,estado,canal,
                 rs.getString("categoria"),rs.getBigDecimal("total"),rs.getObject("carga",OffsetDateTime.class));
         if (rs.getBoolean("admin")) return new PedidoAdministrativo(pedido,cliente,fecha,estado,canal,rs.getObject("carga",OffsetDateTime.class));
@@ -94,17 +105,5 @@ public class BuscarPedidoService {
             throw new IllegalArgumentException("Criterio invalido");
         if (c.estado()!=null && !ESTADOS.contains(c.estado()) || c.canalOrigen()!=null && !CANALES.contains(c.canalOrigen()))
             throw new IllegalArgumentException("Criterio invalido");
-    }
-    private static String filtros(CriterioBusquedaPedido c,MapSqlParameterSource p) {
-        var clausulas=new ArrayList<String>();
-        agregar(clausulas,p,"idPedido","p.\"idPedido\"=:idPedido",c.idPedido());
-        agregar(clausulas,p,"idCliente","p.\"idCliente\"=:idCliente",c.idCliente());
-        agregar(clausulas,p,"fecha","p.\"fechaReparto\"=:fecha",c.fechaReparto());
-        agregar(clausulas,p,"estado","p.\"estado\"=:estado",c.estado());
-        agregar(clausulas,p,"canal","p.\"canalOrigen\"=:canal",c.canalOrigen());
-        return clausulas.isEmpty()?"":" AND "+String.join(" AND ",clausulas);
-    }
-    private static void agregar(List<String> clausulas,MapSqlParameterSource p,String nombre,String clausula,Object valor) {
-        if (valor!=null) {clausulas.add(clausula);p.addValue(nombre,valor);}
     }
 }

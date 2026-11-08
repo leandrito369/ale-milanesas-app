@@ -39,7 +39,7 @@ public class BuscarPedidoHttpController {
     }
     private static Long id(String valor) {
         if (valor==null) return null;
-        if (!valor.matches("[0-9]+")) throw new IllegalArgumentException("Identificador invalido");
+        if (!valor.matches("\\d+")) throw new IllegalArgumentException("Identificador invalido");
         return Long.valueOf(valor);
     }
     private static LocalDate fecha(String valor) {return valor==null?null:LocalDate.parse(valor);}
