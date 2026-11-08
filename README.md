@@ -147,3 +147,10 @@ en producción. Congela precios, unidad, dirección y el total post-ajuste de
 UC16; una clave UUID ya aceptada devuelve el Pedido persistido con HTTP 200.
 La primera aceptación devuelve 201. Reprogramación y cliente offline quedan
 fuera de este corte. [Fuentes, decisiones, matriz CU→B3→DB→API→test y resultados](docs/implementation/I2_01_PEDIDOS_B4_HTTP_2026-11-08.md).
+
+## I2-03 — UC43: asignación y reasignación de reparto
+
+`POST /api/v1/pedidos/{idPedido}/asignacion-reparto`, exclusivo de VENDEDOR,
+con `pedidos-uc43-enabled=false` y triple gate no-prod. Preserva historial y
+comparte el protocolo de locks de UC55/UC18; evita asignaciones a un Repartidor
+que se está deshabilitando. [Fuentes, decisiones, límite de rutas y matriz CU→B3→DB→API→test](docs/implementation/I2_03_ASIGNACION_REPARTO_B4_HTTP_2026-11-08.md).

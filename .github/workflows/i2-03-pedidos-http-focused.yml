@@ -1,0 +1,43 @@
+name: I2-03 - UC43 Asignacion Reparto B3 y HTTP
+on:
+  pull_request:
+    paths:
+      - 'src/main/java/ar/edu/unam/alemilanesas/ventas/AsignarRepartoService.java'
+      - 'src/main/java/ar/edu/unam/alemilanesas/web/AsignarRepartoHttpController.java'
+      - 'src/main/java/ar/edu/unam/alemilanesas/web/SeguridadHttpInterna.java'
+      - 'src/main/java/ar/edu/unam/alemilanesas/web/PrecondicionesDespliegue.java'
+      - 'src/main/resources/application.yml'
+      - 'src/main/java/ar/edu/unam/alemilanesas/acceso/CambiarEstadoUsuarioService.java'
+      - 'src/main/java/ar/edu/unam/alemilanesas/acceso/GestionarAsignacionesRolesService.java'
+      - 'src/test/java/ar/edu/unam/alemilanesas/ventas/AsignarReparto*'
+      - 'src/test/java/ar/edu/unam/alemilanesas/ventas/AsignacionRepartoFixture.java'
+      - 'src/test/java/ar/edu/unam/alemilanesas/ventas/PedidoFixture.java'
+      - 'src/test/java/ar/edu/unam/alemilanesas/ventas/CargarPedidoServiceIntegrationTest.java'
+      - 'src/test/java/ar/edu/unam/alemilanesas/web/AsignarRepartoHttpExternoTest.java'
+      - 'src/test/java/ar/edu/unam/alemilanesas/acceso/CambiarEstadoUsuarioServiceIntegrationTest.java'
+      - 'src/test/java/ar/edu/unam/alemilanesas/web/PrecondicionesDespliegueTest.java'
+      - 'src/test/java/ar/edu/unam/alemilanesas/web/AutenticacionHttpExternaTest.java'
+      - '.github/workflows/i2-03-pedidos-http-focused.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  asignacion-reparto-http-real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: UC43 B3 HTTP concurrencia UC55 y regresion UC03 auth gates
+        run: mvn -B -ntp -Dtest=AsignarRepartoServiceIntegrationTest,AsignarRepartoConcurrenciaIntegrationTest,AsignarRepartoHttpExternoTest,CargarPedidoServiceIntegrationTest,CambiarEstadoUsuarioServiceIntegrationTest,PrecondicionesDespliegueTest,AutenticacionHttpExternaTest test
+      - name: Reportes reales
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: i2-03-asignacion-reparto-http
+          path: target/surefire-reports/
+          if-no-files-found: warn
