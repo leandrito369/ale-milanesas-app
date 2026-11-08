@@ -33,10 +33,10 @@ public class GestionInsumosService {
     public record InsumoResultado(long idInsumo, String nombre, String codigoUnidadMedida,
                                  BigDecimal stockActual, boolean activo, boolean huboCambio) {}
     public record Dependencias(int recetas, int movimientos, int recepciones, int costos,
-                               int proveedores, int episodios) {
+                               int proveedores, int episodios, int partidas) {
         public boolean tieneHistoria() {
             return recetas>0 || movimientos>0 || recepciones>0 || costos>0
-                    || proveedores>0 || episodios>0;
+                    || proveedores>0 || episodios>0 || partidas>0;
         }
     }
     public record EstadoInsumo(long idInsumo, boolean activo, boolean huboCambio,
@@ -150,10 +150,11 @@ public class GestionInsumosService {
                  (SELECT count(*) FROM "RECEPCION_COMPRA" WHERE "idInsumoRecibido"=:id) AS recepciones,
                  (SELECT count(*) FROM "COSTO_INSUMO_HISTORICO" WHERE "idInsumo"=:id) AS costos,
                  (SELECT count(*) FROM "PROVEEDOR_INSUMO" WHERE "idInsumo"=:id) AS proveedores,
-                 (SELECT count(*) FROM "EPISODIO_FALTANTE" WHERE "idInsumo"=:id) AS episodios
+                 (SELECT count(*) FROM "EPISODIO_FALTANTE" WHERE "idInsumo"=:id) AS episodios,
+                 (SELECT count(*) FROM "PARTIDA_INSUMO" WHERE "idInsumo"=:id) AS partidas
                 """,Map.of("id",id),(rs,i)->new Dependencias(rs.getInt("recetas"),
                 rs.getInt("movimientos"),rs.getInt("recepciones"),
-                rs.getInt("costos"),rs.getInt("proveedores"),rs.getInt("episodios")));
+                rs.getInt("costos"),rs.getInt("proveedores"),rs.getInt("episodios"),rs.getInt("partidas")));
     }
     private void asegurarNombreDisponible(String nombre,Long excluir) {
         String norm=normalizar(nombre);

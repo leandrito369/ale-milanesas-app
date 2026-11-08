@@ -31,7 +31,8 @@ class PrecondicionesDespliegueTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings={"ale.http.writes.categorias-uc57-enabled","ale.http.writes.precios-uc19-enabled","ale.http.writes.compras-uc42-enabled","ale.http.writes.compras-uc08-reventa-enabled",
+    @ValueSource(strings={"ale.http.writes.insumos-uc50-enabled","ale.http.writes.insumos-uc51-enabled",
+            "ale.http.writes.insumos-uc52-enabled","ale.http.writes.categorias-uc57-enabled","ale.http.writes.precios-uc19-enabled","ale.http.writes.compras-uc42-enabled","ale.http.writes.compras-uc08-reventa-enabled",
             "ale.http.writes.compras-uc08-insumo-enabled",
             "ale.http.writes.clientes-uc02-enabled",
             "ale.http.writes.clientes-uc32-enabled",

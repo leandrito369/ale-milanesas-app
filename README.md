@@ -130,3 +130,11 @@ bandera de escritura. Ambos exclusivos de ADMINISTRADOR y delegados en B3.
 con `categorias-uc57-enabled=false` y bloqueo en prod. Delega en B3 y devuelve
 el cierre previo cuando corresponde. UC15/16 conservan invocación interna.
 [Fuentes, decisiones y pruebas](docs/implementation/I1_05_CATEGORIAS_B4_HTTP_2026-11-08.md).
+
+## I1-06 — UC50/51/52: maestro de Insumos por HTTP
+
+POST `/api/v1/insumos`, PUT `/api/v1/insumos/{idInsumo}` y PATCH
+`/api/v1/insumos/{idInsumo}/estado`, solo ADMINISTRADOR con tres gates no-prod
+independientes y apagados por defecto. Las partidas MR-6 bloquean reinterpretar
+la unidad. UC36 conserva sus GET existentes.
+[Fuentes, refactor y pruebas](docs/implementation/I1_06_INSUMOS_B4_HTTP_2026-11-08.md).
