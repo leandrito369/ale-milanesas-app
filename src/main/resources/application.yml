@@ -39,6 +39,7 @@ server:
 ale:
   http:
     writes:
+      pedidos-uc03-enabled: false
       insumos-uc50-enabled: false
       insumos-uc51-enabled: false
       insumos-uc52-enabled: false
