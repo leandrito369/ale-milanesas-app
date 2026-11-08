@@ -192,6 +192,9 @@ public class SeguridadHttpInterna {
                 .requestMatchers(HttpMethod.POST, "/api/v1/pedidos/*/asignacion-reparto")
                     .access((auth,ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
                         vendedorAutenticado(habilitarPedidosUc43,auth)))
+                // I2-02 UC34: lectura sin gate; ámbito REPARTIDOR y campos se restringen en B3.
+                .requestMatchers(HttpMethod.GET, "/api/v1/pedidos")
+                    .hasAnyAuthority(ROL_ADMINISTRADOR,ROL_VENDEDOR,"REPARTIDOR")
                 .requestMatchers(HttpMethod.GET,"/api/v1/insumos","/api/v1/unidades")
                     .hasAnyAuthority(ROL_ADMINISTRADOR,"RESPONSABLE_PRODUCCION")
                 // UC08 INSUMO: exclusivo Responsable de Producción, gate independiente.
