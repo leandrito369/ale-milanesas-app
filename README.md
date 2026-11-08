@@ -116,3 +116,10 @@ promedio móvil decimal y sin Orden de Compra. Apagada por defecto.
 con `compras-uc42-enabled=false` por defecto y bloqueo en prod.
 Admite saldo inicial y ajustes positivos/negativos por partidas; G4 sigue pendiente.
 [Fuentes, límites y pruebas reproducibles](docs/implementation/B4_06_UC42_AJUSTE_INVENTARIO.md).
+
+## I1-04 — UC19/20: precios por HTTP
+
+`POST /api/v1/productos/{idProducto}/precios` bajo `precios-uc19-enabled=false`
+y bloqueo en prod. `GET` en la misma ruta consulta historial sin depender de la
+bandera de escritura. Ambos exclusivos de ADMINISTRADOR y delegados en B3.
+[Fuentes, rutas y pruebas reproducibles](docs/implementation/I1_04_PRECIOS_B4_HTTP_2026-11-08.md).
