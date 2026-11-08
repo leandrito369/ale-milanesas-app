@@ -40,3 +40,4 @@ ale:
   http:
     writes:
       compras-uc08-insumo-enabled: false
+      compras-uc08-reventa-enabled: false

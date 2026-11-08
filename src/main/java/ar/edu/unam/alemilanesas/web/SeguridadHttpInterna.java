@@ -45,6 +45,7 @@ public class SeguridadHttpInterna {
     // Cadena /web/** conserva CSRF y prueba negativa de cookies en API.
     @SuppressWarnings("java:S4502")
     SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones,
+            @Value("${ale.http.writes.compras-uc08-reventa-enabled:false}") boolean habilitarIngresoStockReventa,
             @Value("${ale.http.writes.compras-uc08-insumo-enabled:false}") boolean habilitarIngresoStockInsumo,
             @Value("${ale.http.writes.clientes-uc02-enabled:false}") boolean habilitarAltaCliente,
             @Value("${ale.http.writes.clientes-uc32-enabled:false}") boolean habilitarModificarCliente,
@@ -155,6 +156,13 @@ public class SeguridadHttpInterna {
                     .access((auth,context) ->
                         new org.springframework.security.authorization.AuthorizationDecision(
                             habilitarIngresoStockInsumo && auth.get().isAuthenticated() &&
+                            auth.get().getAuthorities().stream().anyMatch(
+                                rol -> "RESPONSABLE_PRODUCCION".equals(rol.getAuthority()))))
+                // UC08 REVENTA: permiso de Producción y gate independiente del ingreso INSUMO.
+                .requestMatchers(HttpMethod.POST, "/api/v1/compras/recepciones-reventa")
+                    .access((auth,context) ->
+                        new org.springframework.security.authorization.AuthorizationDecision(
+                            habilitarIngresoStockReventa && auth.get().isAuthenticated() &&
                             auth.get().getAuthorities().stream().anyMatch(
                                 rol -> "RESPONSABLE_PRODUCCION".equals(rol.getAuthority()))))
                 .anyRequest().denyAll());
