@@ -150,8 +150,10 @@ class ConfigurarRecetaServiceIntegrationTest {
     }
     @Test void rechazaRolNoAdmin() {
         var d = f.datos(f.fecha(2), null);
-        for (String rol : List.of("VENDEDOR", "RESPONSABLE_PRODUCCION", "REPARTIDOR", "PROVEEDOR"))
-            assertThrows(SecurityException.class, () -> servicio.configurarRecetaProducto(f.actores.sesiones.get(rol), d));
+        for (String rol : List.of("VENDEDOR", "RESPONSABLE_PRODUCCION", "REPARTIDOR", "PROVEEDOR")) {
+            UUID sesion = f.actores.sesiones.get(rol);
+            assertThrows(SecurityException.class, () -> servicio.configurarRecetaProducto(sesion, d));
+        }
         assertThrows(SecurityException.class, () -> servicio.configurarRecetaProducto(null, d));
     }
 }
