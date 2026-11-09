@@ -48,6 +48,7 @@ public class SeguridadHttpInterna {
     // Cadena /web/** conserva CSRF y prueba negativa de cookies en API.
     @SuppressWarnings("java:S4502")
     SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones,
+            @Value("${ale.http.writes.recetas-uc10-enabled:false}") boolean habilitarRecetasUc10,
             @Value("${ale.http.writes.pedidos-uc43-enabled:false}") boolean habilitarPedidosUc43,
             @Value("${ale.http.writes.pedidos-uc03-enabled:false}") boolean habilitarPedidosUc03,
             @Value("${ale.http.writes.insumos-uc50-enabled:false}") boolean habilitarInsumosUc50,
@@ -199,6 +200,10 @@ public class SeguridadHttpInterna {
                 // I3-01a UC09: lectura exclusiva Responsable de Producción, sin gate.
                 .requestMatchers(HttpMethod.GET, "/api/v1/stock")
                     .hasAuthority(ROL_PRODUCCION)
+                // I3-01b UC10: receta versionada, ADMINISTRADOR bajo gate no-prod.
+                .requestMatchers(HttpMethod.POST, "/api/v1/productos/*/receta")
+                    .access((auth,ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
+                        administradorAutenticado(habilitarRecetasUc10,auth)))
                 .requestMatchers(HttpMethod.GET,"/api/v1/insumos","/api/v1/unidades")
                     .hasAnyAuthority(ROL_ADMINISTRADOR,ROL_PRODUCCION)
                 // UC08 INSUMO: exclusivo Responsable de Producción, gate independiente.

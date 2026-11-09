@@ -168,3 +168,11 @@ proyección operativa sin categoría ni total. Producción contextual queda en
 Separa INSUMO y REVENTA, muestra stock físico y utilizable, vencidas visibles y
 partidas activas ordenadas por D4. El filtro de umbral conserva el stock físico.
 [Fuentes, decisiones, snapshot y matriz CU→B3→DB→API→test](docs/implementation/I3_01a_UC09_CONSULTAR_STOCK_2026-11-08.md).
+
+## I3-01b — UC10: configuración versionada de Receta
+
+`POST /api/v1/productos/{idProducto}/receta`, exclusivo ADMINISTRADOR bajo
+triple gate no-prod `recetas-uc10-enabled=false`. Identidad de receta estable,
+unidades coincidentes y vigencias según RD-I301-001. [Contrato HTTP, decisiones,
+matriz de trazabilidad y pruebas](docs/implementation/I3_01b_UC10_CONFIGURAR_RECETA_2026-11-08.md).
+Issue #28 abierta; sin despliegue. No implementa UC-28.
