@@ -102,6 +102,29 @@ class RegistrarPreparacionServiceIntegrationTest {
         j.update("UPDATE \"PARTIDA_INSUMO\" SET \"fechaVencimiento\"=NULL WHERE \"idPartidaInsumo\"=?",extra);
         assertEquals(antes,f.snapshot());
     }
+    @Test void partidasVacioActivaSeleccionAutomatica() {
+        var r = servicio.registrarPreparacionPedido(f.produccion(),f.manual("5",List.of()));
+        assertEquals(2,r.cantidadInsumosConsumidos());
+        assertDecimal("9",f.disponible(f.lote)); assertDecimal("7.5",f.disponible(f.lote+1));
+        assertDecimal("1",consumido(r.idPreparacion(),f.insumo));
+    }
+    @Test void marcarAperturaTrueFuerzaApertura() { comprobarApertura(true); }
+    @Test void marcarAperturaTrueFuerzaFechaEnPartidaYaAbierta() {
+        var anterior = f.fecha.minusDays(1);
+        j.update("UPDATE \"PARTIDA_INSUMO\" SET \"fechaHoraApertura\"=? WHERE \"idPartidaInsumo\"=?",anterior,f.lote);
+        var seleccion = f.override().stream().map(p -> new PartidaAplicada(p.idInsumo(),p.idPartidaInsumo(),p.cantidadAplicada(),true)).toList();
+        var r = servicio.registrarPreparacionPedido(f.produccion(),f.manual("5",seleccion));
+        assertTrue(j.queryForObject("SELECT \"fechaHoraApertura\" FROM \"PARTIDA_INSUMO\" WHERE \"idPartidaInsumo\"=?",OffsetDateTime.class,f.lote).isEqual(r.fechaHoraPreparacion()));
+    }
+    @Test void marcarAperturaNullUsaAperturaImplicita() { comprobarApertura(null); }
+    @Test void marcarAperturaFalseConservaAperturaImplicita() { comprobarApertura(false); }
+    void comprobarApertura(Boolean marcar) {
+        assertNull(j.queryForObject("SELECT \"fechaHoraApertura\" FROM \"PARTIDA_INSUMO\" WHERE \"idPartidaInsumo\"=?",OffsetDateTime.class,f.lote));
+        var seleccion = f.override().stream().map(p -> new PartidaAplicada(p.idInsumo(),p.idPartidaInsumo(),p.cantidadAplicada(),marcar)).toList();
+        var r = servicio.registrarPreparacionPedido(f.produccion(),f.manual("5",seleccion));
+        assertTrue(j.queryForObject("SELECT \"fechaHoraApertura\" FROM \"PARTIDA_INSUMO\" WHERE \"idPartidaInsumo\"=?",OffsetDateTime.class,f.lote).isEqual(r.fechaHoraPreparacion()));
+        assertDecimal("9",f.disponible(f.lote));
+    }
     @Test void preparacionSinRecetaVigenteRechaza() {
         j.update("UPDATE \"VERSION_RECETA\" SET \"vigenteHasta\"=? WHERE \"idReceta\"=?",f.fecha.minusDays(1),f.receta);
         assertRechazo("SIN_RECETA_VIGENTE",f.datos("5")); assertEquals(0,f.preparaciones());
@@ -125,7 +148,6 @@ class RegistrarPreparacionServiceIntegrationTest {
     @Test void preparacionExcedeCantidadOriginalRechaza() {
         preparar("4"); assertRechazo("CANTIDAD_EXCEDE_ORIGINAL",f.datos("7")); assertEquals(1,f.preparaciones());
         for (String n : List.of("0","-1","0.0001","1000000000000000")) assertRechazo("SOLICITUD_INVALIDA",f.datos(n));
-        assertRechazo("SOLICITUD_INVALIDA",f.manual("1",List.of()));
         assertRechazo("SOLICITUD_INVALIDA",null);
         preparar("4"); // Reintento parcial no deduplicado: cabe en el límite, se registra otra preparación.
         assertEquals(2,f.preparaciones());
