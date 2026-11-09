@@ -21,6 +21,7 @@ public class RegistrarPreparacionService {
     private static final String FECHA = "fecha";
     private static final String MOVIMIENTO = "movimiento";
     private static final String PARTIDA = "partida";
+    private static final String PEDIDO = "pedido";
     private final NamedParameterJdbcTemplate sql;
     private final AutorizacionSesionInterna autorizacion;
     private final EpisodioFaltanteService episodios;
@@ -59,7 +60,7 @@ public class RegistrarPreparacionService {
         sql.update("""
                 INSERT INTO "PREPARACION" ("idPreparacion","idPedido","numeroDetalle","idReceta","numeroVersion",
                     "fechaHoraPreparacion","cantidadPreparada") VALUES (:id,:pedido,:detalle,:receta,:version,:fecha,:cantidad)
-                """, new MapSqlParameterSource("id", preparacion).addValue("pedido", d.idPedido())
+                """, new MapSqlParameterSource("id", preparacion).addValue(PEDIDO, d.idPedido())
                 .addValue("detalle", detalle.numero()).addValue("receta", version.receta()).addValue("version", version.numero())
                 .addValue(FECHA, ahora).addValue("cantidad", d.cantidadPreparada()));
         Long usuario = sql.queryForObject("SELECT \"idUsuario\" FROM \"SESION_USUARIO\" WHERE \"idSesionUsuario\"=:sesion",
@@ -85,7 +86,7 @@ public class RegistrarPreparacionService {
         return n != null && n.signum() > 0 && n.scale() <= 3 && n.precision() - n.scale() <= 15;
     }
     private Detalle bloquearPedido(DatosPreparacion d) {
-        var p = new MapSqlParameterSource("pedido", d.idPedido()).addValue("producto", d.idProducto());
+        var p = new MapSqlParameterSource(PEDIDO, d.idPedido()).addValue("producto", d.idProducto());
         var estados = sql.queryForList("SELECT \"estado\" FROM \"PEDIDO\" WHERE \"idPedido\"=:pedido FOR UPDATE", p, String.class);
         if (estados.isEmpty()) throw new IllegalArgumentException("PEDIDO_NO_ENCONTRADO");
         if (!"PENDIENTE".equals(estados.getFirst())) throw new IllegalArgumentException("PEDIDO_NO_PENDIENTE");
@@ -100,7 +101,7 @@ public class RegistrarPreparacionService {
         BigDecimal acumulada = sql.queryForObject("""
                 SELECT COALESCE(SUM("cantidadPreparada"),0) FROM "PREPARACION"
                 WHERE "idPedido"=:pedido AND "numeroDetalle"=:detalle
-                """, Map.of("pedido", d.idPedido(), "detalle", detalle.numero()), BigDecimal.class);
+                """, Map.of(PEDIDO, d.idPedido(), "detalle", detalle.numero()), BigDecimal.class);
         if (acumulada.add(d.cantidadPreparada()).compareTo(detalle.original()) > 0)
             throw new IllegalArgumentException("CANTIDAD_EXCEDE_ORIGINAL");
     }

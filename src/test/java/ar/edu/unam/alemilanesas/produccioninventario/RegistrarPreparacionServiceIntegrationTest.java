@@ -199,7 +199,7 @@ class RegistrarPreparacionServiceIntegrationTest {
         var d = f.datos("5"); var antes = f.snapshot(); UUID sesion = f.produccion();
         try { assertThrows(DataAccessException.class,() -> servicio.registrarPreparacionPedido(sesion,d)); assertEquals(antes,f.snapshot()); }
         finally { j.execute("DROP TRIGGER test_uc28_fallo ON \"MOVIMIENTO_INSUMO\""); j.execute("DROP FUNCTION test_uc28_fallo()"); }
-        // Partidas suficientes pero stock físico inconsistente: ck_insumo_0 también revierte todo.
+        // Partidas suficientes pero stock físico inconsistente: ck_insumo_0 también revierte la operación completa.
         j.update("UPDATE \"INSUMO\" SET \"stockActual\"=0 WHERE \"idInsumo\"=?",f.insumo+1);
         var inconsistente = f.snapshot();
         assertThrows(DataAccessException.class,() -> servicio.registrarPreparacionPedido(sesion,d)); assertEquals(inconsistente,f.snapshot());

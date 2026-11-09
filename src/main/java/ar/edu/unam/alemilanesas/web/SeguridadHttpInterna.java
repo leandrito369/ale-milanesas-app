@@ -208,8 +208,7 @@ public class SeguridadHttpInterna {
                 // I3-01c UC28: preparación propia exclusiva de Producción bajo gate no-prod.
                 .requestMatchers(HttpMethod.POST, "/api/v1/pedidos/*/preparaciones")
                     .access((auth,ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
-                        habilitarPreparacionesUc28 && auth.get().isAuthenticated() && auth.get().getAuthorities().stream()
-                            .anyMatch(r -> ROL_PRODUCCION.equals(r.getAuthority()))))
+                        produccionAutenticada(habilitarPreparacionesUc28,auth)))
                 .requestMatchers(HttpMethod.GET,"/api/v1/insumos","/api/v1/unidades")
                     .hasAnyAuthority(ROL_ADMINISTRADOR,ROL_PRODUCCION)
                 // UC08 INSUMO: exclusivo Responsable de Producción, gate independiente.
@@ -239,6 +238,13 @@ public class SeguridadHttpInterna {
         http.addFilterBefore(new FiltroSesionBearer(sesiones),
                 UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    private static boolean produccionAutenticada(boolean habilitado, Supplier<? extends Authentication> credenciales) {
+        if (!habilitado) return false;
+        Authentication autenticacion = credenciales.get();
+        return autenticacion.isAuthenticated() && autenticacion.getAuthorities().stream()
+                .anyMatch(rol -> ROL_PRODUCCION.equals(rol.getAuthority()));
     }
 
     private static boolean administradorAutenticado(boolean habilitado, Supplier<? extends Authentication> credenciales) {
