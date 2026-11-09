@@ -70,8 +70,8 @@ class BuscarPedidoServiceIntegrationTest {
         reparto.asignarOReasignar(f.origen.vendedor(),f.asignacion.datos(f.asignacion.segundo,"Cambio vigente"));
         assertTrue(buscar("REPARTIDOR",null).isEmpty());
     }
-    @Test void produccionRechazadoPor403() {
-        for(String rol:List.of("RESPONSABLE_PRODUCCION","PROVEEDOR")) {
+    @Test void rechazaProveedorYSesionInvalida() {
+        for(String rol:List.of("PROVEEDOR")) {
             UUID sesion=f.sesion(rol);assertThrows(SecurityException.class,()->servicio.buscarPedido(sesion,null));
         }
         assertThrows(SecurityException.class,()->servicio.buscarPedido(null,null));
@@ -115,6 +115,46 @@ class BuscarPedidoServiceIntegrationTest {
         buscar("ADMINISTRADOR",null);var comercial=buscar("VENDEDOR",null);buscar("REPARTIDOR",null);
         assertEquals("EN_MORA",((PedidoComercial)comercial.getFirst()).categoriaComercialAplicada());
         assertEquals(antes,snapshot());
+    }
+    @Test void produccionVeSoloPedidosConProductosElaborados() {
+        var r=buscar("RESPONSABLE_PRODUCCION",null);
+        assertEquals(List.of(f.online,f.asignacion.pendiente),ids(r));
+        assertTrue(r.stream().allMatch(PedidoProduccion.class::isInstance));
+        assertEquals(5,PedidoProduccion.class.getRecordComponents().length);
+        var filtro=criterio(f.asignacion.pendiente,null,null,"CANCELADO",null);
+        assertTrue(buscar("RESPONSABLE_PRODUCCION",filtro).isEmpty());
+        // Agotar ambos detalles propios del pedido; no basta con que contenga ELABORADO.
+        for(int n=0;n<2;n++) {
+            long receta=f.origen.base+500+n;
+            j.update("INSERT INTO \"RECETA\" VALUES (?,?)",receta,f.origen.base+n);
+            j.update("INSERT INTO \"VERSION_RECETA\" VALUES (?,1,now()-interval '1 day',NULL,1,?)",receta,n==0?"UN":"KG");
+            j.update("""
+                    INSERT INTO "PREPARACION" ("idPreparacion","idPedido","numeroDetalle","idReceta","numeroVersion","fechaHoraPreparacion","cantidadPreparada")
+                    SELECT ?,"idPedido","numeroDetalle",?,1,now(),"cantidadOriginal" FROM "DETALLE_PEDIDO"
+                    WHERE "idPedido"=? AND "numeroDetalle"=?
+                    """,f.origen.base+600+n,receta,f.asignacion.pendiente,n+1);
+        }
+        assertEquals(List.of(f.online),ids(buscar("RESPONSABLE_PRODUCCION",null)));
+        j.update("UPDATE \"PEDIDO\" SET \"estado\"='ENTREGADO' WHERE \"idPedido\"=?",f.online);
+        assertTrue(buscar("RESPONSABLE_PRODUCCION",null).isEmpty());
+        // REPARTIDOR conserva su ámbito propio; VENDEDOR conserva prioridad y proyección comercial.
+        j.update("INSERT INTO \"USUARIO_ROL\" VALUES (?,'REPARTIDOR',now())",f.origen.base+2);
+        // El trigger de roles revoca sesiones: iniciar otra tras cada cambio de rol.
+        assertTrue(servicio.buscarPedido(nuevaSesion(f.origen.base+2),null).isEmpty());
+        j.update("INSERT INTO \"USUARIO_ROL\" VALUES (?,'VENDEDOR',now())",f.origen.base+2);
+        var directo=servicio.buscarPedido(nuevaSesion(f.origen.base+2),null);
+        assertEquals(f.ids(),ids(directo)); assertTrue(directo.stream().allMatch(PedidoComercial.class::isInstance));
+    }
+    @Test void produccionPidiendoPedidoSinProductosElaboradosRetorna403() {
+        UUID sesion=f.sesion("RESPONSABLE_PRODUCCION");
+        for(long id:new long[]{f.asignacion.entregado,f.asignacion.cancelado,Long.MAX_VALUE}) {
+            var c=criterio(id,null,null,null,null);
+            assertEquals("FUERA_DE_CONTEXTO",assertThrows(FueraDeContextoException.class,()->servicio.buscarPedido(sesion,c)).getMessage());
+        }
+        j.update("UPDATE \"PRODUCTO\" SET \"tipoProducto\"='REVENTA',\"stockActualReventa\"=0 WHERE \"idProducto\" IN (?,?)",f.origen.base,f.origen.base+1);
+        var c=criterio(f.asignacion.pendiente,null,null,null,null);
+        assertThrows(FueraDeContextoException.class,()->servicio.buscarPedido(sesion,c));
+        assertTrue(buscar("RESPONSABLE_PRODUCCION",null).isEmpty());
     }
     private Map<String,String> snapshot() {
         var datos=new HashMap<String,String>();

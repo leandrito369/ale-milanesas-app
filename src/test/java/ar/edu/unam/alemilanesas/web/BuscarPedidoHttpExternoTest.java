@@ -96,15 +96,21 @@ class BuscarPedidoHttpExternoTest {
         reparto.asignarOReasignar(f.origen.vendedor(),f.asignacion.datos(f.asignacion.segundo,"Cambio de ámbito"));
         var posterior=get("","REPARTIDOR");assertRespuesta(200,null,posterior);assertTrue(contenido(posterior).isEmpty());
     }
-    @Test void getConRolProduccionRetorna403() throws Exception {
-        assertRespuesta(403,"OPERACION_PROHIBIDA",get("","RESPONSABLE_PRODUCCION"));
+    @Test void getConRolProduccionRetornaContextoPreparacion() throws Exception {
+        var r=get("?idCliente="+f.origen.base,"RESPONSABLE_PRODUCCION");
+        assertRespuesta(200,null,r); assertEquals(List.of(f.asignacion.pendiente),ids(contenido(r)));
+        assertProyeccion(COMUNES,contenido(r));
+        for(long id:new long[]{f.asignacion.entregado,f.asignacion.cancelado,Long.MAX_VALUE})
+            assertRespuesta(403,"FUERA_DE_CONTEXTO",get("?idPedido="+id,"RESPONSABLE_PRODUCCION"));
+        var vacio=get("?idCliente="+Long.MAX_VALUE,"RESPONSABLE_PRODUCCION");
+        assertRespuesta(200,null,vacio); assertTrue(contenido(vacio).isEmpty());
         assertRespuesta(403,"OPERACION_PROHIBIDA",get("","PROVEEDOR"));
     }
     @Test void cacheControlNoStoreEnTodasLasRespuestas() throws Exception {
         assertRespuesta(200,null,get("","VENDEDOR"));
         assertRespuesta(400,"SOLICITUD_INVALIDA",get("?intruso=1","VENDEDOR"));
         assertRespuesta(401,"SESION_INVALIDA",get("",null,null));
-        assertRespuesta(403,"OPERACION_PROHIBIDA",get("","RESPONSABLE_PRODUCCION"));
+        assertRespuesta(403,"FUERA_DE_CONTEXTO",get("?idPedido="+f.asignacion.cancelado,"RESPONSABLE_PRODUCCION"));
         // Un fallo SQL real y reversible en el contenedor aislado verifica 503 sin exponer el mensaje SQL.
         j.execute("ALTER TABLE \"PEDIDO\" RENAME TO \"PEDIDO_NO_DISPONIBLE_TEST\"");
         try {assertRespuesta(503,"PERSISTENCIA_NO_DISPONIBLE",get("","VENDEDOR"));}
