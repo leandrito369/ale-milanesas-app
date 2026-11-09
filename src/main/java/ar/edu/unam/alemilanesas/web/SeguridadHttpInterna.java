@@ -40,6 +40,7 @@ public class SeguridadHttpInterna {
     public static final String ROL_CAMBIO_PENDIENTE = "UC53_RESTRINGIDO";
     private static final String ROL_ADMINISTRADOR = "ADMINISTRADOR";
     private static final String ROL_VENDEDOR = "VENDEDOR";
+    private static final String ROL_PRODUCCION = "RESPONSABLE_PRODUCCION";
 
     @Bean
     @Order(1)
@@ -195,28 +196,31 @@ public class SeguridadHttpInterna {
                 // I2-02 UC34: lectura sin gate; ámbito REPARTIDOR y campos se restringen en B3.
                 .requestMatchers(HttpMethod.GET, "/api/v1/pedidos")
                     .hasAnyAuthority(ROL_ADMINISTRADOR,ROL_VENDEDOR,"REPARTIDOR")
+                // I3-01a UC09: lectura exclusiva Responsable de Producción, sin gate.
+                .requestMatchers(HttpMethod.GET, "/api/v1/stock")
+                    .hasAuthority(ROL_PRODUCCION)
                 .requestMatchers(HttpMethod.GET,"/api/v1/insumos","/api/v1/unidades")
-                    .hasAnyAuthority(ROL_ADMINISTRADOR,"RESPONSABLE_PRODUCCION")
+                    .hasAnyAuthority(ROL_ADMINISTRADOR,ROL_PRODUCCION)
                 // UC08 INSUMO: exclusivo Responsable de Producción, gate independiente.
                 .requestMatchers(HttpMethod.POST, "/api/v1/compras/recepciones-insumo")
                     .access((auth,context) ->
                         new org.springframework.security.authorization.AuthorizationDecision(
                             habilitarIngresoStockInsumo && auth.get().isAuthenticated() &&
                             auth.get().getAuthorities().stream().anyMatch(
-                                rol -> "RESPONSABLE_PRODUCCION".equals(rol.getAuthority()))))
+                                rol -> ROL_PRODUCCION.equals(rol.getAuthority()))))
                 // UC08 REVENTA: permiso de Producción y gate independiente del ingreso INSUMO.
                 .requestMatchers(HttpMethod.POST, "/api/v1/compras/recepciones-reventa")
                     .access((auth,context) ->
                         new org.springframework.security.authorization.AuthorizationDecision(
                             habilitarIngresoStockReventa && auth.get().isAuthenticated() &&
                             auth.get().getAuthorities().stream().anyMatch(
-                                rol -> "RESPONSABLE_PRODUCCION".equals(rol.getAuthority()))))
+                                rol -> ROL_PRODUCCION.equals(rol.getAuthority()))))
                 .requestMatchers(HttpMethod.POST, "/api/v1/inventario/ajustes")
                     .access((auth,context) ->
                         new org.springframework.security.authorization.AuthorizationDecision(
                             habilitarAjusteInventario && auth.get().isAuthenticated() &&
                             auth.get().getAuthorities().stream().anyMatch(
-                                rol -> "RESPONSABLE_PRODUCCION".equals(rol.getAuthority()))))
+                                rol -> ROL_PRODUCCION.equals(rol.getAuthority()))))
                 .anyRequest().denyAll());
         http.exceptionHandling(e->e
                 .authenticationEntryPoint((req,res,ex)->rechazar(res))
