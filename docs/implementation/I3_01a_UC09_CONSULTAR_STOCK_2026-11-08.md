@@ -45,7 +45,8 @@ No se modifican V1/V2/V3 ni servicios o controllers existentes.
 | D6 | Cache-Control: no-store | Datos privados, en respuestas 200/400/401/403/503. |
 
 IDs positivos representables como Long; tipo INSUMO/REVENTA; booleano HTTP
-estricto true/false. Se rechazan parámetros desconocidos, vacíos, repetidos,
+estricto true/false; omitido se normaliza a false (sin filtro). Se rechazan
+parámetros desconocidos, vacíos, repetidos,
 IDs fuera de rango y valores inválidos. Los valores se bindean con tipos JDBC;
 las tres sentencias SQL son fijas, sin formateo de valores externos.
 

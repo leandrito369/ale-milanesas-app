@@ -36,8 +36,8 @@ public class ConsultarStockHttpController {
         if (!valor.matches("\\d+")) throw new IllegalArgumentException("Identificador invalido");
         return Long.valueOf(valor);
     }
-    private static Boolean booleano(String valor) {
-        if (valor==null) return null;
+    private static boolean booleano(String valor) {
+        if (valor==null) return false;
         return switch(valor) {
             case "true" -> true;
             case "false" -> false;
