@@ -109,12 +109,20 @@ class RegistrarPreparacionServiceIntegrationTest {
         assertDecimal("1",consumido(r.idPreparacion(),f.insumo));
     }
     @Test void marcarAperturaTrueFuerzaApertura() { comprobarApertura(true); }
-    @Test void marcarAperturaTrueFuerzaFechaEnPartidaYaAbierta() {
-        var anterior = f.fecha.minusDays(1);
-        j.update("UPDATE \"PARTIDA_INSUMO\" SET \"fechaHoraApertura\"=? WHERE \"idPartidaInsumo\"=?",anterior,f.lote);
+    @Test void marcarAperturaTrueRespetaFechaRegistroFutura() {
+        var registro = f.fecha.plusDays(1);
+        j.update("UPDATE \"PARTIDA_INSUMO\" SET \"fechaHoraRegistro\"=? WHERE \"idPartidaInsumo\"=?",registro,f.lote);
         var seleccion = f.override().stream().map(p -> new PartidaAplicada(p.idInsumo(),p.idPartidaInsumo(),p.cantidadAplicada(),true)).toList();
-        var r = servicio.registrarPreparacionPedido(f.produccion(),f.manual("5",seleccion));
-        assertTrue(j.queryForObject("SELECT \"fechaHoraApertura\" FROM \"PARTIDA_INSUMO\" WHERE \"idPartidaInsumo\"=?",OffsetDateTime.class,f.lote).isEqual(r.fechaHoraPreparacion()));
+        servicio.registrarPreparacionPedido(f.produccion(),f.manual("5",seleccion));
+        assertTrue(j.queryForObject("SELECT \"fechaHoraApertura\" FROM \"PARTIDA_INSUMO\" WHERE \"idPartidaInsumo\"=?",OffsetDateTime.class,f.lote).isEqual(registro));
+    }
+    @Test void marcarAperturaTrueNoSobrescribeAperturaPrevia() {
+        var t1 = f.fecha.minusDays(1);
+        j.update("UPDATE \"PARTIDA_INSUMO\" SET \"fechaHoraApertura\"=? WHERE \"idPartidaInsumo\"=?",t1,f.lote);
+        var seleccion = f.override().stream().map(p -> new PartidaAplicada(p.idInsumo(),p.idPartidaInsumo(),p.cantidadAplicada(),true)).toList();
+        servicio.registrarPreparacionPedido(f.produccion(),f.manual("5",seleccion));
+        assertTrue(j.queryForObject("SELECT \"fechaHoraApertura\" FROM \"PARTIDA_INSUMO\" WHERE \"idPartidaInsumo\"=?",OffsetDateTime.class,f.lote).isEqual(t1));
+        assertDecimal("9",f.disponible(f.lote));
     }
     @Test void marcarAperturaNullUsaAperturaImplicita() { comprobarApertura(null); }
     @Test void marcarAperturaFalseConservaAperturaImplicita() { comprobarApertura(false); }

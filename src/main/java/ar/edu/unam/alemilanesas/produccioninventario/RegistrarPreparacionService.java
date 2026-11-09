@@ -233,7 +233,7 @@ public class RegistrarPreparacionService {
                     """, p);
             sql.update("""
                     UPDATE "PARTIDA_INSUMO" SET "fechaHoraApertura"=GREATEST(:fecha,"fechaHoraRegistro")
-                    WHERE "idPartidaInsumo"=:partida AND "idInsumo"=:insumo AND (:abrir OR "fechaHoraApertura" IS NULL)
+                    WHERE "idPartidaInsumo"=:partida AND "idInsumo"=:insumo AND "fechaHoraApertura" IS NULL
                     """, p);
         }
         episodios.evaluarApertura(c.insumo(), c.stock(), c.umbral(), movimiento);

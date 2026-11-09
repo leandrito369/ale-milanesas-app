@@ -53,7 +53,7 @@ La suite HTTP de búsqueda conserva sus diez pruebas y verifica el contexto nuev
 | D2 | Body idProducto, cantidadPreparada, partidas opcional | Firma G0 y extensión técnica G1. ID de pedido únicamente en path. |
 | D3 | Override cubre exactamente todos los insumos; SUM por insumo = consumo calculado | RD-I301-001 §3; IDs de partida no repetidos. |
 | D4 | Selección automática de partidas positivas no vencidas por apertura, vencimiento, registro, ID | MR-6 D4. NULLS LAST en apertura/vencimiento. |
-| D5 | Apertura implícita y marcarApertura opcional | GREATEST(fechaHoraPreparacion,fechaHoraRegistro) si apertura es NULL o true explícito; ver matiz D2 abajo. |
+| D5 | Apertura implícita y marcarApertura opcional | GREATEST(fechaHoraPreparacion,fechaHoraRegistro) solo si apertura es NULL; preserva siempre la primera apertura. |
 | D6 | cantidadNecesaria × cantidadPreparada ÷ rendimiento; HALF_UP escala 3 | G2, NUMERIC(18,3); cero redondeado rechazado. |
 | D7 | SUM de cantidades disponibles no vencidas >= consumo | G2 y adenda UC-28; el físico suficiente no habilita partidas vencidas. |
 | D8 | CONSUMO_PRODUCCION, origen PRODUCCION, idPreparacion no NULL | G4. Recepción/referencia/motivo/observación NULL. Actor interno en idUsuarioResponsable. |
@@ -73,15 +73,11 @@ La lista vacía se normaliza a null antes de validar cobertura y planificar cons
 
 Cada partida admite cuatro campos: idInsumo, idPartidaInsumo, cantidadAplicada y
 el Boolean opcional marcarApertura. Se rechazan tipos distintos de boolean/null.
-Con true se fuerza GREATEST(fechaHoraPreparacion,fechaHoraRegistro), conforme al
-encargo de corrección. Con false/null/omitido solo se abre si fechaHoraApertura
-es NULL; false no impide la apertura implícita de una partida consumida cerrada.
-El constructor de tres argumentos sigue disponible y equivale a marcarApertura=null.
-
-Matiz normativo: RD-I301-001 describe COALESCE para preservar una apertura previa;
-el encargo explícito de este fix pide forzar GREATEST con true, incluso si ya
-existe apertura. Ese caso sigue la instrucción del responsable en esta tarea;
-no se modifica la RD. Sin true se preservan las aperturas anteriores.
+Con true/false/null/omitido solo se abre si fechaHoraApertura es NULL:
+GREATEST(fechaHoraPreparacion,fechaHoraRegistro). Una apertura previa siempre se
+preserva, equivalente a COALESCE según RD-I301-001 §3. false no impide la apertura
+implícita de una partida consumida cerrada. El constructor de tres argumentos
+sigue disponible y equivale a marcarApertura=null.
 
 El override valida IDs/cantidades positivos, precisión, ausencia de duplicados,
 pertenencia al insumo, disponibilidad, vencimiento y cobertura exacta de la receta.
@@ -94,7 +90,7 @@ El vencimiento de hoy aún es válido según CURRENT_DATE de PostgreSQL.
 Por cada insumo se inserta un movimiento y su desglose; la suma de detalles es
 exactamente la cantidad del movimiento. **Solo V3** descuenta cantidadDisponible.
 El servicio modifica exclusivamente fechaHoraApertura de las partidas consumidas
-con GREATEST según D2; conserva aperturas anteriores salvo true explícito.
+con GREATEST según D2; conserva siempre aperturas anteriores.
 Nunca descuenta dos veces.
 
 ## G2 — Fórmula BigDecimal y unidades
@@ -274,7 +270,7 @@ mediante Testcontainers, sin omisiones:
 Verdes: partidasVacioActivaSeleccionAutomatica,
 marcarAperturaTrueFuerzaApertura, marcarAperturaNullUsaAperturaImplicita,
 marcarAperturaFalseConservaAperturaImplicita y
-marcarAperturaTrueFuerzaFechaEnPartidaYaAbierta.
+marcarAperturaTrueRespetaFechaRegistroFutura (actualizado en la corrección de PR #83).
 HTTP verifica [] → 201 y acepta true/false/null; el test previo sin el campo
 sigue pasando. No se reejecutaron las demás suites de la tabla histórica.
 
@@ -288,3 +284,13 @@ mvn -B -ntp -Dtest=RegistrarPreparacionServiceIntegrationTest,RegistrarPreparaci
 En el entorno cloud se usó un settings Maven local fuera del checkout para
 el proxy, un repositorio Maven en /tmp y el JDK completo descargado con checksum
 verificado. No se alteraron pom.xml ni dependencias para resolver el entorno.
+
+### Corrección de PR #83 — preservar primera apertura
+
+El WHERE exige siempre fechaHoraApertura IS NULL, incluso con marcarApertura=true,
+por lo que se preserva T1 en partidas ya abiertas (RD-I301-001 §3, COALESCE).
+Se reemplaza el test que esperaba sobrescribir por un caso de partida cerrada
+con registro futuro, y se agrega marcarAperturaTrueNoSobrescribeAperturaPrevia.
+Validación de esta corrección: test-compile BUILD SUCCESS y suite
+RegistrarPreparacionServiceIntegrationTest 22/22, cero fallos/errores/skips,
+BUILD SUCCESS. Las suites HTTP y concurrencia no se reejecutaron en este ajuste.
