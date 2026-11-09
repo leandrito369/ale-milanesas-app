@@ -161,3 +161,10 @@ que se está deshabilitando. [Fuentes, decisiones, límite de rutas y matriz CU�
 acceso directo; REPARTIDOR ve únicamente asignaciones vigentes propias, con
 proyección operativa sin categoría ni total. Producción contextual queda en
 403 hasta UC28. [Fuentes, proyecciones BC07, decisiones y matriz CU→B3→DB→API→test](docs/implementation/I2_02_BUSQUEDA_PEDIDOS_B4_HTTP_2026-11-08.md).
+
+## I3-01a — UC09: consulta de Stock
+
+`GET /api/v1/stock`, exclusivo de RESPONSABLE_PRODUCCION, sin gate y solo lectura.
+Separa INSUMO y REVENTA, muestra stock físico y utilizable, vencidas visibles y
+partidas activas ordenadas por D4. El filtro de umbral conserva el stock físico.
+[Fuentes, decisiones, snapshot y matriz CU→B3→DB→API→test](docs/implementation/I3_01a_UC09_CONSULTAR_STOCK_2026-11-08.md).
