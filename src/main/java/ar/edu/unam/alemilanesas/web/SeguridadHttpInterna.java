@@ -48,6 +48,7 @@ public class SeguridadHttpInterna {
     // Cadena /web/** conserva CSRF y prueba negativa de cookies en API.
     @SuppressWarnings("java:S4502")
     SecurityFilterChain seguridad(HttpSecurity http, VerificadorSesionBearer sesiones,
+            @Value("${ale.http.writes.preparaciones-uc28-enabled:false}") boolean habilitarPreparacionesUc28,
             @Value("${ale.http.writes.recetas-uc10-enabled:false}") boolean habilitarRecetasUc10,
             @Value("${ale.http.writes.pedidos-uc43-enabled:false}") boolean habilitarPedidosUc43,
             @Value("${ale.http.writes.pedidos-uc03-enabled:false}") boolean habilitarPedidosUc03,
@@ -196,7 +197,7 @@ public class SeguridadHttpInterna {
                         vendedorAutenticado(habilitarPedidosUc43,auth)))
                 // I2-02 UC34: lectura sin gate; ámbito REPARTIDOR y campos se restringen en B3.
                 .requestMatchers(HttpMethod.GET, "/api/v1/pedidos")
-                    .hasAnyAuthority(ROL_ADMINISTRADOR,ROL_VENDEDOR,"REPARTIDOR")
+                    .hasAnyAuthority(ROL_ADMINISTRADOR,ROL_VENDEDOR,"REPARTIDOR",ROL_PRODUCCION)
                 // I3-01a UC09: lectura exclusiva Responsable de Producción, sin gate.
                 .requestMatchers(HttpMethod.GET, "/api/v1/stock")
                     .hasAuthority(ROL_PRODUCCION)
@@ -204,6 +205,10 @@ public class SeguridadHttpInterna {
                 .requestMatchers(HttpMethod.POST, "/api/v1/productos/*/receta")
                     .access((auth,ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
                         administradorAutenticado(habilitarRecetasUc10,auth)))
+                // I3-01c UC28: preparación propia exclusiva de Producción bajo gate no-prod.
+                .requestMatchers(HttpMethod.POST, "/api/v1/pedidos/*/preparaciones")
+                    .access((auth,ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
+                        produccionAutenticada(habilitarPreparacionesUc28,auth)))
                 .requestMatchers(HttpMethod.GET,"/api/v1/insumos","/api/v1/unidades")
                     .hasAnyAuthority(ROL_ADMINISTRADOR,ROL_PRODUCCION)
                 // UC08 INSUMO: exclusivo Responsable de Producción, gate independiente.
@@ -233,6 +238,13 @@ public class SeguridadHttpInterna {
         http.addFilterBefore(new FiltroSesionBearer(sesiones),
                 UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    private static boolean produccionAutenticada(boolean habilitado, Supplier<? extends Authentication> credenciales) {
+        if (!habilitado) return false;
+        Authentication autenticacion = credenciales.get();
+        return autenticacion.isAuthenticated() && autenticacion.getAuthorities().stream()
+                .anyMatch(rol -> ROL_PRODUCCION.equals(rol.getAuthority()));
     }
 
     private static boolean administradorAutenticado(boolean habilitado, Supplier<? extends Authentication> credenciales) {

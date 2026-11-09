@@ -39,6 +39,7 @@ server:
 ale:
   http:
     writes:
+      preparaciones-uc28-enabled: false
       recetas-uc10-enabled: false
       pedidos-uc43-enabled: false
       pedidos-uc03-enabled: false

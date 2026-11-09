@@ -68,6 +68,7 @@ public class PrecondicionesDespliegue implements BeanFactoryPostProcessor {
         vetarPedidosUc03();
         vetarPedidosUc43();
         vetarRecetasUc10();
+        vetarPreparacionesUc28();
         String origen=env.getProperty("ale.web.allowed-origin","");
         URI parsed;
         try {parsed=URI.create(origen);}
@@ -88,6 +89,12 @@ public class PrecondicionesDespliegue implements BeanFactoryPostProcessor {
             throw new IllegalStateException("Aislamiento del backend y singleton requeridos");
         }
     }
+    private void vetarPreparacionesUc28() {
+        if (Boolean.TRUE.equals(env.getProperty("ale.http.writes.preparaciones-uc28-enabled",Boolean.class))) {
+            throw new IllegalStateException("I3-01c UC-28 (preparaciones) HTTP bloqueado en produccion");
+        }
+    }
+
     private void vetarRecetasUc10() {
         if (Boolean.TRUE.equals(env.getProperty("ale.http.writes.recetas-uc10-enabled",Boolean.class))) {
             throw new IllegalStateException("I3-01b UC-10 (recetas) HTTP bloqueado en produccion");

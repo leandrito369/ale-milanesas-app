@@ -176,3 +176,12 @@ triple gate no-prod `recetas-uc10-enabled=false`. Identidad de receta estable,
 unidades coincidentes y vigencias según RD-I301-001. [Contrato HTTP, decisiones,
 matriz de trazabilidad y pruebas](docs/implementation/I3_01b_UC10_CONFIGURAR_RECETA_2026-11-08.md).
 Issue #28 abierta; sin despliegue. No implementa UC-28.
+
+## I3-01c — UC28: preparación propia de Pedido
+
+`POST /api/v1/pedidos/{idPedido}/preparaciones`, exclusivo RESPONSABLE_PRODUCCION
+bajo triple gate no-prod `preparaciones-uc28-enabled=false`. Consumos BigDecimal,
+partidas automáticas D4 u override, apertura implícita y evaluación PRA-01.
+UC-34 admite ahora Producción contextual, sin costos/ajustes en su proyección.
+[Decisiones, matriz de trazabilidad, pruebas y limitación de idempotencia](docs/implementation/I3_01c_UC28_PREPARACION_B4_HTTP_2026-11-08.md).
+Issue #28 abierta; sin despliegue.

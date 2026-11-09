@@ -1,0 +1,39 @@
+name: I3-01c - UC28 Preparaciones B3 y HTTP
+on:
+  pull_request:
+    paths:
+      - 'src/main/java/ar/edu/unam/alemilanesas/produccioninventario/RegistrarPreparacionService.java'
+      - 'src/main/java/ar/edu/unam/alemilanesas/ventas/BuscarPedidoService.java'
+      - 'src/main/java/ar/edu/unam/alemilanesas/web/RegistrarPreparacionHttpController.java'
+      - 'src/main/java/ar/edu/unam/alemilanesas/web/SeguridadHttpInterna.java'
+      - 'src/main/java/ar/edu/unam/alemilanesas/web/PrecondicionesDespliegue.java'
+      - 'src/main/resources/application.yml'
+      - 'src/test/java/ar/edu/unam/alemilanesas/produccioninventario/RegistrarPreparacion*Test.java'
+      - 'src/test/java/ar/edu/unam/alemilanesas/produccioninventario/PreparacionFixture.java'
+      - 'src/test/java/ar/edu/unam/alemilanesas/web/RegistrarPreparacionHttpExternoTest.java'
+      - 'src/test/java/ar/edu/unam/alemilanesas/ventas/BuscarPedidoServiceIntegrationTest.java'
+      - 'src/test/java/ar/edu/unam/alemilanesas/web/BuscarPedidoHttpExternoTest.java'
+      - '.github/workflows/i3-01c-preparaciones-http-focused.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  preparaciones-http-real:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: UC28 UC34 y regresion recetas stock pedidos inventario auth gates
+        run: mvn -B -ntp -Dtest=RegistrarPreparacionServiceIntegrationTest,RegistrarPreparacionConcurrenciaIntegrationTest,RegistrarPreparacionHttpExternoTest,ConfigurarRecetaServiceIntegrationTest,ConsultarStockServiceIntegrationTest,BuscarPedidoServiceIntegrationTest,BuscarPedidoHttpExternoTest,CargarPedidoServiceIntegrationTest,AsignarRepartoServiceIntegrationTest,RegistrarAjusteInventarioServiceIntegrationTest,AutenticacionHttpExternaTest,PrecondicionesDespliegueTest test
+      - name: Reportes reales
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: i3-01c-preparaciones-http
+          path: target/surefire-reports/
+          if-no-files-found: warn
