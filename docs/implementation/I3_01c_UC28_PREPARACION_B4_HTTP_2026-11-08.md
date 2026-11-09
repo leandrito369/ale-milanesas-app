@@ -53,7 +53,7 @@ La suite HTTP de búsqueda conserva sus diez pruebas y verifica el contexto nuev
 | D2 | Body idProducto, cantidadPreparada, partidas opcional | Firma G0 y extensión técnica G1. ID de pedido únicamente en path. |
 | D3 | Override cubre exactamente todos los insumos; SUM por insumo = consumo calculado | RD-I301-001 §3; IDs de partida no repetidos. |
 | D4 | Selección automática de partidas positivas no vencidas por apertura, vencimiento, registro, ID | MR-6 D4. NULLS LAST en apertura/vencimiento. |
-| D5 | Apertura implícita de cada partida consumida | GREATEST(fechaHoraPreparacion,fechaHoraRegistro) solo si fechaHoraApertura es NULL. |
+| D5 | Apertura implícita y marcarApertura opcional | GREATEST(fechaHoraPreparacion,fechaHoraRegistro) solo si apertura es NULL; preserva siempre la primera apertura. |
 | D6 | cantidadNecesaria × cantidadPreparada ÷ rendimiento; HALF_UP escala 3 | G2, NUMERIC(18,3); cero redondeado rechazado. |
 | D7 | SUM de cantidades disponibles no vencidas >= consumo | G2 y adenda UC-28; el físico suficiente no habilita partidas vencidas. |
 | D8 | CONSUMO_PRODUCCION, origen PRODUCCION, idPreparacion no NULL | G4. Recepción/referencia/motivo/observación NULL. Actor interno en idUsuarioResponsable. |
@@ -65,11 +65,19 @@ La suite HTTP de búsqueda conserva sus diez pruebas y verifica el contexto nuev
 
 ## G1 — Override manual y apertura implícita
 
-Omitir partidas o enviarla null selecciona automáticamente. La lista explícita
-vacía se rechaza con 400 según la validación solicitada en este corte, aunque
-la RD también permite tratarla como selección automática. No se agrega el campo
-marcarApertura: el encargo limita el DTO de partida a tres campos y exige apertura
-implícita. Un campo desconocido se rechaza; no se ignora silenciosamente.
+Omitir partidas, enviarla null o enviar `partidas: []` activa selección automática
+D4: alineado con RD-I301-001 §3, que dice literalmente «o es nulo/vacío».
+La lista vacía se normaliza a null antes de validar cobertura y planificar consumos.
+
+### `marcarApertura` explícito (D2)
+
+Cada partida admite cuatro campos: idInsumo, idPartidaInsumo, cantidadAplicada y
+el Boolean opcional marcarApertura. Se rechazan tipos distintos de boolean/null.
+Con true/false/null/omitido solo se abre si fechaHoraApertura es NULL:
+GREATEST(fechaHoraPreparacion,fechaHoraRegistro). Una apertura previa siempre se
+preserva, equivalente a COALESCE según RD-I301-001 §3. false no impide la apertura
+implícita de una partida consumida cerrada. El constructor de tres argumentos
+sigue disponible y equivale a marcarApertura=null.
 
 El override valida IDs/cantidades positivos, precisión, ausencia de duplicados,
 pertenencia al insumo, disponibilidad, vencimiento y cobertura exacta de la receta.
@@ -82,7 +90,8 @@ El vencimiento de hoy aún es válido según CURRENT_DATE de PostgreSQL.
 Por cada insumo se inserta un movimiento y su desglose; la suma de detalles es
 exactamente la cantidad del movimiento. **Solo V3** descuenta cantidadDisponible.
 El servicio modifica exclusivamente fechaHoraApertura de las partidas consumidas
-cerradas con GREATEST; conserva aperturas anteriores. Nunca descuenta dos veces.
+con GREATEST según D2; conserva siempre aperturas anteriores.
+Nunca descuenta dos veces.
 
 ## G2 — Fórmula BigDecimal y unidades
 
@@ -173,7 +182,7 @@ por trigger existente: la prueba de roles combinados abre nuevas sesiones.
 
 ## HTTP, gate y errores
 
-Whitelist de tres campos de body y tres de partida, números decimales exactos,
+Whitelist de tres campos de body y cuatro de partida, números decimales exactos,
 IDs Long enteros y rechazo de campos desconocidos, claves duplicadas, tokens
 JSON extra y tipos inválidos. 201 devuelve los siete campos de PreparacionRegistrada.
 
@@ -238,3 +247,50 @@ mvn -B -ntp -Dtest=RegistrarPreparacionServiceIntegrationTest,RegistrarPreparaci
 [Issue #28](https://github.com/leandrito369/ale-milanesas-app/issues/28) permanece
 abierta. PR draft para revisión humana, sin merge ni despliegue. No acredita
 aceptación humana BC-06. Idempotencia de aplicación pendiente para RD-UC28-002.
+
+## Fix UC-28 — 09/11/2026
+
+Base comprobada: `20ce82d`; RD-I301-001: `1f6a4c7`.
+Diagnóstico: PartidaAplicada tenía tres componentes; validar rechazaba isEmpty()
+con SOLICITUD_INVALIDA. La RD §3 menciona literalmente «nulo/vacío».
+Se mantienen V1/V2/V3 y los demás servicios/controladores sin cambios.
+La sección de idempotencia diferida anterior continúa vigente.
+
+Validación real con Temurin JDK 21.0.9, Maven 3.9.11 y PostgreSQL 17.11-alpine
+mediante Testcontainers, sin omisiones:
+
+| Verificación del fix | Resultado |
+|---|---|
+| `mvn -B -ntp test-compile` | BUILD SUCCESS |
+| RegistrarPreparacionServiceIntegrationTest | 21/21 (16 existentes con expectativa de [] corregida + 5 nuevos) |
+| RegistrarPreparacionHttpExternoTest | 11/11 (9 existentes ajustados + 2 nuevos) |
+| RegistrarPreparacionConcurrenciaIntegrationTest | 2/2, sin modificaciones |
+| Total focalizado del fix | 34/34, cero fallos/errores/skips; BUILD SUCCESS |
+
+Verdes: partidasVacioActivaSeleccionAutomatica,
+marcarAperturaTrueFuerzaApertura, marcarAperturaNullUsaAperturaImplicita,
+marcarAperturaFalseConservaAperturaImplicita y
+marcarAperturaTrueRespetaFechaRegistroFutura (actualizado en la corrección de PR #83).
+HTTP verifica [] → 201 y acepta true/false/null; el test previo sin el campo
+sigue pasando. No se reejecutaron las demás suites de la tabla histórica.
+
+Comandos del fix:
+
+```bash
+mvn -B -ntp test-compile
+mvn -B -ntp -Dtest=RegistrarPreparacionServiceIntegrationTest,RegistrarPreparacionConcurrenciaIntegrationTest,RegistrarPreparacionHttpExternoTest test
+```
+
+En el entorno cloud se usó un settings Maven local fuera del checkout para
+el proxy, un repositorio Maven en /tmp y el JDK completo descargado con checksum
+verificado. No se alteraron pom.xml ni dependencias para resolver el entorno.
+
+### Corrección de PR #83 — preservar primera apertura
+
+El WHERE exige siempre fechaHoraApertura IS NULL, incluso con marcarApertura=true,
+por lo que se preserva T1 en partidas ya abiertas (RD-I301-001 §3, COALESCE).
+Se reemplaza el test que esperaba sobrescribir por un caso de partida cerrada
+con registro futuro, y se agrega marcarAperturaTrueNoSobrescribeAperturaPrevia.
+Validación de esta corrección: test-compile BUILD SUCCESS y suite
+RegistrarPreparacionServiceIntegrationTest 22/22, cero fallos/errores/skips,
+BUILD SUCCESS. Las suites HTTP y concurrencia no se reejecutaron en este ajuste.

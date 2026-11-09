@@ -73,6 +73,24 @@ class RegistrarPreparacionHttpExternoTest {
         assertRespuesta(201,null,post(d)); assertEquals(new BigDecimal("9.000"),f.disponible(f.lote));
         assertEquals(new BigDecimal("7.500"),f.disponible(f.lote+1));
     }
+    @Test void partidasVacioActivaSeleccionAutomatica() throws Exception {
+        var d = body("5"); d.put("partidas",List.of());
+        assertRespuesta(201,null,post(d));
+        assertEquals(new BigDecimal("9.000"),f.disponible(f.lote));
+        assertEquals(new BigDecimal("7.500"),f.disponible(f.lote+1));
+    }
+    @Test void marcarAperturaExplicitoAceptaBooleanosYNulo() throws Exception {
+        for (Boolean marcar : Arrays.asList(true,false,null)) {
+            var d = body("1");
+            d.put("partidas",List.of(partida(f.insumo,f.lote,"0.2",marcar),partida(f.insumo+1,f.lote+1,"0.5",marcar)));
+            assertRespuesta(201,null,post(d));
+        }
+        assertEquals(new BigDecimal("9.400"),f.disponible(f.lote));
+    }
+    Map<String,Object> partida(long insumo,long lote,String cantidad,Boolean marcar) {
+        var p = new HashMap<String,Object>(Map.of("idInsumo",insumo,"idPartidaInsumo",lote,"cantidadAplicada",new BigDecimal(cantidad)));
+        p.put("marcarApertura",marcar); return p;
+    }
     @Test void postPreparacionSinRecetaRetorna400() throws Exception {
         j.update("UPDATE \"VERSION_RECETA\" SET \"vigenteHasta\"=? WHERE \"idReceta\"=?",f.fecha.minusDays(1),f.receta);
         assertRespuesta(400,"SIN_RECETA_VIGENTE",post(body("5"))); assertEquals(0,f.preparaciones());
@@ -121,10 +139,10 @@ class RegistrarPreparacionHttpExternoTest {
         for (var cambio : List.<Map.Entry<String,Object>>of(Map.entry("extra",1),Map.entry("idPedido",f.pedido),
                 Map.entry("idProducto","10"),Map.entry("idProducto",new BigDecimal("9223372036854775808")),
                 Map.entry("cantidadPreparada","1"),Map.entry("cantidadPreparada",0),Map.entry("cantidadPreparada",new BigDecimal("1.0001")),
-                Map.entry("cantidadPreparada",new BigDecimal("1000000000000000")),Map.entry("partidas",List.of()),Map.entry("partidas",1))) {
+                Map.entry("cantidadPreparada",new BigDecimal("1000000000000000")),Map.entry("partidas",1))) {
             var d = body("1"); d.put(cambio.getKey(),cambio.getValue()); assertRespuesta(400,"SOLICITUD_INVALIDA",post(d));
         }
-        for (var partida : List.of(Map.of("idInsumo",f.insumo,"idPartidaInsumo",f.lote,"cantidadAplicada",1,"marcarApertura",true),
+        for (var partida : List.of(Map.of("idInsumo",f.insumo,"idPartidaInsumo",f.lote,"cantidadAplicada",1,"marcarApertura","true"),
                 Map.of("idInsumo",f.insumo,"idPartidaInsumo",f.lote,"cantidadAplicada",new BigDecimal("0.0001")),
                 Map.of("idInsumo",f.insumo,"idPartidaInsumo",f.lote,"cantidadAplicada",1))) {
             var d = body("1"); d.put("partidas",List.of(partida)); assertRespuesta(400,"SOLICITUD_INVALIDA",post(d));

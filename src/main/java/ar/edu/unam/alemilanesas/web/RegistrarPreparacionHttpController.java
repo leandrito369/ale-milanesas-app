@@ -34,7 +34,7 @@ public class RegistrarPreparacionHttpController {
     private static final String PARTIDA = "idPartidaInsumo";
     private static final String APLICADA = "cantidadAplicada";
     private static final Set<String> CAMPOS = Set.of(PRODUCTO,CANTIDAD,PARTIDAS);
-    private static final Set<String> CAMPOS_PARTIDA = Set.of(INSUMO,PARTIDA,APLICADA);
+    private static final Set<String> CAMPOS_PARTIDA = Set.of(INSUMO,PARTIDA,APLICADA,"marcarApertura");
     private static final JsonMapper JSON = JsonMapper.builder()
             .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
             .enable(DeserializationFeature.USE_BIG_INTEGER_FOR_INTS)
@@ -61,7 +61,9 @@ public class RegistrarPreparacionHttpController {
         var resultado = new ArrayList<PartidaAplicada>();
         for (Object item : lista) {
             if (!(item instanceof Map<?,?> p) || !CAMPOS_PARTIDA.containsAll(p.keySet())) throw new IllegalArgumentException(INVALIDA);
-            resultado.add(new PartidaAplicada(id(p.get(INSUMO)),id(p.get(PARTIDA)),decimal(p.get(APLICADA))));
+            Object apertura = p.get("marcarApertura");
+            if (apertura != null && !(apertura instanceof Boolean)) throw new IllegalArgumentException(INVALIDA);
+            resultado.add(new PartidaAplicada(id(p.get(INSUMO)),id(p.get(PARTIDA)),decimal(p.get(APLICADA)),(Boolean) apertura));
         }
         return resultado;
     }

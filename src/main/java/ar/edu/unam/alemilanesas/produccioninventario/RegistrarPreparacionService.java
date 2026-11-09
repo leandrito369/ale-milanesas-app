@@ -29,7 +29,11 @@ public class RegistrarPreparacionService {
             EpisodioFaltanteService episodios) {
         this.sql = sql; this.autorizacion = autorizacion; this.episodios = episodios;
     }
-    public record PartidaAplicada(long idInsumo, long idPartidaInsumo, BigDecimal cantidadAplicada) {}
+    public record PartidaAplicada(long idInsumo, long idPartidaInsumo, BigDecimal cantidadAplicada, Boolean marcarApertura) {
+        public PartidaAplicada(long idInsumo, long idPartidaInsumo, BigDecimal cantidadAplicada) {
+            this(idInsumo, idPartidaInsumo, cantidadAplicada, null);
+        }
+    }
     public record DatosPreparacion(long idPedido, long idProducto, BigDecimal cantidadPreparada, List<PartidaAplicada> partidas) {}
     public record PreparacionRegistrada(long idPreparacion, long idPedido, long idProducto, int numeroDetalle,
             BigDecimal cantidadPreparada, OffsetDateTime fechaHoraPreparacion, int cantidadInsumosConsumidos) {}
@@ -72,8 +76,8 @@ public class RegistrarPreparacionService {
     private static DatosPreparacion validar(DatosPreparacion d) {
         if (d == null || d.idPedido() <= 0 || d.idProducto() <= 0 || !cantidadValida(d.cantidadPreparada()))
             throw new IllegalArgumentException(INVALIDA);
-        if (d.partidas() == null) return d;
-        if (d.partidas().isEmpty()) throw new IllegalArgumentException(INVALIDA);
+        if (d.partidas() == null || d.partidas().isEmpty())
+            return new DatosPreparacion(d.idPedido(), d.idProducto(), d.cantidadPreparada(), null);
         var ids = new HashSet<Long>();
         for (var p : d.partidas()) {
             if (p == null || p.idInsumo() <= 0 || p.idPartidaInsumo() <= 0
@@ -220,7 +224,8 @@ public class RegistrarPreparacionService {
                     :cantidad,:fecha,:stock,'PRODUCCION',NULL,NULL,NULL)
                 """, p);
         for (var partida : c.partidas()) {
-            p.addValue(PARTIDA, partida.idPartidaInsumo()).addValue("aplicada", partida.cantidadAplicada());
+            p.addValue(PARTIDA, partida.idPartidaInsumo()).addValue("aplicada", partida.cantidadAplicada())
+                    .addValue("abrir", Boolean.TRUE.equals(partida.marcarApertura()));
             // Solo el trigger V3 modifica cantidadDisponible; este UPDATE abre el envase, sin otro descuento.
             sql.update("""
                     INSERT INTO "DETALLE_MOVIMIENTO_PARTIDA" ("idMovimientoInsumo","idPartidaInsumo","idInsumo","cantidadAplicada")
