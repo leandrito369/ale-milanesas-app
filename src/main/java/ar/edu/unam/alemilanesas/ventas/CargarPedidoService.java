@@ -66,7 +66,7 @@ public class CargarPedidoService {
     }
     private PedidoCreado anterior(DatosPedido datos) {
         var pedidos=jdbc.query("""
-                SELECT p.*, (SELECT count(*) FROM "DETALLE_PEDIDO" d WHERE d."idPedido"=p."idPedido") AS items
+                SELECT p.*, (SELECT count(*) FROM "DETALLE_PEDIDO" d WHERE d."idPedido"=p."idPedido" AND d."cantidadOriginal" > 0) AS items
                 FROM "PEDIDO" p WHERE "idOperacionOrigen"=?
                 """,(rs,n)-> {
                     if (rs.getLong("idCliente")!=datos.idCliente() || !INTERNO.equals(rs.getString("canalOrigen")))
