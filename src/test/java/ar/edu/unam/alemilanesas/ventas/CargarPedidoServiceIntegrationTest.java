@@ -100,6 +100,23 @@ class CargarPedidoServiceIntegrationTest {
         var otroCliente=new DatosPedido(f.base+1,d.fechaReparto(),d.items(),d.direccionEntrega(),d.claveIdempotencia());
         assertThrows(IllegalArgumentException.class,()->pedidos.cargarPedido(vendedor,otroCliente));
     }
+    @Test void idempotenciaConLineaTecnicaPreservaCantidadItems() {
+        var d=f.datos();var primero=pedidos.cargarPedido(vendedor,d);
+        int itemsOriginales=primero.cantidadItems();
+        assertEquals(2,itemsOriginales,"El pedido inicial debe tener 2 líneas originales");
+        long idProductoTecnico=f.base+2;
+        tx.executeWithoutResult(s->j.update("""
+                INSERT INTO "DETALLE_PEDIDO" ("idPedido","numeroDetalle","idProducto",
+                    "codigoUnidadVenta","cantidadOriginal","precioUnitarioOriginal",
+                    "porcentajePromocionOriginal","idPromocionAplicada")
+                VALUES (?,?,?,?,0,NULL,0,NULL)
+                """,primero.idPedido(),3,idProductoTecnico,"UN"));
+        var replay=pedidos.cargarPedido(vendedor,d);
+        assertEquals(primero.idPedido(),replay.idPedido());
+        assertFalse(replay.creado());
+        assertEquals(itemsOriginales,replay.cantidadItems(),
+                "Replay no debe contar líneas técnicas con cantidadOriginal=0");
+    }
     @Test void rechazaClienteInexistenteOInactivo() {
         for(long id:new long[]{f.base+2,f.base+99}) {
             var d=cliente(id);assertThrows(IllegalArgumentException.class,()->pedidos.cargarPedido(vendedor,d));
