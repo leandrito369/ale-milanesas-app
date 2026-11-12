@@ -81,7 +81,7 @@ public class ActualizarPrecioVigenteService {
 
         // IDs BIGINT MR5 carecen de secuencias. Todos los escritores de precio
         // y auditoria deben usar este lock global hasta un generador aprobado.
-        sql.getJdbcTemplate().execute("SELECT pg_advisory_xact_lock(1919001)");
+        sql.getJdbcTemplate().execute("SELECT pg_advisory_xact_lock(1919,1)");
         List<Vigencia> periodos=sql.query("""
                 SELECT "idPrecio","precioBase","vigenteDesde","vigenteHasta"
                   FROM "PRECIO_PRODUCTO"
