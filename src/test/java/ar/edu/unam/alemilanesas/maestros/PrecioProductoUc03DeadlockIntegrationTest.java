@@ -12,7 +12,7 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
+import javax.sql.DataSource;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -52,6 +52,7 @@ class PrecioProductoUc03DeadlockIntegrationTest {
     }
 
     @Autowired JdbcTemplate jdbc;
+    @Autowired DataSource dataSource;
     @Autowired PlatformTransactionManager transactions;
     @Autowired ActualizarPrecioVigenteService servicioPrecio;
     @Autowired CargarPedidoService servicioPedido;
@@ -149,6 +150,46 @@ class PrecioProductoUc03DeadlockIntegrationTest {
         });
     }
 
+    /** UC-19 ya paso PRODUCTO FOR UPDATE al esperar este advisory. */
+    private long esperarUc19EnAdvisoryNuevo() throws InterruptedException {
+        long limite = System.nanoTime() + TimeUnit.SECONDS.toNanos(12);
+        while (System.nanoTime() < limite) {
+            List<Long> pids = jdbc.queryForList("""
+                    SELECT pid::bigint FROM pg_locks
+                    WHERE locktype = 'advisory'
+                      AND classid::bigint = 1919 AND objid::bigint = 1
+                      AND objsubid = 2 AND NOT granted
+                    """, Long.class);
+            if (!pids.isEmpty()) return pids.getFirst();
+            Thread.sleep(30);
+        }
+        throw new AssertionError("UC-19 no espero A2(1919,1): posible regresion del namespace");
+    }
+
+    /** UC-03 ya conserva A1(1919001) mientras espera PRODUCTO retenido por UC-19. */
+    private void esperarUc03ConAdvisoryClienteBloqueadoPorPrecio(long pidPrecio)
+            throws InterruptedException {
+        long limite = System.nanoTime() + TimeUnit.SECONDS.toNanos(12);
+        while (System.nanoTime() < limite) {
+            Boolean observado = jdbc.queryForObject("""
+                    SELECT EXISTS (
+                        SELECT 1 FROM pg_stat_activity a
+                        JOIN pg_locks cliente ON cliente.pid = a.pid
+                        WHERE cliente.locktype = 'advisory'
+                          AND cliente.classid::bigint = 0
+                          AND cliente.objid::bigint = 1919001
+                          AND cliente.objsubid = 1 AND cliente.granted
+                          AND a.wait_event_type = 'Lock'
+                          AND a.query LIKE '%"PRODUCTO"%'
+                          AND ? = ANY(pg_blocking_pids(a.pid))
+                    )
+                    """, Boolean.class, Math.toIntExact(pidPrecio));
+            if (Boolean.TRUE.equals(observado)) return;
+            Thread.sleep(30);
+        }
+        throw new AssertionError("UC-03 no espero PRODUCTO conservando A1(1919001)");
+    }
+
     @Test
     @DisplayName("UC-03 con idCliente=1919001 y UC-19 concurrentes finalizan sin deadlock 40P01, persisten datos y validan replay")
     void uc03Yuc19ConcurrentesFinalizanSinDeadlock() throws Exception {
@@ -168,28 +209,32 @@ class PrecioProductoUc03DeadlockIntegrationTest {
         PedidoCreado pedidoCreado;
         PrecioActualizado precioActualizado;
 
-        try (var pool = Executors.newFixedThreadPool(2)) {
-            var inicio = new CountDownLatch(1);
-            Future<PedidoCreado> futurePedido = pool.submit(() -> {
-                inicio.await();
-                return servicioPedido.cargarPedido(SESION_VENDEDOR, datosPedido);
-            });
-            Future<PrecioActualizado> futurePrecio = pool.submit(() -> {
-                inicio.await();
-                return servicioPrecio.actualizarPrecioVigente(
-                        SESION_ADMIN,
-                        ID_PRODUCTO,
-                        nuevoPrecio,
-                        inicioNuevoPrecio,
-                        null
-                );
-            });
+        // Intercalado observable: UC-19 retiene PRODUCTO U al esperar A2(1919,1);
+        // UC-03 retiene A1(1919001) y espera PRODUCTO S. Con el lock viejo
+        // UC-19 nunca esperaria A2(1919,1), por lo que esta prueba falla.
+        try (var pool = Executors.newFixedThreadPool(2);
+             var retenedor = dataSource.getConnection()) {
+            retenedor.setAutoCommit(false);
+            try (var ps = retenedor.prepareStatement("SELECT pg_advisory_xact_lock(1919,1)")) {
+                ps.execute();
+            }
+            try {
+                Future<PrecioActualizado> futurePrecio = pool.submit(() ->
+                        servicioPrecio.actualizarPrecioVigente(
+                                SESION_ADMIN, ID_PRODUCTO, nuevoPrecio, inicioNuevoPrecio, null));
+                long pidPrecio = esperarUc19EnAdvisoryNuevo();
 
-            inicio.countDown();
+                Future<PedidoCreado> futurePedido = pool.submit(() ->
+                        servicioPedido.cargarPedido(SESION_VENDEDOR, datosPedido));
+                esperarUc03ConAdvisoryClienteBloqueadoPorPrecio(pidPrecio);
+                // Libera la tercera transaccion: termina UC-19 y luego UC-03.
+                retenedor.rollback();
 
-            // Timeout defensivo de 25 segundos; si hubiera deadlock 40P01 o bloqueo indefinido, fallaría aquí.
-            pedidoCreado = futurePedido.get(25, TimeUnit.SECONDS);
-            precioActualizado = futurePrecio.get(25, TimeUnit.SECONDS);
+                precioActualizado = futurePrecio.get(25, TimeUnit.SECONDS);
+                pedidoCreado = futurePedido.get(25, TimeUnit.SECONDS);
+            } finally {
+                retenedor.rollback();
+            }
         }
 
         // 1. Verificación de UC-03: Pedido creado exitosamente sin 40P01

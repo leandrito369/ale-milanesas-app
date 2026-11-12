@@ -1,4 +1,4 @@
-# INC-UC19 — Síntesis de Resolución del Deadlock UC-03 / UC-19
+# INC-UC19 — Corrección propuesta del Deadlock UC-03 / UC-19
 
 ## 1. Identificación y Alcance
 
@@ -6,7 +6,7 @@
 - **Repositorio:** `leandrito369/ale-milanesas-app`.
 - **Base inicial de referencia:** `main` @ `a07fd95bc0e8910c5b81efbe4253e959fc45e23f`.
 - **SQLSTATE reproducido:** `40P01` (`deadlock_detected`).
-- **Estado de INC-UC19:** RESUELTO / HOTFIX APLICADO.
+- **Estado de INC-UC19:** CORREGIDO EN PR #86 (DRAFT) / NO INTEGRADO A `main` / CIERRE PENDIENTE DE REVISIÓN.
 - **Estado de RT-UC07-04:** ABIERTA / PENDIENTE de coordinación global de operaciones pendientes (`UC-05`, `UC-06`, `UC-07`, `UC-41`).
 
 ---
@@ -54,11 +54,11 @@ Se auditó la totalidad de locks advisory presentes en el repositorio `ale-milan
 
 **Conclusión de la auditoría:**  
 El par de enteros `(1919, 1)` **no se encuentra utilizado ni reservado** por ningún otro componente.  
-En PostgreSQL, la función `pg_advisory_xact_lock(int, int)` opera en el namespace con `objsubid = 2`, el cual está físicamente aislado del namespace de enteros de 64 bits `pg_advisory_xact_lock(bigint)` (`objsubid = 1`). Por ende, `(1919, 1)` jamás puede colisionar con un `idCliente` de 64 bits, eliminando en forma definitiva la causa raíz de la espera circular.
+En PostgreSQL, la función `pg_advisory_xact_lock(int, int)` opera en el namespace con `objsubid = 2`, el cual está físicamente aislado del namespace de enteros de 64 bits `pg_advisory_xact_lock(bigint)` (`objsubid = 1`). Por ende, `(1919, 1)` jamás puede colisionar con un `idCliente` de 64 bits, eliminando esta colisión específica sin certificar el orden global de todos los servicios.
 
 ---
 
-## 4. Corrección Aplicada en UC-19
+## 4. Corrección Propuesta en PR #86 (pendiente de merge)
 
 En `ActualizarPrecioVigenteService.java`:
 
@@ -82,10 +82,10 @@ No se modificaron firmas G0, reglas de negocio, estructura de tablas ni lógica 
 1. **Prueba de Regresión Específica:**  
    Se incorporó `src/test/java/ar/edu/unam/alemilanesas/maestros/PrecioProductoUc03DeadlockIntegrationTest.java`:
    - Configura un escenario con `idCliente = 1919001`.
-   - Ejecuta de forma concurrente en hilos paralelos `CargarPedidoService.cargarPedido` y `ActualizarPrecioVigenteService.actualizarPrecioVigente`.
+   - Ejecuta los servicios reales con intercalado observable: UC-19 espera A2(1919,1) retenido por una tercera conexión después de bloquear PRODUCTO; UC-03 retiene A1(1919001) mientras espera PRODUCTO de UC-19. Comprueba `pg_locks`, `pg_stat_activity` y `pg_blocking_pids` antes de liberar el retenedor. La prueba falla si UC-19 vuelve al advisory anterior.
    - Verifica que ambas transacciones finalicen con éxito en tiempo acotado sin arrojar excepción `40P01` (`deadlock_detected`).
    - Verifica la persistencia íntegra de `PEDIDO`, `DETALLE_PEDIDO`, `PRECIO_PRODUCTO` (cierre de vigencia previa y apertura de nueva vigencia) y `AUDITORIA_PRECIO`.
-   - Valida el replay idempotente de `UC-03`, confirmando que reporta `creado = false`, preserva `cantidadItems = 1` conforme al fix de PR #85 y no duplica filas en base de datos.
+   - Valida un replay de `UC-03` con `creado = false` y `cantidadItems = 1`, sin duplicar pedidos. **No agrega una línea técnica**; la regresión específica para `cantidadOriginal = 0` corresponde al test independiente de PR #85, ya fusionada.
 2. **Preservación de Exclusión Mutua en Precios:**  
    La prueba existente `PrecioProductoConcurrenciaIntegrationTest.java` continúa verificando que dos altas simultáneas de precios para el mismo producto se serialicen limpiamente bajo el nuevo namespace `(1919, 1)`.
 
@@ -93,5 +93,9 @@ No se modificaron firmas G0, reglas de negocio, estructura de tablas ni lógica 
 
 ## 6. Estado de Coordinación
 
-- `INC-UC19`: Cerrado satisfactoriamente mediante hotfix acotado.
+- `INC-UC19`: corrección implementada en PR #86 y validada por CI anterior; cierre formal sujeto a revisión, validación del HEAD definitivo e integración en `main`.
 - `RT-UC07-04`: Permanece **ABIERTA** hasta la integración y prueba de concurrencia de los restantes casos de uso del ciclo de vida (`UC-05`, `UC-06`, `UC-07`, `UC-41`).
+
+## 7. Límite de evidencia y continuidad
+
+El Corte 3 informó 3/3 reproducciones de `40P01` en la versión anterior y seis intercalados correctos con el namespace separado. La prueba permanente de esta PR no reejecuta el código anterior: observa el protocolo nuevo y falla si UC-19 usa el namespace viejo. `RT-UC07-04` sigue ABIERTA para UC-05/UC-06/UC-07/UC-41 y los locks implícitos.
