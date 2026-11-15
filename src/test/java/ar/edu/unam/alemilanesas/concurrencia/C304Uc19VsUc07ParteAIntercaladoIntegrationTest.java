@@ -18,6 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -49,13 +50,15 @@ class C304Uc19VsUc07ParteAIntercaladoIntegrationTest {
 
     @Autowired JdbcTemplate jdbc;
     @Autowired DataSource dataSource;
+    @Autowired TransactionTemplate tx;
     @Autowired ActualizarPrecioVigenteService precios;
 
     private record SnapshotCapturado(long idPrecio, BigDecimal precioBase, OffsetDateTime instanteCaptura) {}
 
     @Test
     void c304aParteAConSnapshotAnteriorSerializaSinDeadlockFrenteAUc19() throws Exception {
-        var f = new PedidoFixture(jdbc);
+        var f = tx.execute(s -> new PedidoFixture(jdbc));
+        assertNotNull(f);
         long idProducto = f.base;
         OffsetDateTime desdeNuevo = jdbc.queryForObject(
                 "SELECT clock_timestamp() + interval '5 seconds'", OffsetDateTime.class);
@@ -139,7 +142,8 @@ class C304Uc19VsUc07ParteAIntercaladoIntegrationTest {
 
     @Test
     void c304bUc19ActualizaPrecioAntesDeCapturaParteAYEvidenciaRelojPrevioAAdvisory() throws Exception {
-        var f = new PedidoFixture(jdbc);
+        var f = tx.execute(s -> new PedidoFixture(jdbc));
+        assertNotNull(f);
         long idProducto = f.base;
 
         // Barrera en A2(1919,1) para forzar que UC-19 tome clock_timestamp() antes de adquirir (1919,1)

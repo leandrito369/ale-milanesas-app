@@ -16,6 +16,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -45,12 +46,14 @@ class C303Uc43VsUc05IntercaladoIntegrationTest {
 
     @Autowired JdbcTemplate jdbc;
     @Autowired DataSource dataSource;
+    @Autowired TransactionTemplate tx;
     @Autowired CargarPedidoService pedidos;
     @Autowired AsignarRepartoService asignaciones;
 
     @Test
     void c303aInversionAsignacionAntesDePedidoProduceDeadlock40P01() throws Exception {
-        var f = new AsignacionRepartoFixture(jdbc, pedidos);
+        var f = tx.execute(s -> new AsignacionRepartoFixture(jdbc, pedidos));
+        assertNotNull(f);
         asignaciones.asignarOReasignar(f.vendedor(), f.datos(f.primero, null));
 
         var prototipoBloqueoAsignacion = new CountDownLatch(1);
@@ -114,7 +117,8 @@ class C303Uc43VsUc05IntercaladoIntegrationTest {
 
     @Test
     void c303bOrdenAlineadoPedidoLuegoAsignacionSerializaSinDeadlockYRevalida() throws Exception {
-        var f = new AsignacionRepartoFixture(jdbc, pedidos);
+        var f = tx.execute(s -> new AsignacionRepartoFixture(jdbc, pedidos));
+        assertNotNull(f);
         asignaciones.asignarOReasignar(f.vendedor(), f.datos(f.primero, null));
 
         var prototipoBloqueoPedido = new CountDownLatch(1);

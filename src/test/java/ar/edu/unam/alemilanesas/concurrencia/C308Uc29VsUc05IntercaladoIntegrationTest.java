@@ -18,6 +18,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
@@ -47,12 +48,14 @@ class C308Uc29VsUc05IntercaladoIntegrationTest {
 
     @Autowired JdbcTemplate jdbc;
     @Autowired DataSource dataSource;
+    @Autowired TransactionTemplate tx;
     @Autowired CargarPedidoService pedidos;
     @Autowired CobroManualService cobros;
 
     @Test
     void c308aInversionPedidoAntesDeClienteProduceDeadlock40P01ConUc29() throws Exception {
-        var f = new PedidoFixture(jdbc);
+        var f = tx.execute(s -> new PedidoFixture(jdbc));
+        assertNotNull(f);
         long idPedido = pedidos.cargarPedido(f.vendedor(), f.datos()).idPedido();
         long idCliente = f.base;
         UUID claveCobro = UUID.randomUUID();
@@ -119,7 +122,8 @@ class C308Uc29VsUc05IntercaladoIntegrationTest {
 
     @Test
     void c308bOrdenAlineado2929001ClientePedidoSerializaSinColisionDeSecuencia() throws Exception {
-        var f = new PedidoFixture(jdbc);
+        var f = tx.execute(s -> new PedidoFixture(jdbc));
+        assertNotNull(f);
         long idPedido = pedidos.cargarPedido(f.vendedor(), f.datos()).idPedido();
         long idCliente = f.base;
         UUID claveCobro = UUID.randomUUID();
