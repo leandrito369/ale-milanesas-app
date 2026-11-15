@@ -152,6 +152,7 @@ class C304Uc19VsUc07ParteAIntercaladoIntegrationTest {
              var connParteA = dataSource.getConnection();
              var pool = Executors.newFixedThreadPool(2)) {
             connCtrl.setAutoCommit(false);
+            try {
             try (PreparedStatement psAdv = connCtrl.prepareStatement("SELECT pg_advisory_xact_lock(1919, 1)")) {
                 psAdv.execute();
             }
@@ -231,6 +232,10 @@ class C304Uc19VsUc07ParteAIntercaladoIntegrationTest {
             assertEquals(0, snap.precioBase().compareTo(new BigDecimal("350.0000")));
             assertFalse(snap.instanteCaptura().isBefore(actualizado.vigenteDesde()),
                     "El reloj posterior a esperas debe ser >= vigenteDesde del precio capturado");
+            } finally {
+                connCtrl.rollback();
+                pool.shutdownNow();
+            }
         }
     }
 }

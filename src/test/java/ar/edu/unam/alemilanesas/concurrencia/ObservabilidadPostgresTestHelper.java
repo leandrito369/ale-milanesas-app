@@ -42,10 +42,14 @@ final class ObservabilidadPostgresTestHelper {
                   FROM pg_stat_activity a
                   JOIN pg_locks l ON l.pid = a.pid
                  WHERE NOT l.granted
-                   AND l.relation = to_regclass(?)
                    AND a.wait_event_type = 'Lock'
                    AND ? = ANY(pg_blocking_pids(a.pid))
-                """, "\"" + relacion + "\"", pidBloqueador);
+                   AND EXISTS (
+                       SELECT 1 FROM pg_locks lp
+                       JOIN pg_class c ON c.oid = lp.relation
+                      WHERE lp.pid = ? AND lp.granted AND c.relname = ?
+                   )
+                """, pidBloqueador, pidBloqueador, relacion);
     }
 
     static List<Map<String, Object>> esperarBloqueoAdvisory2(
