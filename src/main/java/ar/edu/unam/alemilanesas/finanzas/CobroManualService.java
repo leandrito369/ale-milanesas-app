@@ -27,14 +27,17 @@ public class CobroManualService {
     private final JdbcTemplate jdbc;
     private final AutorizacionSesionInterna auth;
     private final EvaluadorCategoriaComercialInterno categoria;
+    private final ProtocoloIdentificadoresFinancieros idsFinancieros;
 
     public CobroManualService(NamedParameterJdbcTemplate sql,
                               AutorizacionSesionInterna auth,
-                              EvaluadorCategoriaComercialInterno categoria) {
+                              EvaluadorCategoriaComercialInterno categoria,
+                              ProtocoloIdentificadoresFinancieros idsFinancieros) {
         this.sql = sql;
         this.jdbc = sql.getJdbcTemplate();
         this.auth = auth;
         this.categoria = categoria;
+        this.idsFinancieros = idsFinancieros;
     }
 
     public record Resultado(long idCobro, String estado, BigDecimal saldoConfirmado,
@@ -181,7 +184,7 @@ public class CobroManualService {
     }
 
     private void bloquearIdentificadores() {
-        jdbc.execute("SELECT pg_advisory_xact_lock(2929001)");
+        idsFinancieros.bloquear();
     }
 
     private long idUsuario(UUID sesion) {
@@ -213,10 +216,7 @@ public class CobroManualService {
     }
 
     private long siguienteIdMovimientoCaja() {
-        return validarSiguiente(jdbc.queryForObject("""
-                SELECT COALESCE(MAX("idMovimientoCaja"),0)+1
-                  FROM "MOVIMIENTO_CAJA"
-                """,Long.class));
+        return idsFinancieros.siguienteMovimientoCaja();
     }
 
     private static long validarSiguiente(Long siguiente) {
