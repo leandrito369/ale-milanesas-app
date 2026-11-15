@@ -73,8 +73,8 @@ class C3A3ServiciosRealesIntegrationTest {
         tx.executeWithoutResult(status -> jdbc.update("""
                 INSERT INTO "CLIENTE"
                     ("idCliente","nombres","telefonoPrincipal","estado","categoriaComercial","fechaHoraAlta")
-                VALUES (?, 'Cliente sintetico C3A3', '3764000000', 'ACTIVO', 'CUMPLIDOR', now())
-                """, id));
+                VALUES (?, ?, ?, 'ACTIVO', 'CUMPLIDOR', now())
+                """, id, "Cliente sintetico C3A3 " + id, String.format("%010d", id)));
     }
 
     /** La fila bloqueada existe y se conserva hasta rollback del controlador. */
