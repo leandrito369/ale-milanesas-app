@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html lang="es" xmlns:th="http://www.thymeleaf.org">
-<head th:replace="~{demo/fragments :: head('Productos (UC-35) · Ale Milanesas')}"></head>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Productos (UC-35) · Ale Milanesas</title>
+    <link rel="stylesheet" th:href="@{/demo/demo.css}" th:replace="~{demo/fragments :: cssDemo}">
+</head>
 <body>
 <div th:replace="~{demo/fragments :: cabecera('productos')}"></div>
 
@@ -9,7 +14,7 @@
         <h1 id="titulo-productos">Catálogo de Productos (UC-35)</h1>
 
         <div class="alert alert-info" role="note">
-            <p><strong>Alcance P0 (D-UC35-BC07-001):</strong> esta vista muestra exclusivamente los 6 campos provistos actualmente por B3. La exposición de precio base vigente previo a pedido para Vendedor está ratificada normativamente, pero pendiente de corte técnico independiente. Al confirmar UC-03, el servidor valida y congela el precio vigente.</p>
+            <p><strong>Alcance P0 (D-UC35-BC07-001):</strong> <span th:text="${avisoPrecio != null ? avisoPrecio : 'esta vista muestra exclusivamente los 6 campos provistos actualmente por B3. La exposición de precio base vigente previo a pedido para Vendedor está ratificada normativamente, pero pendiente de corte técnico independiente. Al confirmar UC-03, el servidor valida y congela el precio vigente.'}">esta vista muestra exclusivamente los 6 campos provistos actualmente por B3. La exposición de precio base vigente previo a pedido para Vendedor está ratificada normativamente, pero pendiente de corte técnico independiente. Al confirmar UC-03, el servidor valida y congela el precio vigente.</span></p>
         </div>
 
         <div th:replace="~{demo/fragments :: mensajes}"></div>
@@ -36,9 +41,9 @@
             <div class="field">
                 <label for="f-activo">Activo</label>
                 <select id="f-activo" name="activo">
-                    <option value="" th:selected="${filtro == null or filtro.activo == null}">Todos</option>
-                    <option value="true" th:selected="${filtro != null and filtro.activo == true}">Sí</option>
-                    <option value="false" th:selected="${filtro != null and filtro.activo == false}">No</option>
+                    <option value="" th:selected="${filtro == null or filtro.activo == null or filtro.activo == ''}">Todos</option>
+                    <option value="true" th:selected="${filtro != null and (filtro.activo == true or filtro.activo == 'true')}">Sí</option>
+                    <option value="false" th:selected="${filtro != null and (filtro.activo == false or filtro.activo == 'false')}">No</option>
                 </select>
             </div>
             <div class="actions">
@@ -51,9 +56,9 @@
     <section class="card" aria-labelledby="titulo-resultados-productos">
         <h2 id="titulo-resultados-productos">Resultados</h2>
 
-        <div class="empty-state" role="status" aria-live="polite"
+        <div class="empty-state"
              th:if="${productos == null or #lists.isEmpty(productos)}">
-            <p>No se encontraron productos para los criterios indicados.</p>
+            <p><output class="status-output">No se encontraron productos para los criterios indicados.</output></p>
         </div>
 
         <div class="table-wrap" th:if="${productos != null and !#lists.isEmpty(productos)}">

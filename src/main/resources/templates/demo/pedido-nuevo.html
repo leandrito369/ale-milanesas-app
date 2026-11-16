@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html lang="es" xmlns:th="http://www.thymeleaf.org">
-<head th:replace="~{demo/fragments :: head('Cargar Pedido (UC-03) · Ale Milanesas')}"></head>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Cargar Pedido (UC-03) · Ale Milanesas</title>
+    <link rel="stylesheet" th:href="@{/demo/demo.css}" th:replace="~{demo/fragments :: cssDemo}">
+</head>
 <body>
 <div th:replace="~{demo/fragments :: cabecera('pedido-nuevo')}"></div>
 

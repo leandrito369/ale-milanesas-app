@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html lang="es" xmlns:th="http://www.thymeleaf.org">
-<head th:replace="~{demo/fragments :: head('Pedidos (UC-34) · Ale Milanesas')}"></head>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pedidos (UC-34) · Ale Milanesas</title>
+    <link rel="stylesheet" th:href="@{/demo/demo.css}" th:replace="~{demo/fragments :: cssDemo}">
+</head>
 <body>
 <div th:replace="~{demo/fragments :: cabecera('pedidos')}"></div>
 
@@ -14,8 +19,8 @@
 
         <div th:replace="~{demo/fragments :: mensajes}"></div>
 
-        <div class="alert alert-success" role="status" aria-live="polite" th:if="${pedidoConfirmado != null}">
-            <p><strong>Pedido registrado correctamente (UC-03)</strong></p>
+        <div class="alert alert-success" th:if="${pedidoConfirmado != null}">
+            <p><output class="status-output"><strong>Pedido registrado correctamente (UC-03)</strong></output></p>
             <dl class="summary-dl">
                 <dt>ID Pedido:</dt><dd th:text="${pedidoConfirmado.idPedido}">0</dd>
                 <dt>Estado:</dt><dd th:text="${pedidoConfirmado.estado}">PENDIENTE</dd>
@@ -27,8 +32,8 @@
             </dl>
         </div>
 
-        <div class="alert alert-success" role="status" aria-live="polite" th:if="${asignacionConfirmada != null}">
-            <p><strong>Asignación de reparto confirmada (UC-43)</strong></p>
+        <div class="alert alert-success" th:if="${asignacionConfirmada != null}">
+            <p><output class="status-output"><strong>Asignación de reparto confirmada (UC-43)</strong></output></p>
             <dl class="summary-dl">
                 <dt>ID Pedido:</dt><dd th:text="${asignacionConfirmada.idPedido}">0</dd>
                 <dt>Asignación #:</dt><dd th:text="${asignacionConfirmada.numeroAsignacion}">1</dd>
@@ -82,9 +87,9 @@
     <section class="card" aria-labelledby="titulo-resultados-pedidos">
         <h2 id="titulo-resultados-pedidos">Resultados</h2>
 
-        <div class="empty-state" role="status" aria-live="polite"
+        <div class="empty-state"
              th:if="${pedidos == null or #lists.isEmpty(pedidos)}">
-            <p>No se encontraron pedidos para los criterios indicados.</p>
+            <p><output class="status-output">No se encontraron pedidos para los criterios indicados.</output></p>
         </div>
 
         <div class="table-wrap" th:if="${pedidos != null and !#lists.isEmpty(pedidos)}">

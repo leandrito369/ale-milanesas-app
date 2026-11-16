@@ -1,6 +1,11 @@
 <!DOCTYPE html>
 <html lang="es" xmlns:th="http://www.thymeleaf.org">
-<head th:replace="~{demo/fragments :: head('Clientes (UC-33) · Ale Milanesas')}"></head>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Clientes (UC-33) · Ale Milanesas</title>
+    <link rel="stylesheet" th:href="@{/demo/demo.css}" th:replace="~{demo/fragments :: cssDemo}">
+</head>
 <body>
 <div th:replace="~{demo/fragments :: cabecera('clientes')}"></div>
 
@@ -50,9 +55,9 @@
     <section class="card" aria-labelledby="titulo-resultados-clientes">
         <h2 id="titulo-resultados-clientes">Resultados</h2>
 
-        <div class="empty-state" role="status" aria-live="polite"
+        <div class="empty-state"
              th:if="${clientes == null or #lists.isEmpty(clientes)}">
-            <p>No se encontraron clientes para los criterios indicados.</p>
+            <p><output class="status-output">No se encontraron clientes para los criterios indicados.</output></p>
         </div>
 
         <div class="table-wrap" th:if="${clientes != null and !#lists.isEmpty(clientes)}">

@@ -2,7 +2,7 @@
 
 **Proyecto:** Sistema de Gestión para Ale Milanesas (UNaM–FCEQyN).  
 **Fecha:** 16/11/2026.  
-**Base normativa:** `B5_DEMO_CONTRATO_UI_MVC_G1_RATIFICADO_2026-11-16.md` (G1 A–E aprobados, F condicionado), `origin/main` @ `aa68b7843296aafcb6c9ead510f0cbad265ab45b`.  
+**Base normativa:** `B5_DEMO_CONTRATO_UI_MVC_G1_RATIFICADO_CON_DISENO_VISUAL_2026-11-16.md` (G1 A–E y `D-UI-01/02/06/07/16` ratificadas; F condicionado post-merge), `origin/main` @ `26996e82fbbe264a797565cb4c53933b4e9c39b9` (PR #94 `B5-DEMO-01` integrada).
 **Propósito:** fijar los nombres de plantillas, variables del `Model` y parámetros de formulario (`@RequestParam` / `@ModelAttribute` / `RedirectAttributes`) usados por las vistas en `src/main/resources/templates/demo/**`, para evitar colisiones con los controladores MVC de Codex (`web/demo/**`) en desarrollo paralelo.
 
 ---
@@ -29,7 +29,7 @@ Todas las vistas incluyen `demo/fragments :: cabecera(activo)` y `demo/fragments
 | `esRepartidor` | `Boolean` (`true`/`false`) | Muestra **únicamente** enlace ilustrativo `/web/demo/mis-entregas` | **No** habilita enlace ni consulta a `/web/demo/pedidos` (UC-34) |
 | `rolMostrado` | `String` (opcional) | Insignia informativa de rol en cabecera | Solo etiqueta visual; sin `idUsuario` ni `idSesionUsuario` |
 | `_csrf` | `CsrfToken` | `<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">` | Obligatorio en todo `<form method="post">` (incluye `/web/logout`) |
-| `mensajeExito` | `String` (opcional / flash) | Banner verde `role="status"` | Texto saneado sin secretos |
+| `mensajeExito` | `String` (opcional / flash) | Banner verde con `<output class="status-output">` (`role="status"` implícito) | Texto saneado sin secretos |
 | `mensajeError` | `String` (opcional / flash) | Banner rojo `role="alert"` | Texto saneado sin SQL ni stacktraces |
 | `errores` | `List<String>` (opcional) | Lista de errores de validación dentro de `role="alert"` | Mensajes controlados por servidor |
 
@@ -51,7 +51,8 @@ Todas las vistas incluyen `demo/fragments :: cabecera(activo)` y `demo/fragments
 - **Roles permitidos en servidor:** `ADMINISTRADOR`, `VENDEDOR`.
 - **Query params de filtro (formulario GET):** `idProducto`, `nombre`, `tipoProducto` (`""`, `ELABORADO`, `REVENTA`), `activo` (`""`, `true`, `false`).
 - **Atributos de `Model`:**
-  - `filtro`: objeto con propiedades `idProducto`, `nombre`, `tipoProducto`, `activo`.
+  - `filtro`: objeto o mapa con propiedades `idProducto`, `nombre`, `tipoProducto`, `activo`. La selección de `activo` acepta tanto `Boolean` (`true`/`false`) como `String` (`"true"`/`"false"`) provisto por `ConsultasDemoController` en `main@26996e8`.
+  - `avisoPrecio`: `String` opcional provisto por controlador para reforzar el alcance P0 (`D-UC35-BC07-001`), con respaldo estático en la plantilla.
   - `productos`: `List<ProductoConsulta>` con los 6 campos actuales de B3 (`idProducto`, `nombre`, `descripcion`, `tipoProducto`, `codigoUnidadVenta`, `activo`).
 - **Regla G1 (`D-UC35-BC07-001`):** no simula precio ni consulta UC-20. Muestra aviso explícito de que el precio vigente para Vendedor queda pendiente de corte técnico independiente.
 
@@ -80,12 +81,13 @@ Todas las vistas incluyen `demo/fragments :: cabecera(activo)` y `demo/fragments
 - **Roles y gates en servidor:** **solo `VENDEDOR`**, `@Profile("!prod")`, `ale.http.writes.pedidos-uc43-enabled=true` (en ambos `GET` y `POST`).
 - **Atributos de `Model`:**
   - `idPedido` (`Long` proveniente de `@PathVariable`, nunca de input oculto).
+  - `aviso` (`String` opcional emitido por `AsignarRepartoDemoController` cuando corresponde advertencia operativa de reasignación).
   - `form`: `idUsuarioRepartidor` (`Long`), `motivoReasignacion` (`String`, opcional/blanco en primera asignación, obligatorio <=250 en reasignación).
 - **Redirección PRG exitosa (`303`):** a `/web/demo/pedidos`, opcionalmente con flash attribute `asignacionConfirmada` o `mensajeExito`.
 
 ### 3.6 `demo/mis-entregas.html` — `GET /web/demo/mis-entregas` (Ilustrativa NO CU04)
 - **Roles permitidos en servidor:** **únicamente `REPARTIDOR` autenticado** bajo perfil no-prod (403 o ruta cerrada para otras autoridades).
-- **Atributos requeridos:** solo las variables transversales de cabecera (`esRepartidor`, `rolMostrado`, `_csrf`). **No invoca UC-34, UC-04 ni SQL**, no espera listados ni contadores.
+- **Atributos requeridos:** solo las variables transversales de cabecera (`esRepartidor`, `rolMostrado`, `_csrf`) y `aviso` opcional del controlador. **No invoca UC-34, UC-04 ni SQL**, no espera listados ni contadores.
 
 ### 3.7 `demo/error.html` — Vista de error controlada
 - **Atributos de `Model` opcionales:** `codigoEstado` (ej. `400`, `403`, `404`, `409`, `503`), `tituloError`, `detalleError`. Sin trazas ni nombres internos de tablas/roles.

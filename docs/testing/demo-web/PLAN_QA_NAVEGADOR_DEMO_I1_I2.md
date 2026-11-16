@@ -2,14 +2,14 @@
 
 **Proyecto:** Sistema de Gestión para Ale Milanesas (UNaM–FCEQyN).  
 **Fecha:** 16/11/2026.  
-**Estado de ejecución:** **NO EJECUTADO** en esta PR (espera integración de controladores MVC `B5-DEMO-01` de Codex y entorno local HTTPS aislado).  
-**Base normativa:** `B5_DEMO_CONTRATO_UI_MVC_G1_RATIFICADO_2026-11-16.md`.
+**Estado de ejecución:** **NO EJECUTADO** en esta PR (controladores `B5-DEMO-01` ya integrados en `main@26996e8`, pendiente entorno local HTTPS + Docker/PostgreSQL tras merge de ambas PRs).
+**Base normativa:** `B5_DEMO_CONTRATO_UI_MVC_G1_RATIFICADO_CON_DISENO_VISUAL_2026-11-16.md`.
 
 ---
 
 ## 1. Condiciones previas para ejecutar (G4)
 
-1. PR de Codex (`B5-DEMO-01/B9-DEMO-01`) y PR de Antigravity (`B5-DEMO-02`) integradas en un SHA común verificable, con CI B1/B2 en verde.
+1. PR de Codex (`B5-DEMO-01/B9-DEMO-01`, ya integrada en `origin/main` @ `26996e82fbbe264a797565cb4c53933b4e9c39b9`) y PR #93 de Antigravity (`B5-DEMO-02`) integradas en un SHA común verificable, con CI B1/B2 y SonarCloud Quality Gate en verde.
 2. PostgreSQL 17.11 aislado (`ale_milanesas_demo`) con Flyway V1–V3 y fixtures exclusivamente sintéticas (`VENDEDOR`, `ADMINISTRADOR`, `REPARTIDOR`, usuario con `cambioCredencialPendiente=true`, clientes, productos con precios vigentes, política comercial).
 3. HTTPS privado local con certificado confiable, cookies `__Host-ale_session` y `JSESSIONID` con `Secure; HttpOnly; SameSite=Strict`.
 4. Perfil `!prod` y banderas `ale.http.writes.pedidos-uc03-enabled=true` y `pedidos-uc43-enabled=true` solo en entorno demo aislado.
@@ -37,7 +37,7 @@
 | WEB-15 | XSS, CSP y `Cache-Control: no-store` | `VENDEDOR` | Payloads `<script>` renderizados como texto literal (`th:text`); CSP `default-src 'none'; style-src 'self' ...` carga `demo.css` sin errores de consola | Captura DevTools Console + Network | **NO EJECUTADO** |
 | WEB-16 | Perfil `prod` o flags `pedidos-uc03-enabled=false` / `pedidos-uc43-enabled=false` | Arranque controlado | `prod` veta flags y deshabilita rutas demo; flags en `false` rechazan GET y POST de formularios UC-03/UC-43 | Log de arranque / 403-404 | **NO EJECUTADO** |
 | WEB-17 | Persistencia tras recarga y reinicio | `VENDEDOR` / `ADMIN` | Pedido y asignación permanecen íntegros al consultar tras refrescar o reiniciar servicio | Captura post-reinicio | **NO EJECUTADO** |
-| WEB-18 | Accesibilidad teclado y responsive móvil/escritorio | Operador QA | Tab/Enter recorren todos los controles con foco visible; sin desborde horizontal en ~375px y ~1280px | Capturas móvil + escritorio | **NO EJECUTADO** |
+| WEB-18 | Accesibilidad teclado, identidad visual G1 y responsive móvil/escritorio | Operador QA | Tab/Enter recorren todos los controles con foco visible (`#742C36`/`#252A31`), paleta bordó/crema/grafito/ámbar sin azul primario ni desborde horizontal en ~375px y ~1280px | Capturas móvil + escritorio | **NO EJECUTADO** |
 
 ---
 

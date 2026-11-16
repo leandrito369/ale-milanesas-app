@@ -1,10 +1,10 @@
 <!DOCTYPE html>
 <html lang="es" xmlns:th="http://www.thymeleaf.org">
-<head th:fragment="head(titulo)">
+<head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title th:text="${titulo}">Ale Milanesas · Demo I1+I2</title>
-    <link rel="stylesheet" th:href="@{/demo/demo.css}">
+    <title>Fragmentos · Ale Milanesas</title>
+    <link th:fragment="cssDemo" rel="stylesheet" th:href="@{/demo/demo.css}">
 </head>
 <body>
 <div th:fragment="cabecera(activo)">
@@ -52,8 +52,8 @@
 </div>
 
 <div th:fragment="mensajes">
-    <div class="alert alert-success" role="status" aria-live="polite" th:if="${mensajeExito != null}">
-        <p th:text="${mensajeExito}">Operación registrada.</p>
+    <div class="alert alert-success" th:if="${mensajeExito != null}">
+        <p><output class="status-output" th:text="${mensajeExito}">Operación registrada.</output></p>
     </div>
     <div class="alert alert-error" role="alert" th:if="${mensajeError != null or (errores != null and !#lists.isEmpty(errores))}">
         <p th:if="${mensajeError != null}" th:text="${mensajeError}">No se pudo completar la operación.</p>

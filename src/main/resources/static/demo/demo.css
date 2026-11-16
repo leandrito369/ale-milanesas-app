@@ -1,26 +1,53 @@
 :root {
-  --bg: #f5f7fb;
-  --surface: #ffffff;
-  --surface-alt: #eef2f7;
-  --text: #1b2432;
-  --muted: #4b5a6e;
-  --border: #c9d4e2;
-  --primary: #14539a;
-  --primary-hover: #0e3d73;
-  --primary-text: #ffffff;
-  --focus: #b45309;
-  --ok-bg: #ecfdf5;
+  /* Paleta G1 ratificada (D-UI-01 / D-UI-02) */
+  --brand-bordo: #742C36;
+  --brand-bordo-hover: #5C222A;
+  --brand-bordo-soft: #F9EBED;
+  --brand-crema: #FFF7EA;
+  --brand-crema-alt: #F5EAD8;
+  --brand-grafito: #252A31;
+  --brand-ambar: #F3BE65;
+  --brand-ambar-soft: #FDF0D5;
+
+  /* Tokens semanticos */
+  --bg: var(--brand-crema);
+  --surface: #FFFFFF;
+  --surface-alt: var(--brand-crema-alt);
+  --text: var(--brand-grafito);
+  --muted: #4B515C;
+  --border: #CFC3B0;
+  --input-border: #636973;
+
+  --primary: var(--brand-bordo);
+  --primary-hover: var(--brand-bordo-hover);
+  --primary-text: #FFFFFF;
+
+  --accent: var(--brand-ambar);
+  --accent-border: #7A5412;
+
+  --disabled-bg: #E8DFD1;
+  --disabled-text: #4E5560;
+  --disabled-border: #918778;
+
+  --focus: var(--brand-bordo);
+  --focus-strong: var(--brand-grafito);
+
+  --ok-bg: #ECFDF5;
   --ok-border: #047857;
-  --ok-text: #064e3b;
-  --warn-bg: #fffbeb;
-  --warn-border: #b45309;
-  --warn-text: #78350f;
-  --err-bg: #fef2f2;
-  --err-border: #b91c1c;
-  --err-text: #7f1d1d;
-  --info-bg: #eff6ff;
-  --info-border: #1d4ed8;
-  --info-text: #1e3a8a;
+  --ok-text: #064E3B;
+
+  --warn-bg: var(--brand-ambar-soft);
+  --warn-border: var(--accent-border);
+  --warn-text: var(--brand-grafito);
+
+  --err-bg: #FEF2F2;
+  --err-border: #991B1B;
+  --err-text: #7F1D1D;
+
+  --info-bg: var(--brand-crema-alt);
+  --info-border: var(--brand-bordo);
+  --info-text: var(--brand-grafito);
+
   --radius: 8px;
 }
 
@@ -39,6 +66,16 @@ body {
   background-color: var(--bg);
 }
 
+a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+a:hover {
+  color: var(--primary-hover);
+}
+
 .skip-link {
   position: absolute;
   left: -9999px;
@@ -52,8 +89,12 @@ body {
   font-weight: 600;
 }
 
-.skip-link:focus {
+.skip-link:focus,
+.skip-link:focus-visible {
   left: 0.75rem;
+  color: var(--primary-text);
+  outline: 3px solid var(--focus-strong);
+  outline-offset: 2px;
 }
 
 :focus-visible {
@@ -63,6 +104,7 @@ body {
 
 .topbar {
   background-color: var(--surface);
+  border-top: 4px solid var(--primary);
   border-bottom: 1px solid var(--border);
 }
 
@@ -103,10 +145,16 @@ body {
   color: var(--text);
 }
 
+.env-badge {
+  background: var(--accent);
+  border-color: var(--accent-border);
+  color: var(--text);
+}
+
 .role-badge {
-  background: var(--info-bg);
-  border-color: var(--info-border);
-  color: var(--info-text);
+  background: var(--brand-bordo-soft);
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .status-ok {
@@ -116,9 +164,9 @@ body {
 }
 
 .status-warn {
-  background: var(--warn-bg);
-  border-color: var(--warn-border);
-  color: var(--warn-text);
+  background: var(--accent);
+  border-color: var(--accent-border);
+  color: var(--text);
 }
 
 .status-err {
@@ -147,23 +195,34 @@ body {
   padding: 0.35rem 0.7rem;
   border-radius: var(--radius);
   text-decoration: none;
-  color: var(--primary);
+  color: var(--text);
   font-weight: 600;
+  border: 1px solid transparent;
 }
 
 .nav-link:hover {
   background: var(--surface);
+  color: var(--primary);
+  border-color: var(--border);
   text-decoration: underline;
 }
 
 .nav-link-active {
   background: var(--primary);
   color: var(--primary-text);
+  border-color: var(--primary);
 }
 
 .nav-link-active:hover {
   background: var(--primary-hover);
+  color: var(--primary-text);
+  border-color: var(--primary-hover);
   text-decoration: none;
+}
+
+.nav-link-active:focus-visible {
+  outline: 3px solid var(--focus-strong);
+  outline-offset: 2px;
 }
 
 .container {
@@ -183,11 +242,13 @@ body {
 h1 {
   margin: 0 0 0.5rem;
   font-size: 1.5rem;
+  color: var(--text);
 }
 
 h2 {
   margin: 0 0 0.75rem;
   font-size: 1.15rem;
+  color: var(--text);
 }
 
 .muted {
@@ -232,6 +293,12 @@ h2 {
   padding: 0;
 }
 
+.status-output {
+  display: inline;
+  font: inherit;
+  color: inherit;
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: 1fr;
@@ -247,6 +314,7 @@ h2 {
 label {
   font-weight: 600;
   font-size: 0.95rem;
+  color: var(--text);
 }
 
 .field-hint {
@@ -265,8 +333,26 @@ textarea {
   font: inherit;
   color: var(--text);
   background: var(--surface);
-  border: 1px solid #6b7b90;
+  border: 1px solid var(--input-border);
   border-radius: 6px;
+}
+
+input[type="text"]:focus,
+input[type="number"]:focus,
+input[type="date"]:focus,
+input[type="tel"]:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--primary);
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background: var(--disabled-bg);
+  color: var(--disabled-text);
+  border-color: var(--disabled-border);
+  cursor: not-allowed;
 }
 
 fieldset {
@@ -279,6 +365,7 @@ fieldset {
 legend {
   padding: 0 0.45rem;
   font-weight: 700;
+  color: var(--text);
 }
 
 .item-row {
@@ -293,6 +380,7 @@ legend {
   margin: 0 0 0.5rem;
   font-weight: 700;
   font-size: 0.95rem;
+  color: var(--text);
 }
 
 .actions {
@@ -318,10 +406,18 @@ legend {
 .btn-primary {
   background: var(--primary);
   color: var(--primary-text);
+  border-color: var(--primary);
 }
 
 .btn-primary:hover {
   background: var(--primary-hover);
+  color: var(--primary-text);
+  border-color: var(--primary-hover);
+}
+
+.btn-primary:focus-visible {
+  outline: 3px solid var(--focus-strong);
+  outline-offset: 2px;
 }
 
 .btn-secondary {
@@ -331,7 +427,17 @@ legend {
 }
 
 .btn-secondary:hover {
-  background: var(--surface-alt);
+  background: var(--brand-bordo-soft);
+  color: var(--primary-hover);
+  border-color: var(--primary-hover);
+}
+
+.btn:disabled,
+.btn[aria-disabled="true"] {
+  background: var(--disabled-bg);
+  color: var(--disabled-text);
+  border-color: var(--disabled-border);
+  cursor: not-allowed;
 }
 
 .btn-small {
@@ -367,6 +473,7 @@ td {
 
 th {
   background: var(--surface-alt);
+  color: var(--text);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -378,7 +485,7 @@ th {
 
 .empty-state {
   padding: 1.25rem;
-  border: 1px dashed var(--border);
+  border: 1px dashed var(--input-border);
   border-radius: var(--radius);
   background: var(--bg);
 }
@@ -409,5 +516,20 @@ th {
 
   .form-grid-4 {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 480px) {
+  .container {
+    margin: 0.9rem auto 2rem;
+  }
+
+  .card {
+    padding: 1rem;
+  }
+
+  .summary-dl {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
   }
 }
