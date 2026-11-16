@@ -41,8 +41,12 @@ public class SeguridadWebInterna {
     @Order(2)
     SecurityFilterChain seguridadWeb(HttpSecurity http,
                                      SeguridadHttpInterna.VerificadorSesionBearer sesiones,
-                                     @Value("${ale.web.allowed-origin:}") String origenPermitido) {
-        http.securityMatcher("/web/**");
+                                     @Value("${ale.web.allowed-origin:}") String origenPermitido,
+                                     org.springframework.core.env.Environment env) {
+        boolean demo = !env.matchesProfiles("prod");
+        boolean uc03 = demo && env.getProperty("ale.http.writes.pedidos-uc03-enabled", Boolean.class, false);
+        boolean uc43 = demo && env.getProperty("ale.http.writes.pedidos-uc43-enabled", Boolean.class, false);
+        http.securityMatcher("/web/**", "/demo/demo.css");
         http.httpBasic(AbstractHttpConfigurer::disable);
         http.formLogin(AbstractHttpConfigurer::disable);
         http.logout(AbstractHttpConfigurer::disable);
@@ -55,6 +59,22 @@ public class SeguridadWebInterna {
         http.authorizeHttpRequests(a -> a
                 .requestMatchers(HttpMethod.GET, RUTA_LOGIN_WEB).permitAll()
                 .requestMatchers(HttpMethod.POST, RUTA_LOGIN_WEB).permitAll()
+                // G1: reglas por operación antes del fallback histórico de acceso web.
+                .requestMatchers(HttpMethod.GET, "/demo/demo.css").access((auth, ctx) ->
+                    new org.springframework.security.authorization.AuthorizationDecision(demo))
+                .requestMatchers(HttpMethod.GET, "/web/demo/pedidos/nuevo")
+                    .access((auth, ctx) -> permiso(auth.get(), uc03, "VENDEDOR"))
+                .requestMatchers(HttpMethod.POST, "/web/demo/pedidos")
+                    .access((auth, ctx) -> permiso(auth.get(), uc03, "VENDEDOR"))
+                .requestMatchers(HttpMethod.GET, "/web/demo/pedidos/*/asignar")
+                    .access((auth, ctx) -> permiso(auth.get(), uc43, "VENDEDOR"))
+                .requestMatchers(HttpMethod.POST, "/web/demo/pedidos/*/asignar")
+                    .access((auth, ctx) -> permiso(auth.get(), uc43, "VENDEDOR"))
+                .requestMatchers(HttpMethod.GET, "/web/demo/clientes", "/web/demo/productos", "/web/demo/pedidos")
+                    .access((auth, ctx) -> permiso(auth.get(), demo, "ADMINISTRADOR", "VENDEDOR"))
+                .requestMatchers(HttpMethod.GET, "/web/demo/mis-entregas")
+                    .access((auth, ctx) -> permiso(auth.get(), demo, "REPARTIDOR"))
+                .requestMatchers("/web/demo", "/web/demo/**").denyAll()
                 .anyRequest().authenticated());
         http.exceptionHandling(e -> e
                 .authenticationEntryPoint((req,resp,ex)->resp.sendError(401))
@@ -73,6 +93,16 @@ public class SeguridadWebInterna {
         http.addFilterBefore(new SesionCookieFilter(sesiones),
                 UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    private static org.springframework.security.authorization.AuthorizationDecision permiso(
+            org.springframework.security.core.Authentication auth, boolean habilitado, String... roles) {
+        boolean permitido = habilitado && auth != null && auth.isAuthenticated()
+                && auth.getAuthorities().stream().noneMatch(a ->
+                    SeguridadHttpInterna.ROL_CAMBIO_PENDIENTE.equals(a.getAuthority()))
+                && auth.getAuthorities().stream().anyMatch(a ->
+                    java.util.Arrays.asList(roles).contains(a.getAuthority()));
+        return new org.springframework.security.authorization.AuthorizationDecision(permitido);
     }
 
     static String tokenCookie(HttpServletRequest req) {
@@ -102,12 +132,14 @@ public class SeguridadWebInterna {
         @Override
         protected void doFilterInternal(HttpServletRequest req,HttpServletResponse res,
                                         FilterChain chain) throws ServletException,IOException {
+            res.setHeader("Cache-Control","no-store");
+            res.setHeader("Pragma","no-cache");
             if (muta(req.getMethod()) && origenInvalido(req)) {
                 res.sendError(403);
                 return;
             }
             res.setHeader("Content-Security-Policy",
-                    "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+                    "default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
             res.setHeader("X-Content-Type-Options","nosniff");
             chain.doFilter(req,res);
         }
