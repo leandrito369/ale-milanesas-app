@@ -27,7 +27,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.postgresql.PostgreSQLContainer;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.json.JsonMapper;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -45,6 +48,9 @@ class RegistrarMovimientoCajaHttpExternoTest {
 
     private static final AtomicLong SECUENCIA = new AtomicLong(2_200_000);
     private static final String RUTA = "/api/v1/finanzas/movimientos-caja";
+    private static final JsonMapper JSON_EXACTO = JsonMapper.builder()
+            .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+            .build();
     @Value("${local.server.port}") int puerto;
     @Autowired JdbcTemplate jdbc;
     @Autowired TransactionTemplate tx;
@@ -91,11 +97,15 @@ class RegistrarMovimientoCajaHttpExternoTest {
     }
 
     private HttpResponse<String> enviar(String token, UUID clave, Object cuerpo) throws Exception {
+        return enviarCrudo(token, clave, json.writeValueAsString(cuerpo));
+    }
+
+    private HttpResponse<String> enviarCrudo(String token, UUID clave, String cuerpoJson) throws Exception {
         var b = HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + puerto + RUTA))
                 .timeout(Duration.ofSeconds(25)).header("Content-Type", "application/json");
         if (token != null) b.header("Authorization", "Bearer " + token);
         if (clave != null) b.header("Idempotency-Key", clave.toString());
-        return http.send(b.POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(cuerpo))).build(),
+        return http.send(b.POST(HttpRequest.BodyPublishers.ofString(cuerpoJson)).build(),
                 HttpResponse.BodyHandlers.ofString());
     }
 
@@ -180,5 +190,110 @@ class RegistrarMovimientoCajaHttpExternoTest {
             for (var resultado : resultados) ids.add(resultado.get(20, TimeUnit.SECONDS));
             assertEquals(cantidad, ids.size());
         }
+    }
+
+    @Test void aceptaLimitesExactosNumeric18_2ConPrecisionJsonYPostgres() throws Exception {
+        String valorMaximo = "9999999999999999.99";
+        BigDecimal esperadoMax = new BigDecimal(valorMaximo);
+        UUID claveMax = UUID.randomUUID();
+        String payloadMax = "{\"tipoMovimiento\":\"INGRESO\",\"importe\":" + valorMaximo
+                + ",\"concepto\":\"Maximo NUMERIC 18_2 " + base + "\"}";
+        var respMax = enviarCrudo(admin, claveMax, payloadMax);
+        assertEquals(201, respMax.statusCode(), respMax.body());
+        assertTrue(respMax.headers().firstValue("Cache-Control").orElse("").contains("no-store"));
+        assertTrue(respMax.body().contains(valorMaximo), respMax.body());
+        JsonNode nodoMax = JSON_EXACTO.readTree(respMax.body());
+        assertEquals(0, esperadoMax.compareTo(nodoMax.get("importe").decimalValue()));
+        long idMax = nodoMax.get("idMovimientoCaja").asLong();
+        BigDecimal persistidoMax = jdbc.queryForObject("""
+                SELECT "importe" FROM "MOVIMIENTO_CAJA" WHERE "idMovimientoCaja"=?
+                """, BigDecimal.class, idMax);
+        assertNotNull(persistidoMax);
+        assertEquals(0, esperadoMax.compareTo(persistidoMax));
+        assertEquals(2, persistidoMax.scale());
+
+        var reintentoMax = enviarCrudo(admin, claveMax, payloadMax);
+        assertEquals(200, reintentoMax.statusCode(), reintentoMax.body());
+        assertEquals(idMax, JSON_EXACTO.readTree(reintentoMax.body()).get("idMovimientoCaja").asLong());
+        assertEquals(1, jdbc.queryForObject("""
+                SELECT count(*) FROM "MOVIMIENTO_CAJA" WHERE "referencia"=?
+                """, Integer.class, "UC22:" + claveMax));
+
+        UUID claveMin = UUID.randomUUID();
+        var respMin = enviarCrudo(admin, claveMin,
+                "{\"tipoMovimiento\":\"INGRESO\",\"importe\":0.01,\"concepto\":\"Minimo valido " + base + "\"}");
+        assertEquals(201, respMin.statusCode(), respMin.body());
+        JsonNode nodoMin = JSON_EXACTO.readTree(respMin.body());
+        assertEquals(0, new BigDecimal("0.01").compareTo(nodoMin.get("importe").decimalValue()));
+        BigDecimal persistidoMin = jdbc.queryForObject("""
+                SELECT "importe" FROM "MOVIMIENTO_CAJA" WHERE "idMovimientoCaja"=?
+                """, BigDecimal.class, nodoMin.get("idMovimientoCaja").asLong());
+        assertEquals(0, new BigDecimal("0.01").compareTo(persistidoMin));
+        assertEquals(2, persistidoMin.scale());
+
+        UUID claveCeros = UUID.randomUUID();
+        var respCeros = enviarCrudo(admin, claveCeros,
+                "{\"tipoMovimiento\":\"EGRESO\",\"importe\":10.500,\"concepto\":\"Ceros finales " + base + "\"}");
+        assertEquals(201, respCeros.statusCode(), respCeros.body());
+        BigDecimal persistidoCeros = jdbc.queryForObject("""
+                SELECT "importe" FROM "MOVIMIENTO_CAJA" WHERE "referencia"=?
+                """, BigDecimal.class, "UC22:" + claveCeros);
+        assertEquals(0, new BigDecimal("10.50").compareTo(persistidoCeros));
+        assertEquals(2, persistidoCeros.scale());
+    }
+
+    @Test void rechazaImportesInvalidosDeRangoEscalaCeroNegativosONuloAntesDeInsert() throws Exception {
+        int movimientosAntes = contar("MOVIMIENTO_CAJA");
+        int cobros = contar("COBRO");
+        int cuentas = contar("MOVIMIENTO_CUENTA");
+        int clientes = contar("CLIENTE");
+        int reembolsos = contar("REEMBOLSO");
+
+        var payloadsInvalidos = java.util.List.of(
+                "{\"tipoMovimiento\":\"INGRESO\",\"importe\":10000000000000000,\"concepto\":\"Igual a 10^16\"}",
+                "{\"tipoMovimiento\":\"INGRESO\",\"importe\":1E+16,\"concepto\":\"Cientifico 1E+16\"}",
+                "{\"tipoMovimiento\":\"EGRESO\",\"importe\":10.123,\"concepto\":\"Tres decimales\"}",
+                "{\"tipoMovimiento\":\"EGRESO\",\"importe\":9999999999999999.999,\"concepto\":\"Sin redondeo\"}",
+                "{\"tipoMovimiento\":\"EGRESO\",\"importe\":0.001,\"concepto\":\"Subcentavo\"}",
+                "{\"tipoMovimiento\":\"EGRESO\",\"importe\":0,\"concepto\":\"Cero\"}",
+                "{\"tipoMovimiento\":\"EGRESO\",\"importe\":-0.01,\"concepto\":\"Negativo\"}",
+                "{\"tipoMovimiento\":\"EGRESO\",\"importe\":-10,\"concepto\":\"Negativo entero\"}",
+                "{\"tipoMovimiento\":\"EGRESO\",\"importe\":null,\"concepto\":\"Nulo\"}",
+                "{\"tipoMovimiento\":\"EGRESO\",\"importe\":\"10.00\",\"concepto\":\"Texto no numerico\"}",
+                "{\"tipoMovimiento\":\"EGRESO\",\"tipoMovimiento\":\"INGRESO\",\"importe\":10,\"concepto\":\"Duplicado\"}"
+        );
+
+        for (String payload : payloadsInvalidos) {
+            UUID clave = UUID.randomUUID();
+            var resp = enviarCrudo(admin, clave, payload);
+            assertEquals(400, resp.statusCode(), () -> "Payload debia dar 400: " + payload + " -> " + resp.body());
+            assertTrue(resp.body().contains("SOLICITUD_INVALIDA"), resp.body());
+            assertFalse(resp.body().contains("22003"), resp.body());
+            assertEquals(0, jdbc.queryForObject("""
+                    SELECT count(*) FROM "MOVIMIENTO_CAJA" WHERE "referencia"=?
+                    """, Integer.class, "UC22:" + clave));
+        }
+
+        var importesServicioInvalidos = java.util.Arrays.asList(
+                null,
+                BigDecimal.ZERO,
+                new BigDecimal("-0.01"),
+                new BigDecimal("10.123"),
+                new BigDecimal("9999999999999999.999"),
+                new BigDecimal("10000000000000000"),
+                new BigDecimal("1E+16")
+        );
+        for (BigDecimal invalido : importesServicioInvalidos) {
+            UUID claveDirecta = UUID.randomUUID();
+            String conceptoDirecto = "Servicio directo " + base;
+            assertThrows(IllegalArgumentException.class, () -> caja.registrarMovimientoCaja(
+                    sesionAdmin, "INGRESO", invalido, conceptoDirecto, null, claveDirecta));
+        }
+
+        assertEquals(movimientosAntes, contar("MOVIMIENTO_CAJA"));
+        assertEquals(cobros, contar("COBRO"));
+        assertEquals(cuentas, contar("MOVIMIENTO_CUENTA"));
+        assertEquals(clientes, contar("CLIENTE"));
+        assertEquals(reembolsos, contar("REEMBOLSO"));
     }
 }

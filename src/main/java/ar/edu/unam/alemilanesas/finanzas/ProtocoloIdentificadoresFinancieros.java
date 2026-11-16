@@ -5,7 +5,7 @@ import org.springframework.stereotype.Component;
 
 /**
  * Protocolo cooperativo vigente para los IDs financieros BIGINT definidos por MR5.
- * Todo escritor de MOVIMIENTO_CAJA debe tomar este lock antes de calcular MAX+1.
+ * Cada escritor de MOVIMIENTO_CAJA debe tomar este lock antes de calcular MAX+1.
  */
 @Component
 public class ProtocoloIdentificadoresFinancieros {

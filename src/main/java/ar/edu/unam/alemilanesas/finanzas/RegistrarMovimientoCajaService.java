@@ -2,6 +2,7 @@ package ar.edu.unam.alemilanesas.finanzas;
 
 import ar.edu.unam.alemilanesas.acceso.AutorizacionSesionInterna;
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -17,6 +18,8 @@ public class RegistrarMovimientoCajaService {
     private static final Set<String> ADMIN = Set.of("ADMINISTRADOR");
     private static final Set<String> TIPOS = Set.of("INGRESO", "EGRESO");
     private static final String PREFIJO_REFERENCIA = "UC22:";
+    private static final String IMPORTE_INVALIDO = "Importe invalido";
+    private static final BigDecimal LIMITE_EXCLUSIVO_IMPORTE = new BigDecimal("10000000000000000");
     private final NamedParameterJdbcTemplate sql;
     private final AutorizacionSesionInterna autorizacion;
     private final ProtocoloIdentificadoresFinancieros idsFinancieros;
@@ -105,10 +108,17 @@ public class RegistrarMovimientoCajaService {
     }
 
     private static BigDecimal validarImporte(BigDecimal valor) {
-        if (valor == null || valor.signum() <= 0 || valor.scale() > 2 || valor.precision() > 18) {
-            throw new IllegalArgumentException("Importe invalido");
+        if (valor == null
+                || valor.signum() <= 0
+                || valor.compareTo(LIMITE_EXCLUSIVO_IMPORTE) >= 0
+                || valor.stripTrailingZeros().scale() > 2) {
+            throw new IllegalArgumentException(IMPORTE_INVALIDO);
         }
-        return valor;
+        try {
+            return valor.setScale(2, RoundingMode.UNNECESSARY);
+        } catch (ArithmeticException ex) {
+            throw new IllegalArgumentException(IMPORTE_INVALIDO, ex);
+        }
     }
 
     private static String validarConcepto(String valor) {
