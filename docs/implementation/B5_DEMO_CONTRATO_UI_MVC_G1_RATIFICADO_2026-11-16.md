@@ -1,9 +1,9 @@
 # B5_DEMO_CONTRATO_UI_MVC — G1 RATIFICADO POR EL RESPONSABLE
 
-**Proyecto:** Sistema de Gestión para Ale Milanesas (UNaM-FCEQyN)  
-**Fecha de decisión:** 16/11/2026, mediante conversación con el responsable.  
-**Estado de diseño:** **G1 APROBADO en la conversación, con observaciones UC34/UC35 y secuencia F condicionada**.  
-**Estado repositorios:** **PENDIENTE DE INCORPORACIÓN FORMAL MEDIANTE PR**; este archivo local no constituye commit, merge, CI ni aprobación de despliegue.  
+**Proyecto:** Sistema de Gestión para Ale Milanesas (UNaM-FCEQyN)
+**Fecha de decisión:** 16/11/2026, mediante conversación con el responsable.
+**Estado de diseño:** **G1 APROBADO en la conversación, con observaciones UC34/UC35 y secuencia F condicionada**.
+**Estado repositorios:** **PENDIENTE DE INCORPORACIÓN FORMAL MEDIANTE PR**; este archivo local no constituye commit, merge, CI ni aprobación de despliegue.
 **Puerta siguiente:** G2 autorizado **solo mediante ramas + PR draft separadas**. No se autoriza merge por agentes, publicación pública ni cambio de G0.
 
 ## 1. Referencias y límites
