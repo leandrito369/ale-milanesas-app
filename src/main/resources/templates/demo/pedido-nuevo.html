@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{demo/fragments :: head('Cargar Pedido (UC-03) · Ale Milanesas')}"></head>
+<body>
+<div th:replace="~{demo/fragments :: cabecera('pedido-nuevo')}"></div>
+
+<main id="contenido" class="container">
+    <section class="card" aria-labelledby="titulo-nuevo-pedido">
+        <h1 id="titulo-nuevo-pedido">Cargar Nuevo Pedido (UC-03)</h1>
+        <p class="muted">Operación exclusiva de Vendedor. El precio unitario vigente, la categoría del cliente, el ajuste comercial y el total se calculan y congelan en el servidor.</p>
+
+        <div th:replace="~{demo/fragments :: mensajes}"></div>
+
+        <form th:action="@{/web/demo/pedidos}" method="post">
+            <input type="hidden" th:if="${_csrf != null}" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+            <input type="hidden" name="claveIdempotencia"
+                   th:value="${form != null ? form.claveIdempotencia : ''}">
+
+            <fieldset>
+                <legend>1. Cliente y fecha de reparto</legend>
+                <div class="form-grid form-grid-2">
+                    <div class="field">
+                        <label for="p-idCliente">ID Cliente *</label>
+                        <input id="p-idCliente" name="idCliente" type="number" min="1" step="1" required
+                               aria-describedby="hint-cliente"
+                               th:value="${form != null ? form.idCliente : ''}">
+                        <span id="hint-cliente" class="field-hint">
+                            Debe ser un cliente ACTIVO.
+                            <a th:href="@{/web/demo/clientes}">Consultar Clientes (UC-33)</a>
+                        </span>
+                    </div>
+                    <div class="field">
+                        <label for="p-fechaReparto">Fecha de reparto *</label>
+                        <input id="p-fechaReparto" name="fechaReparto" type="date" required
+                               aria-describedby="hint-fecha"
+                               th:value="${form != null ? form.fechaReparto : ''}">
+                        <span id="hint-fecha" class="field-hint">No retroactiva (fecha comercial Argentina: hoy o posterior).</span>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>2. Ítems del pedido (hasta 3 renglones)</legend>
+                <p class="field-hint">
+                    El renglón 1 es obligatorio; los renglones 2 y 3 son opcionales. No repitas el mismo producto en más de un renglón.
+                    <a th:href="@{/web/demo/productos}">Consultar Productos (UC-35)</a>
+                </p>
+
+                <div class="item-row">
+                    <p class="item-row-title">Renglón 1 (obligatorio)</p>
+                    <div class="form-grid form-grid-2">
+                        <div class="field">
+                            <label for="item0-id">ID Producto *</label>
+                            <input id="item0-id" name="items[0].idProducto" type="number" min="1" step="1" required
+                                   th:value="${form != null and form.items != null and #lists.size(form.items) > 0 ? form.items[0].idProducto : ''}">
+                        </div>
+                        <div class="field">
+                            <label for="item0-cant">Cantidad solicitada *</label>
+                            <input id="item0-cant" name="items[0].cantidadSolicitada" type="number" min="0.001" step="0.001" required
+                                   th:value="${form != null and form.items != null and #lists.size(form.items) > 0 ? form.items[0].cantidadSolicitada : ''}">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="item-row">
+                    <p class="item-row-title">Renglón 2 (opcional)</p>
+                    <div class="form-grid form-grid-2">
+                        <div class="field">
+                            <label for="item1-id">ID Producto</label>
+                            <input id="item1-id" name="items[1].idProducto" type="number" min="1" step="1"
+                                   th:value="${form != null and form.items != null and #lists.size(form.items) > 1 ? form.items[1].idProducto : ''}">
+                        </div>
+                        <div class="field">
+                            <label for="item1-cant">Cantidad solicitada</label>
+                            <input id="item1-cant" name="items[1].cantidadSolicitada" type="number" min="0.001" step="0.001"
+                                   th:value="${form != null and form.items != null and #lists.size(form.items) > 1 ? form.items[1].cantidadSolicitada : ''}">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="item-row">
+                    <p class="item-row-title">Renglón 3 (opcional)</p>
+                    <div class="form-grid form-grid-2">
+                        <div class="field">
+                            <label for="item2-id">ID Producto</label>
+                            <input id="item2-id" name="items[2].idProducto" type="number" min="1" step="1"
+                                   th:value="${form != null and form.items != null and #lists.size(form.items) > 2 ? form.items[2].idProducto : ''}">
+                        </div>
+                        <div class="field">
+                            <label for="item2-cant">Cantidad solicitada</label>
+                            <input id="item2-cant" name="items[2].cantidadSolicitada" type="number" min="0.001" step="0.001"
+                                   th:value="${form != null and form.items != null and #lists.size(form.items) > 2 ? form.items[2].cantidadSolicitada : ''}">
+                        </div>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>3. Dirección de entrega (snapshot histórico)</legend>
+                <div class="form-grid form-grid-2">
+                    <div class="field">
+                        <label for="d-calle">Calle *</label>
+                        <input id="d-calle" name="calle" type="text" required maxlength="150"
+                               th:value="${form != null ? form.calle : ''}">
+                    </div>
+                    <div class="field">
+                        <label for="d-numero">Número</label>
+                        <input id="d-numero" name="numero" type="text" maxlength="20"
+                               th:value="${form != null ? form.numero : ''}">
+                    </div>
+                    <div class="field">
+                        <label for="d-piso">Piso</label>
+                        <input id="d-piso" name="piso" type="text" maxlength="10"
+                               th:value="${form != null ? form.piso : ''}">
+                    </div>
+                    <div class="field">
+                        <label for="d-uf">Unidad funcional</label>
+                        <input id="d-uf" name="unidadFuncional" type="text" maxlength="20"
+                               th:value="${form != null ? form.unidadFuncional : ''}">
+                    </div>
+                    <div class="field">
+                        <label for="d-localidad">Localidad *</label>
+                        <input id="d-localidad" name="localidad" type="text" required maxlength="100"
+                               th:value="${form != null ? form.localidad : ''}">
+                    </div>
+                    <div class="field">
+                        <label for="d-provincia">Provincia</label>
+                        <input id="d-provincia" name="provincia" type="text" maxlength="100"
+                               th:value="${form != null ? form.provincia : ''}">
+                    </div>
+                    <div class="field">
+                        <label for="d-zona">Zona</label>
+                        <input id="d-zona" name="zona" type="text" maxlength="100"
+                               th:value="${form != null ? form.zona : ''}">
+                    </div>
+                    <div class="field">
+                        <label for="d-referencia">Referencia de domicilio</label>
+                        <input id="d-referencia" name="referencia" type="text" maxlength="250"
+                               th:value="${form != null ? form.referencia : ''}">
+                    </div>
+                </div>
+            </fieldset>
+
+            <div class="actions">
+                <button type="submit" class="btn btn-primary">Confirmar Pedido</button>
+                <a class="btn btn-secondary" th:href="@{/web/demo/pedidos}">Cancelar y volver a Pedidos</a>
+            </div>
+        </form>
+    </section>
+</main>
+</body>
+</html>

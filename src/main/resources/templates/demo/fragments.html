@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head th:fragment="head(titulo)">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${titulo}">Ale Milanesas · Demo I1+I2</title>
+    <link rel="stylesheet" th:href="@{/demo/demo.css}">
+</head>
+<body>
+<div th:fragment="cabecera(activo)">
+    <a class="skip-link" href="#contenido">Saltar al contenido</a>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <div class="brand-group">
+                <span class="brand-title">Ale Milanesas · Demo web I1+I2</span>
+                <span class="env-badge">Entorno aislado · Datos sintéticos</span>
+                <span class="role-badge" th:if="${rolMostrado != null}" th:text="${rolMostrado}">ROL</span>
+            </div>
+            <form th:action="@{/web/logout}" method="post">
+                <input type="hidden" th:if="${_csrf != null}" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                <button type="submit" class="btn btn-secondary btn-small">Cerrar sesión</button>
+            </form>
+        </div>
+        <nav class="nav-demo" aria-label="Navegación demo">
+            <ul class="nav-list">
+                <li>
+                    <a class="nav-link" th:href="@{/web/inicio}">Inicio</a>
+                </li>
+                <li th:if="${esAdmin == true or esVendedor == true}">
+                    <a th:class="${activo == 'clientes' ? 'nav-link nav-link-active' : 'nav-link'}"
+                       th:href="@{/web/demo/clientes}">Clientes (UC-33)</a>
+                </li>
+                <li th:if="${esAdmin == true or esVendedor == true}">
+                    <a th:class="${activo == 'productos' ? 'nav-link nav-link-active' : 'nav-link'}"
+                       th:href="@{/web/demo/productos}">Productos (UC-35)</a>
+                </li>
+                <li th:if="${esVendedor == true}">
+                    <a th:class="${activo == 'pedido-nuevo' ? 'nav-link nav-link-active' : 'nav-link'}"
+                       th:href="@{/web/demo/pedidos/nuevo}">Nuevo Pedido (UC-03)</a>
+                </li>
+                <li th:if="${esAdmin == true or esVendedor == true}">
+                    <a th:class="${activo == 'pedidos' ? 'nav-link nav-link-active' : 'nav-link'}"
+                       th:href="@{/web/demo/pedidos}">Pedidos (UC-34)</a>
+                </li>
+                <li th:if="${esRepartidor == true}">
+                    <a th:class="${activo == 'mis-entregas' ? 'nav-link nav-link-active' : 'nav-link'}"
+                       th:href="@{/web/demo/mis-entregas}">Mis entregas</a>
+                </li>
+            </ul>
+        </nav>
+    </header>
+</div>
+
+<div th:fragment="mensajes">
+    <div class="alert alert-success" role="status" aria-live="polite" th:if="${mensajeExito != null}">
+        <p th:text="${mensajeExito}">Operación registrada.</p>
+    </div>
+    <div class="alert alert-error" role="alert" th:if="${mensajeError != null or (errores != null and !#lists.isEmpty(errores))}">
+        <p th:if="${mensajeError != null}" th:text="${mensajeError}">No se pudo completar la operación.</p>
+        <ul th:if="${errores != null and !#lists.isEmpty(errores)}">
+            <li th:each="err : ${errores}" th:text="${err}">Error de validación</li>
+        </ul>
+    </div>
+</div>
+</body>
+</html>

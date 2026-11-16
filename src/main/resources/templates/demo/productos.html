@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{demo/fragments :: head('Productos (UC-35) · Ale Milanesas')}"></head>
+<body>
+<div th:replace="~{demo/fragments :: cabecera('productos')}"></div>
+
+<main id="contenido" class="container">
+    <section class="card" aria-labelledby="titulo-productos">
+        <h1 id="titulo-productos">Catálogo de Productos (UC-35)</h1>
+
+        <div class="alert alert-info" role="note">
+            <p><strong>Alcance P0 (D-UC35-BC07-001):</strong> esta vista muestra exclusivamente los 6 campos provistos actualmente por B3. La exposición de precio base vigente previo a pedido para Vendedor está ratificada normativamente, pero pendiente de corte técnico independiente. Al confirmar UC-03, el servidor valida y congela el precio vigente.</p>
+        </div>
+
+        <div th:replace="~{demo/fragments :: mensajes}"></div>
+
+        <form th:action="@{/web/demo/productos}" method="get" class="form-grid form-grid-4">
+            <div class="field">
+                <label for="f-idProducto">ID Producto</label>
+                <input id="f-idProducto" name="idProducto" type="number" min="1" step="1"
+                       th:value="${filtro != null ? filtro.idProducto : ''}">
+            </div>
+            <div class="field">
+                <label for="f-nombre">Nombre</label>
+                <input id="f-nombre" name="nombre" type="text" maxlength="150"
+                       th:value="${filtro != null ? filtro.nombre : ''}">
+            </div>
+            <div class="field">
+                <label for="f-tipo">Tipo</label>
+                <select id="f-tipo" name="tipoProducto">
+                    <option value="" th:selected="${filtro == null or filtro.tipoProducto == null or filtro.tipoProducto == ''}">Todos</option>
+                    <option value="ELABORADO" th:selected="${filtro != null and filtro.tipoProducto == 'ELABORADO'}">ELABORADO</option>
+                    <option value="REVENTA" th:selected="${filtro != null and filtro.tipoProducto == 'REVENTA'}">REVENTA</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="f-activo">Activo</label>
+                <select id="f-activo" name="activo">
+                    <option value="" th:selected="${filtro == null or filtro.activo == null}">Todos</option>
+                    <option value="true" th:selected="${filtro != null and filtro.activo == true}">Sí</option>
+                    <option value="false" th:selected="${filtro != null and filtro.activo == false}">No</option>
+                </select>
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn btn-primary">Buscar</button>
+                <a class="btn btn-secondary" th:href="@{/web/demo/productos}">Limpiar</a>
+            </div>
+        </form>
+    </section>
+
+    <section class="card" aria-labelledby="titulo-resultados-productos">
+        <h2 id="titulo-resultados-productos">Resultados</h2>
+
+        <div class="empty-state" role="status" aria-live="polite"
+             th:if="${productos == null or #lists.isEmpty(productos)}">
+            <p>No se encontraron productos para los criterios indicados.</p>
+        </div>
+
+        <div class="table-wrap" th:if="${productos != null and !#lists.isEmpty(productos)}">
+            <table>
+                <caption>Catálogo de productos (6 campos B3 actuales; sin costos, stock ni historial)</caption>
+                <thead>
+                <tr>
+                    <th scope="col">ID</th>
+                    <th scope="col">Nombre</th>
+                    <th scope="col">Descripción</th>
+                    <th scope="col">Tipo</th>
+                    <th scope="col">Unidad de venta</th>
+                    <th scope="col">Activo</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="p : ${productos}">
+                    <td class="num" th:text="${p.idProducto}">1</td>
+                    <td th:text="${p.nombre}">Producto Demo</td>
+                    <td th:text="${p.descripcion != null ? p.descripcion : '—'}">—</td>
+                    <td th:text="${p.tipoProducto}">ELABORADO</td>
+                    <td th:text="${p.codigoUnidadVenta}">KG</td>
+                    <td>
+                        <span th:class="${p.activo ? 'status-badge status-ok' : 'status-badge status-err'}"
+                              th:text="${p.activo ? 'ACTIVO' : 'INACTIVO'}">ACTIVO</span>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+</body>
+</html>

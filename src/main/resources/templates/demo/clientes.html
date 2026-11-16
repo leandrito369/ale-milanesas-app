@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{demo/fragments :: head('Clientes (UC-33) · Ale Milanesas')}"></head>
+<body>
+<div th:replace="~{demo/fragments :: cabecera('clientes')}"></div>
+
+<main id="contenido" class="container">
+    <section class="card" aria-labelledby="titulo-clientes">
+        <h1 id="titulo-clientes">Buscar Clientes (UC-33)</h1>
+        <p class="muted">Consulta de datos comerciales autorizados por BC-07. No expone saldos ni historial financiero.</p>
+
+        <div th:replace="~{demo/fragments :: mensajes}"></div>
+
+        <form th:action="@{/web/demo/clientes}" method="get" class="form-grid form-grid-3">
+            <div class="field">
+                <label for="f-idCliente">ID Cliente</label>
+                <input id="f-idCliente" name="idCliente" type="number" min="1" step="1"
+                       th:value="${filtro != null ? filtro.idCliente : ''}">
+            </div>
+            <div class="field">
+                <label for="f-nombre">Nombre</label>
+                <input id="f-nombre" name="nombre" type="text" maxlength="241"
+                       th:value="${filtro != null ? filtro.nombre : ''}">
+            </div>
+            <div class="field">
+                <label for="f-telefono">Teléfono principal</label>
+                <input id="f-telefono" name="telefonoPrincipal" type="tel" maxlength="20"
+                       th:value="${filtro != null ? filtro.telefonoPrincipal : ''}">
+            </div>
+            <div class="field">
+                <label for="f-zona">Zona</label>
+                <input id="f-zona" name="zona" type="text" maxlength="100"
+                       th:value="${filtro != null ? filtro.zona : ''}">
+            </div>
+            <div class="field">
+                <label for="f-estado">Estado</label>
+                <select id="f-estado" name="estado">
+                    <option value="" th:selected="${filtro == null or filtro.estado == null or filtro.estado == ''}">Todos</option>
+                    <option value="ACTIVO" th:selected="${filtro != null and filtro.estado == 'ACTIVO'}">ACTIVO</option>
+                    <option value="INACTIVO" th:selected="${filtro != null and filtro.estado == 'INACTIVO'}">INACTIVO</option>
+                </select>
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn btn-primary">Buscar</button>
+                <a class="btn btn-secondary" th:href="@{/web/demo/clientes}">Limpiar</a>
+            </div>
+        </form>
+    </section>
+
+    <section class="card" aria-labelledby="titulo-resultados-clientes">
+        <h2 id="titulo-resultados-clientes">Resultados</h2>
+
+        <div class="empty-state" role="status" aria-live="polite"
+             th:if="${clientes == null or #lists.isEmpty(clientes)}">
+            <p>No se encontraron clientes para los criterios indicados.</p>
+        </div>
+
+        <div class="table-wrap" th:if="${clientes != null and !#lists.isEmpty(clientes)}">
+            <table>
+                <caption>Listado de clientes autorizados (proyección mínima UC-33 / BC-07)</caption>
+                <thead>
+                <tr>
+                    <th scope="col">ID</th>
+                    <th scope="col">Nombre</th>
+                    <th scope="col">Teléfono</th>
+                    <th scope="col">Dirección</th>
+                    <th scope="col">Zona</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col">Categoría</th>
+                    <th scope="col" th:if="${esVendedor == true}">Acción</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="c : ${clientes}">
+                    <td class="num" th:text="${c.idCliente}">1</td>
+                    <td th:text="${c.nombre}">Cliente Demo</td>
+                    <td th:text="${c.telefonoPrincipal}">3764000000</td>
+                    <td th:text="${c.direccion}">Dirección</td>
+                    <td th:text="${c.zona}">Centro</td>
+                    <td>
+                        <span th:class="${c.estado == 'ACTIVO' ? 'status-badge status-ok' : 'status-badge status-err'}"
+                              th:text="${c.estado}">ACTIVO</span>
+                    </td>
+                    <td>
+                        <span th:class="${c.categoriaComercial == 'CUMPLIDOR' ? 'status-badge status-ok' : 'status-badge status-warn'}"
+                              th:text="${c.categoriaComercial}">CUMPLIDOR</span>
+                    </td>
+                    <td th:if="${esVendedor == true}">
+                        <a class="btn btn-secondary btn-small"
+                           th:if="${c.estado == 'ACTIVO'}"
+                           th:href="@{/web/demo/pedidos/nuevo(idCliente=${c.idCliente})}">Cargar pedido</a>
+                        <span class="muted" th:if="${c.estado != 'ACTIVO'}">Inactivo</span>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+</body>
+</html>

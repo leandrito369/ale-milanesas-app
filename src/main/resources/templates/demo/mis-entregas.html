@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{demo/fragments :: head('Mis entregas · Ale Milanesas')}"></head>
+<body>
+<div th:replace="~{demo/fragments :: cabecera('mis-entregas')}"></div>
+
+<main id="contenido" class="container">
+    <section class="card" aria-labelledby="titulo-mis-entregas">
+        <h1 id="titulo-mis-entregas">Mis entregas</h1>
+
+        <div class="empty-state" role="status" aria-live="polite">
+            <p><strong>Módulo en preparación. La consulta de pedidos asignados estará disponible cuando UC-04 esté implementado y probado</strong></p>
+            <p class="muted">Vista ilustrativa exclusiva para el rol Repartidor en entorno de demostración. No consulta UC-34 ni UC-04 y no representa ausencia ni existencia real de asignaciones.</p>
+        </div>
+
+        <div class="actions">
+            <a class="btn btn-secondary" th:href="@{/web/inicio}">Volver al inicio</a>
+        </div>
+    </section>
+</main>
+</body>
+</html>

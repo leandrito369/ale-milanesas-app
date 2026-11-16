@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{demo/fragments :: head('Asignar Repartidor (UC-43) · Ale Milanesas')}"></head>
+<body>
+<div th:replace="~{demo/fragments :: cabecera('pedidos')}"></div>
+
+<main id="contenido" class="container">
+    <section class="card" aria-labelledby="titulo-asignar">
+        <h1 id="titulo-asignar">Asignar o Reasignar Repartidor (UC-43)</h1>
+        <p class="muted">
+            Pedido #<strong th:text="${idPedido}">0</strong> · Operación exclusivamente online (RD-RP002-001) reservada a Vendedor.
+        </p>
+
+        <div th:replace="~{demo/fragments :: mensajes}"></div>
+
+        <form th:action="@{/web/demo/pedidos/{idPedido}/asignar(idPedido=${idPedido})}" method="post">
+            <input type="hidden" th:if="${_csrf != null}" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+
+            <div class="form-grid">
+                <div class="field">
+                    <label for="a-repartidor">ID Usuario Repartidor *</label>
+                    <input id="a-repartidor" name="idUsuarioRepartidor" type="number" min="1" step="1" required
+                           aria-describedby="hint-repartidor"
+                           th:value="${form != null ? form.idUsuarioRepartidor : ''}">
+                    <span id="hint-repartidor" class="field-hint">
+                        Ingresá el ID sintético de un usuario HABILITADO con rol REPARTIDOR (UC-56 es exclusivo de Administrador).
+                    </span>
+                </div>
+
+                <div class="field">
+                    <label for="a-motivo">Motivo de reasignación</label>
+                    <textarea id="a-motivo" name="motivoReasignacion" rows="3" maxlength="250"
+                              aria-describedby="hint-motivo"
+                              th:text="${form != null ? form.motivoReasignacion : ''}"></textarea>
+                    <span id="hint-motivo" class="field-hint">
+                        Dejar vacío en la primera asignación. Si el pedido ya tiene un repartidor vigente, el motivo es obligatorio (máx. 250 caracteres).
+                    </span>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button type="submit" class="btn btn-primary">Confirmar Asignación</button>
+                <a class="btn btn-secondary" th:href="@{/web/demo/pedidos}">Volver a Pedidos</a>
+            </div>
+        </form>
+    </section>
+</main>
+</body>
+</html>
