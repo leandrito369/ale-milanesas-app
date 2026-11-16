@@ -1,0 +1,17 @@
+# Entorno privado: sin volúmenes persistentes ni puertos públicos.
+services:
+  db:
+    image: postgres:17.11-alpine
+    environment:
+      POSTGRES_DB: ale_milanesas_demo
+      POSTGRES_USER: ale_demo
+      POSTGRES_PASSWORD: ${ALE_DB_PASSWORD:?Definir secreto efimero fuera de Git}
+    ports:
+      - '127.0.0.1:55439:5432'
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ale_demo -d ale_milanesas_demo']
+      interval: 2s
+      timeout: 3s
+      retries: 30
