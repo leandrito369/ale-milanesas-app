@@ -154,6 +154,21 @@ class DemoSeguridadTest {
         assertTrue(cookie.contains("__Host-ale_session="));assertTrue(cookie.contains("Secure"));
         assertTrue(cookie.contains("HttpOnly"));assertTrue(cookie.contains("SameSite=Strict"));assertTrue(cookie.contains("Path=/"));
     }
+    @Test void cssNoDebeInvalidarCsrfDeFormularioAutenticado() throws Exception {
+        iniciar(true,false);
+        var inicial=csrf();
+        var form=mvc.perform(actor(get("/web/demo/pedidos/nuevo").session(inicial.session()),"VENDEDOR")).andReturn();
+        String token=form.getResponse().getContentAsString();
+        var session=(org.springframework.mock.web.MockHttpSession)form.getRequest().getSession(false);
+        var repo=new org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository();
+        assertNotNull(repo.loadToken(form.getRequest()));
+        mvc.perform(actor(get("/demo/demo.css").session(session),"VENDEDOR")).andReturn();
+        var probe=new org.springframework.mock.web.MockHttpServletRequest();probe.setSession(session);
+        assertNotNull(repo.loadToken(probe),"CSS no debe borrar CSRF de HttpSession");
+        mvc.perform(actor(post("/web/demo/pedidos/1/asignar").session(session)
+                .param("_csrf",token).param("idUsuarioRepartidor","9"),"VENDEDOR"))
+                .andExpect(status().isSeeOther());
+    }
     @Test void prodNoRegistraControladoresAunqueFlagsSeanTrue() throws Exception {
         iniciar(true,true);
         for(Class<?> tipo:List.of(ConsultasDemoController.class,CargarPedidoDemoController.class,
