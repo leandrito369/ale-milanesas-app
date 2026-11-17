@@ -121,7 +121,7 @@ class ContinuidadSesionHttpsTest {
             .POST(HttpRequest.BodyPublishers.ofString("idUsuarioRepartidor="+(f.base+3)+"&_csrf="+URLEncoder.encode(csrf,StandardCharsets.UTF_8))).build(),HttpResponse.BodyHandlers.ofString());
         assertEquals(403,foreign.statusCode());
         assertEquals(302,post.apply("/web/logout",Map.of("_csrf",csrf)).statusCode());
-        assertTrue(Set.of(401,403).contains(get.apply("/web/inicio").statusCode()));
+        assertEquals(401,get.apply("/web/inicio").statusCode());
     }
     @org.junit.jupiter.api.AfterAll static void limpiar() throws Exception {
         try(var paths=Files.walk(DIR)){for(Path p:paths.sorted(Comparator.reverseOrder()).toList())Files.deleteIfExists(p);}

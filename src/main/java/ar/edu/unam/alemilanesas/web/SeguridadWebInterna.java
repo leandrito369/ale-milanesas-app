@@ -77,14 +77,16 @@ public class SeguridadWebInterna {
                     .access((auth, ctx) -> permiso(auth.get(), demo, "REPARTIDOR"))
                 .requestMatchers("/web/demo", "/web/demo/**").denyAll()
                 .anyRequest().authenticated());
+        // sendError(401) abre un ERROR /error y el fallback denyAll lo convierte en 403.
+        // Terminar aquí mantiene 401 sin exponer /error ni saltar autorización.
         http.exceptionHandling(e -> e
-                .authenticationEntryPoint((req,resp,ex)->resp.sendError(401))
+                .authenticationEntryPoint((req,resp,ex)->resp.setStatus(401))
                 .accessDeniedHandler((req,resp,ex)->{
                     var actual=SecurityContextHolder.getContext().getAuthentication();
                     if (ex instanceof CsrfException) {
                         resp.sendError(403);
                     } else if (actual==null || actual instanceof AnonymousAuthenticationToken) {
-                        resp.sendError(401);
+                        resp.setStatus(401);
                     } else {
                         resp.sendError(403);
                     }
@@ -212,7 +214,7 @@ public class SeguridadWebInterna {
                 } else if (!RUTA_LOGIN_WEB.equals(req.getServletPath())) {
                     // Cookie presentada pero expirada/revocada/ilegible:
                     // 401 inmediato, nunca autoridad cacheada en HttpSession.
-                    res.sendError(401);
+                    res.setStatus(401);
                     return;
                 }
             }
