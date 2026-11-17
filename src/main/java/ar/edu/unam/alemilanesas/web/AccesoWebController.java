@@ -7,6 +7,8 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.UUID;
 
+import org.springframework.core.env.Environment;
+import org.springframework.ui.Model;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.security.core.Authentication;
@@ -24,12 +26,14 @@ public class AccesoWebController {
     private final SesionesUsuarioService sesiones;
     private final CambiarContrasenaService claves;
     private final LimiteIntentosLogin limite;
+    private final Environment env;
 
     public AccesoWebController(SesionesUsuarioService sesiones,
-                              CambiarContrasenaService claves, LimiteIntentosLogin limite) {
+                              CambiarContrasenaService claves, LimiteIntentosLogin limite, Environment env) {
         this.sesiones=sesiones;
         this.claves=claves;
         this.limite=limite;
+        this.env=env;
     }
 
     @GetMapping("/web/login")
@@ -61,8 +65,22 @@ public class AccesoWebController {
     }
 
     @GetMapping("/web/inicio")
-    public String inicio(Authentication authentication) {
+    public String inicio(Authentication authentication, Model model) {
         if (restringido(authentication)) return "redirect:/web/cambiar-clave";
+        var roles=authentication.getAuthorities().stream()
+                .map(org.springframework.security.core.GrantedAuthority::getAuthority)
+                .collect(java.util.stream.Collectors.toSet());
+        boolean vendedor=roles.contains("VENDEDOR");
+        boolean demo=!env.matchesProfiles("prod");
+        model.addAttribute("esAdmin",roles.contains("ADMINISTRADOR"));
+        model.addAttribute("esVendedor",vendedor);
+        model.addAttribute("esRepartidor",roles.contains("REPARTIDOR"));
+        model.addAttribute("demoDisponible",demo);
+        // Indicadores de presentación: no sustituyen los controles de cada ruta.
+        model.addAttribute("uc03Disponible",demo && vendedor
+                && env.getProperty("ale.http.writes.pedidos-uc03-enabled",Boolean.class,false));
+        model.addAttribute("uc43Disponible",demo && vendedor
+                && env.getProperty("ale.http.writes.pedidos-uc43-enabled",Boolean.class,false));
         return "web-inicio";
     }
 
