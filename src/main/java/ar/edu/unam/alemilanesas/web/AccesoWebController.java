@@ -37,7 +37,10 @@ public class AccesoWebController {
     }
 
     @GetMapping("/web/login")
-    public String loginFormulario() {return "web-login";}
+    public String loginFormulario(Model model) {
+        model.addAttribute("demoDisponible",!env.matchesProfiles("prod"));
+        return "web-login";
+    }
 
     @PostMapping("/web/login")
     public String login(@RequestParam String nombreUsuario,@RequestParam String credencial,
@@ -85,8 +88,9 @@ public class AccesoWebController {
     }
 
     @GetMapping("/web/cambiar-clave")
-    public String formularioCambio(Authentication authentication) {
+    public String formularioCambio(Authentication authentication, Model model) {
         sesion(authentication);
+        model.addAttribute("demoDisponible",!env.matchesProfiles("prod"));
         return "web-cambiar-clave";
     }
 
