@@ -1,13 +1,128 @@
 <!DOCTYPE html>
-<html lang="es" xmlns:th="http://www.thymeleaf.org"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ale Milanesas - Acceso interno</title></head><body>
-<main><h1>Sesión interna</h1>
-<p>Acceso autenticado. Las operaciones de negocio continúan bloqueadas.</p>
-<a th:href="@{/web/cambiar-clave}">Cambiar contraseña</a>
-<form th:action="@{/web/renew}" method="post">
-<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-<button type="submit">Renovar sesión</button></form>
-<form th:action="@{/web/logout}" method="post">
-<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-<button type="submit">Cerrar sesión</button></form></main></body></html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Inicio · Ale Milanesas</title>
+    <link th:if="${demoDisponible == true}" rel="stylesheet" th:href="@{/demo/demo.css}">
+</head>
+<body>
+<a class="skip-link" href="#contenido">Saltar al contenido</a>
+
+<header class="topbar">
+    <div class="topbar-inner">
+        <div class="brand-group">
+            <span class="brand-title">Ale Milanesas · Acceso interno</span>
+            <span class="env-badge" th:if="${demoDisponible == true}">Entorno aislado · Datos sintéticos</span>
+            <span class="role-badge" th:if="${esAdmin == true}">ADMINISTRADOR</span>
+            <span class="role-badge" th:if="${esVendedor == true}">VENDEDOR</span>
+            <span class="role-badge" th:if="${esRepartidor == true}">REPARTIDOR</span>
+        </div>
+        <form th:action="@{/web/logout}" method="post">
+            <input type="hidden" th:if="${_csrf != null}" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+            <button type="submit" class="btn btn-secondary btn-small">Cerrar sesión</button>
+        </form>
+    </div>
+    <nav class="nav-demo" aria-label="Navegación principal">
+        <ul class="nav-list">
+            <li>
+                <a class="nav-link nav-link-active" th:href="@{/web/inicio}" aria-current="page">Inicio</a>
+            </li>
+            <li th:if="${demoDisponible == true and (esAdmin == true or esVendedor == true)}">
+                <a class="nav-link" th:href="@{/web/demo/clientes}">Clientes (UC-33)</a>
+            </li>
+            <li th:if="${demoDisponible == true and (esAdmin == true or esVendedor == true)}">
+                <a class="nav-link" th:href="@{/web/demo/productos}">Productos (UC-35)</a>
+            </li>
+            <li th:if="${demoDisponible == true and esVendedor == true and uc03Disponible == true}">
+                <a class="nav-link" th:href="@{/web/demo/pedidos/nuevo}">Nuevo Pedido (UC-03)</a>
+            </li>
+            <li th:if="${demoDisponible == true and (esAdmin == true or esVendedor == true)}">
+                <a class="nav-link" th:href="@{/web/demo/pedidos}">Pedidos (UC-34)</a>
+            </li>
+            <li th:if="${demoDisponible == true and esRepartidor == true}">
+                <a class="nav-link" th:href="@{/web/demo/mis-entregas}">Mis entregas</a>
+            </li>
+        </ul>
+    </nav>
+</header>
+
+<main id="contenido" class="container">
+    <section class="card" aria-labelledby="titulo-inicio">
+        <h1 id="titulo-inicio">Inicio · Sesión interna</h1>
+        <p class="muted" th:if="${demoDisponible == true}">Acceso autenticado. Seleccioná una operación habilitada para tu rol.</p>
+
+        <div class="alert alert-info" th:if="${demoDisponible != true}">
+            <p><output class="status-output">Acceso autenticado. En el perfil actual no hay operaciones de negocio web habilitadas.</output></p>
+        </div>
+
+        <div class="alert alert-info" th:if="${demoDisponible == true and esAdmin != true and esVendedor != true and esRepartidor != true}">
+            <p><output class="status-output">Tu perfil actual no cuenta con operaciones web de negocio habilitadas en esta demostración.</output></p>
+        </div>
+
+        <div class="alert alert-warning" th:if="${demoDisponible == true and esVendedor == true and uc03Disponible != true}">
+            <p>La carga de nuevos pedidos (UC-03) se encuentra deshabilitada por configuración del servidor.</p>
+        </div>
+    </section>
+
+    <section th:if="${demoDisponible == true and (esAdmin == true or esVendedor == true or esRepartidor == true)}" aria-labelledby="titulo-operaciones">
+        <h2 id="titulo-operaciones">Operaciones habilitadas</h2>
+        <div class="form-grid">
+            <article class="card" th:if="${esAdmin == true or esVendedor == true}">
+                <h3>Clientes (UC-33)</h3>
+                <p class="muted">Consulta de padrón de clientes con filtros por nombre, teléfono, zona y estado.</p>
+                <div class="actions">
+                    <a class="btn btn-primary" th:href="@{/web/demo/clientes}">Buscar clientes</a>
+                </div>
+            </article>
+
+            <article class="card" th:if="${esAdmin == true or esVendedor == true}">
+                <h3>Productos (UC-35)</h3>
+                <p class="muted">Consulta de catálogo de productos elaborados y de reventa disponibles.</p>
+                <div class="actions">
+                    <a class="btn btn-primary" th:href="@{/web/demo/productos}">Buscar productos</a>
+                </div>
+            </article>
+
+            <article class="card" th:if="${esVendedor == true and uc03Disponible == true}">
+                <h3>Nuevo Pedido (UC-03)</h3>
+                <p class="muted">Carga de pedido interno con ítems, dirección estructurada e idempotencia.</p>
+                <div class="actions">
+                    <a class="btn btn-primary" th:href="@{/web/demo/pedidos/nuevo}">Cargar pedido</a>
+                </div>
+            </article>
+
+            <article class="card" th:if="${esAdmin == true or esVendedor == true}">
+                <h3>Pedidos (UC-34)</h3>
+                <p class="muted" th:if="${esVendedor == true and uc43Disponible == true}">Consulta de pedidos registrados y acceso contextual a asignación de reparto en pedidos pendientes.</p>
+                <p class="muted" th:if="${esVendedor != true or uc43Disponible != true}">Consulta de pedidos registrados según la proyección autorizada para tu rol.</p>
+                <div class="actions">
+                    <a class="btn btn-primary" th:href="@{/web/demo/pedidos}">Buscar pedidos</a>
+                </div>
+            </article>
+
+            <article class="card" th:if="${esRepartidor == true}">
+                <h3>Mis entregas</h3>
+                <p><span class="status-badge status-warn">Vista ilustrativa · Sin UC-04</span></p>
+                <p class="muted">Pantalla informativa en preparación. La consulta de pedidos asignados estará disponible cuando UC-04 esté implementado y probado.</p>
+                <div class="actions">
+                    <a class="btn btn-primary" th:href="@{/web/demo/mis-entregas}">Ver estado ilustrativo</a>
+                </div>
+            </article>
+        </div>
+    </section>
+
+    <section class="card" aria-labelledby="titulo-sesion">
+        <h2 id="titulo-sesion">Gestión de sesión y cuenta</h2>
+        <p class="muted">Podés actualizar tu contraseña o renovar la sesión activa antes de su vencimiento.</p>
+        <div class="actions">
+            <a class="btn btn-secondary" th:href="@{/web/cambiar-clave}">Cambiar contraseña</a>
+            <form th:action="@{/web/renew}" method="post">
+                <input type="hidden" th:if="${_csrf != null}" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                <button type="submit" class="btn btn-secondary">Renovar sesión</button>
+            </form>
+        </div>
+    </section>
+</main>
+</body>
+</html>
