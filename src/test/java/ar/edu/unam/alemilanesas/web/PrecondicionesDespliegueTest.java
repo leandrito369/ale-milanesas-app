@@ -16,6 +16,11 @@ class PrecondicionesDespliegueTest {
                 .withProperty("ale.web.allowed-origin","https://ale.example.invalid");
     }
 
+    @Test void sinEnvironmentFallaCerrado() {
+        var guard=new PrecondicionesDespliegue();
+        assertThrows(IllegalStateException.class,()->guard.postProcessBeanFactory(null));
+    }
+
     @Test void configuracionBienFormadaPermiteInicioDeEtapaOperativa() {
         assertDoesNotThrow(()->new PrecondicionesDespliegue(base()).postProcessBeanFactory(null));
     }
