@@ -42,6 +42,15 @@ public class AccesoWebController {
         try {
             var sesion=sesiones.iniciarSesion(nombreUsuario,credencial);
             limite.exitoso(nombreUsuario,req.getRemoteAddr());
+            // Login real: conservar protección de fijación sin repetirla en cada cookie.
+            var estrategia = new org.springframework.security.web.authentication.session.CompositeSessionAuthenticationStrategy(
+                    java.util.List.of(
+                        new org.springframework.security.web.authentication.session.ChangeSessionIdAuthenticationStrategy(),
+                        new org.springframework.security.web.csrf.CsrfAuthenticationStrategy(
+                            new org.springframework.security.web.csrf.HttpSessionCsrfTokenRepository())));
+            estrategia.onAuthentication(
+                    org.springframework.security.authentication.UsernamePasswordAuthenticationToken.authenticated(
+                        nombreUsuario,null,java.util.List.of()),req,res);
             res.addHeader(HttpHeaders.SET_COOKIE,cookie(sesion.accessToken(),sesion.expiresIn()));
             return sesion.requiereCambioContrasena()?
                     "redirect:/web/cambiar-clave":"redirect:/web/inicio";

@@ -19,7 +19,6 @@ import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -51,7 +50,9 @@ public class SeguridadWebInterna {
         http.formLogin(AbstractHttpConfigurer::disable);
         http.logout(AbstractHttpConfigurer::disable);
         // CSRF habilitado por defecto: incluso login/logout/rotacion/UC53.
-        http.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED));
+        // La autenticación por cookie se revalida cada request, pero no es un login nuevo.
+        // AccesoWebController aplica fijación/CSRF explícitamente al autenticar.
+        http.sessionManagement(s -> s.requireExplicitAuthenticationStrategy(true));
         // HttpSession almacena CSRF, pero NUNCA Authentication. La autoridad
         // solo proviene de SESION_USUARIO revalidada contra PostgreSQL en cada request.
         http.securityContext(c -> c.securityContextRepository(
