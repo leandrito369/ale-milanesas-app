@@ -4,7 +4,8 @@ import jakarta.servlet.Filter;
 import java.util.Map;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.context.annotation.*;
+import org.springframework.context.annotation.Bean;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.core.env.MapPropertySource;
 import org.springframework.mock.web.MockServletContext;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -19,7 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /** Renderizado Thymeleaf real con las cadenas de seguridad; no arranca el guard prod. */
 class AccesoPlantillasMvcTest {
-    @Configuration(proxyBeanMethods=false)
+    @TestConfiguration(proxyBeanMethods=false)
     static class Vistas {
         @Bean ViewResolver vistas() {
             var templates=new ClassLoaderTemplateResolver();
