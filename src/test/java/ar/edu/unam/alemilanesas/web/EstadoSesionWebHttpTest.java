@@ -59,7 +59,10 @@ class EstadoSesionWebHttpTest {
      @Override public void sendError(int status)throws IOException{
       EVENTS.add(new Event(trace,req.getMethod(),req.getRequestURI(),req.getDispatcherType(),name,"sendError",error,status,present,same));super.sendError(status);
      }
-     @Override public void sendError(int status,String message)throws IOException{sendError(status);}
+     @Override public void sendError(int status,String message)throws IOException{
+      EVENTS.add(new Event(trace,req.getMethod(),req.getRequestURI(),req.getDispatcherType(),name,"sendError",error,status,present,same));
+      super.sendError(status,message);
+     }
     };
     try{chain.doFilter(req,wrapper);}finally{EVENTS.add(new Event(trace,req.getMethod(),req.getRequestURI(),req.getDispatcherType(),name,"exit",error,res.getStatus(),present,same));}
    };
