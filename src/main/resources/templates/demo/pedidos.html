@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pedidos (UC-34) · Ale Milanesas</title>
+    <link rel="stylesheet" th:href="@{/demo/demo.css}" th:replace="~{demo/fragments :: cssDemo}">
+</head>
+<body>
+<div th:replace="~{demo/fragments :: cabecera('pedidos')}"></div>
+
+<main id="contenido" class="container">
+    <section class="card" aria-labelledby="titulo-pedidos">
+        <h1 id="titulo-pedidos">Buscar Pedidos (UC-34)</h1>
+        <p class="muted">
+            <span th:if="${esVendedor == true}">Vista comercial (Vendedor): incluye categoría aplicada, total congelado y fecha de carga.</span>
+            <span th:if="${esAdmin == true and esVendedor != true}">Vista administrativa (Administrador): incluye metadatos operativos sin categoría ni importe comercial (BC-07).</span>
+        </p>
+
+        <div th:replace="~{demo/fragments :: mensajes}"></div>
+
+        <div class="alert alert-success" th:if="${pedidoConfirmado != null}">
+            <p><output class="status-output"><strong>Pedido registrado correctamente (UC-03)</strong></output></p>
+            <dl class="summary-dl">
+                <dt>ID Pedido:</dt><dd th:text="${pedidoConfirmado.idPedido}">0</dd>
+                <dt>Estado:</dt><dd th:text="${pedidoConfirmado.estado}">PENDIENTE</dd>
+                <dt>Canal:</dt><dd th:text="${pedidoConfirmado.canalOrigen}">INTERNO</dd>
+                <dt>Fecha de reparto:</dt><dd th:text="${pedidoConfirmado.fechaReparto}">—</dd>
+                <dt>Categoría aplicada:</dt><dd th:text="${pedidoConfirmado.categoriaComercialAplicada}">CUMPLIDOR</dd>
+                <dt>Total congelado:</dt><dd th:text="${pedidoConfirmado.totalOriginal}">0.00</dd>
+                <dt>Ítems:</dt><dd th:text="${pedidoConfirmado.cantidadItems}">1</dd>
+            </dl>
+        </div>
+
+        <div class="alert alert-success" th:if="${asignacionConfirmada != null}">
+            <p><output class="status-output"><strong>Asignación de reparto confirmada (UC-43)</strong></output></p>
+            <dl class="summary-dl">
+                <dt>ID Pedido:</dt><dd th:text="${asignacionConfirmada.idPedido}">0</dd>
+                <dt>Asignación #:</dt><dd th:text="${asignacionConfirmada.numeroAsignacion}">1</dd>
+                <dt>ID Repartidor:</dt><dd th:text="${asignacionConfirmada.idUsuarioRepartidor}">0</dd>
+                <dt>Inicio vigencia:</dt><dd th:text="${asignacionConfirmada.fechaHoraInicio}">—</dd>
+                <dt>Tipo:</dt><dd th:text="${asignacionConfirmada.fueReasignacion ? 'Reasignación' : 'Primera asignación'}">Primera asignación</dd>
+            </dl>
+        </div>
+
+        <form th:action="@{/web/demo/pedidos}" method="get" class="form-grid form-grid-3">
+            <div class="field">
+                <label for="f-idPedido">ID Pedido</label>
+                <input id="f-idPedido" name="idPedido" type="number" min="1" step="1"
+                       th:value="${filtro != null ? filtro.idPedido : ''}">
+            </div>
+            <div class="field">
+                <label for="f-idCliente">ID Cliente</label>
+                <input id="f-idCliente" name="idCliente" type="number" min="1" step="1"
+                       th:value="${filtro != null ? filtro.idCliente : ''}">
+            </div>
+            <div class="field">
+                <label for="f-fechaReparto">Fecha de reparto</label>
+                <input id="f-fechaReparto" name="fechaReparto" type="date"
+                       th:value="${filtro != null ? filtro.fechaReparto : ''}">
+            </div>
+            <div class="field">
+                <label for="f-estado">Estado</label>
+                <select id="f-estado" name="estado">
+                    <option value="" th:selected="${filtro == null or filtro.estado == null or filtro.estado == ''}">Todos</option>
+                    <option value="PENDIENTE" th:selected="${filtro != null and filtro.estado == 'PENDIENTE'}">PENDIENTE</option>
+                    <option value="ENTREGADO" th:selected="${filtro != null and filtro.estado == 'ENTREGADO'}">ENTREGADO</option>
+                    <option value="CANCELADO" th:selected="${filtro != null and filtro.estado == 'CANCELADO'}">CANCELADO</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="f-canal">Canal de origen</label>
+                <select id="f-canal" name="canalOrigen">
+                    <option value="" th:selected="${filtro == null or filtro.canalOrigen == null or filtro.canalOrigen == ''}">Todos</option>
+                    <option value="INTERNO" th:selected="${filtro != null and filtro.canalOrigen == 'INTERNO'}">INTERNO</option>
+                    <option value="ONLINE" th:selected="${filtro != null and filtro.canalOrigen == 'ONLINE'}">ONLINE</option>
+                </select>
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn btn-primary">Buscar</button>
+                <a class="btn btn-secondary" th:href="@{/web/demo/pedidos}">Limpiar</a>
+                <a class="btn btn-secondary" th:if="${esVendedor == true}" th:href="@{/web/demo/pedidos/nuevo}">Nuevo Pedido</a>
+            </div>
+        </form>
+    </section>
+
+    <section class="card" aria-labelledby="titulo-resultados-pedidos">
+        <h2 id="titulo-resultados-pedidos">Resultados</h2>
+
+        <div class="empty-state"
+             th:if="${pedidos == null or #lists.isEmpty(pedidos)}">
+            <p><output class="status-output">No se encontraron pedidos para los criterios indicados.</output></p>
+        </div>
+
+        <div class="table-wrap" th:if="${pedidos != null and !#lists.isEmpty(pedidos)}">
+            <table>
+                <caption>Listado de pedidos según proyección BC-07 del rol autenticado</caption>
+                <thead>
+                <tr>
+                    <th scope="col">ID Pedido</th>
+                    <th scope="col">ID Cliente</th>
+                    <th scope="col">Fecha reparto</th>
+                    <th scope="col">Estado</th>
+                    <th scope="col">Canal</th>
+                    <th scope="col" th:if="${esVendedor == true}">Categoría aplicada</th>
+                    <th scope="col" th:if="${esVendedor == true}">Total original</th>
+                    <th scope="col" th:if="${esVendedor == true or esAdmin == true}">Fecha carga</th>
+                    <th scope="col" th:if="${esVendedor == true}">Acción</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="p : ${pedidos}">
+                    <td class="num" th:text="${p.idPedido}">1</td>
+                    <td class="num" th:text="${p.idCliente}">1</td>
+                    <td th:text="${p.fechaReparto}">2026-11-17</td>
+                    <td>
+                        <span th:class="${p.estado == 'PENDIENTE' ? 'status-badge status-warn' : (p.estado == 'ENTREGADO' ? 'status-badge status-ok' : 'status-badge status-err')}"
+                              th:text="${p.estado}">PENDIENTE</span>
+                    </td>
+                    <td th:text="${p.canalOrigen}">INTERNO</td>
+                    <td th:if="${esVendedor == true}" th:text="${p.categoriaComercialAplicada}">CUMPLIDOR</td>
+                    <td class="num" th:if="${esVendedor == true}" th:text="${p.totalOriginal}">0.00</td>
+                    <td th:if="${esVendedor == true or esAdmin == true}" th:text="${p.fechaHoraCarga}">—</td>
+                    <td th:if="${esVendedor == true}">
+                        <a class="btn btn-secondary btn-small"
+                           th:if="${p.estado == 'PENDIENTE'}"
+                           th:href="@{/web/demo/pedidos/{idPedido}/asignar(idPedido=${p.idPedido})}">Asignar / Reasignar</a>
+                        <span class="muted" th:if="${p.estado != 'PENDIENTE'}">No editable</span>
+                    </td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+</main>
+</body>
+</html>
