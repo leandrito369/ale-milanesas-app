@@ -1,12 +1,38 @@
 <!DOCTYPE html>
-<html lang="es" xmlns:th="http://www.thymeleaf.org"><head>
-<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ale Milanesas - Iniciar sesión</title></head><body>
-<main><h1>Iniciar sesión</h1>
-<p th:if="${param.error}">No se pudo iniciar sesión.</p>
-<p th:if="${param.cambiada}">Credencial cambiada. Iniciá sesión nuevamente.</p>
-<form th:action="@{/web/login}" method="post" autocomplete="off">
-<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
-<label>Usuario <input name="nombreUsuario" required maxlength="80"></label>
-<label>Contraseña <input type="password" name="credencial" required></label>
-<button type="submit">Ingresar</button></form></main></body></html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Iniciar sesión · Ale Milanesas</title>
+    <link th:if="${demoDisponible == true}" rel="stylesheet" th:href="@{/demo/demo.css}">
+</head>
+<body>
+<a class="skip-link" href="#contenido">Saltar al contenido</a>
+<header class="topbar">
+    <div class="topbar-inner">
+        <span class="brand-title">Ale Milanesas · Acceso interno</span>
+    </div>
+</header>
+<main id="contenido" class="container auth-container">
+    <section class="card" aria-labelledby="titulo">
+        <h1 id="titulo">Iniciar sesión</h1>
+        <p class="alert alert-error" role="alert" th:if="${param.error}">No se pudo iniciar sesión.</p>
+        <p class="alert alert-success" role="status" th:if="${param.cambiada}">Credencial cambiada. Iniciá sesión nuevamente.</p>
+        <form th:action="@{/web/login}" method="post" autocomplete="off" class="form-grid">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+            <div class="field">
+                <label for="nombreUsuario">Usuario</label>
+                <input type="text" id="nombreUsuario" name="nombreUsuario" required maxlength="80">
+            </div>
+            <div class="field">
+                <label for="credencial">Contraseña</label>
+                <input type="password" id="credencial" name="credencial" required>
+            </div>
+            <div class="actions">
+                <button type="submit" class="btn btn-primary">Ingresar</button>
+            </div>
+        </form>
+    </section>
+</main>
+</body>
+</html>

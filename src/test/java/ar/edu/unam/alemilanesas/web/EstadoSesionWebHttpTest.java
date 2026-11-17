@@ -133,6 +133,25 @@ class EstadoSesionWebHttpTest {
   assertTrue(EVENTS.stream().anyMatch(e->e.trace().equals("uc53-reused")&&e.sameOldCookie()));
   assert401(reused,"uc53-reused");var nextLogin=login(next,"/web/inicio");assertEquals(200,get("/web/inicio",nextLogin.cookies(),null).statusCode());
  }
+ @Test void loginAnonimoCssYCredencialIncorrecta()throws Exception{
+  var form=get("/web/login",null,null);assertEquals(200,form.statusCode());
+  assertTrue(form.body().contains("href=\"/demo/demo.css\""));
+  var css=get("/demo/demo.css",null,null);assertEquals(200,css.statusCode());
+  assertTrue(css.body().contains("input[type=\"password\"]"));
+  var rejected=post("/web/login",setCookie(form,"JSESSIONID"),Map.of("nombreUsuario",user,"credencial","incorrecta","_csrf",csrf(form)),origin(),null);
+  assertEquals(302,rejected.statusCode());
+  assertTrue(rejected.headers().firstValue("Location").orElseThrow().endsWith("/web/login?error"));
+  assertTrue(get("/web/login?error",null,null).body().contains("No se pudo iniciar sesión."));
+ }
+ @Test void cambioVoluntarioConservaContratoYRevocaSesion()throws Exception{
+  var l=login(password,"/web/inicio");var form=get("/web/cambiar-clave",l.cookies(),null);
+  assertEquals(200,form.statusCode());String next=UUID.randomUUID().toString();
+  var changed=post("/web/cambiar-clave",l.cookies(),Map.of("_csrf",csrf(form),"credencialActual",password,"nuevaCredencial",next,"confirmacionNuevaCredencial",next),origin(),null);
+  assertEquals(302,changed.statusCode());
+  assertTrue(changed.headers().firstValue("Location").orElseThrow().endsWith("/web/login?cambiada"));
+  assertEquals(401,get("/web/inicio",l.cookies(),null).statusCode());
+  assertEquals(200,get("/web/inicio",login(next,"/web/inicio").cookies(),null).statusCode());
+ }
  @Test void csrfOrigenRolInsuficienteYErrorDirectoConservan403()throws Exception{
   var l=login(password,"/web/inicio");var home=get("/web/inicio",l.cookies(),null);
   assertEquals(403,post("/web/logout",l.cookies(),Map.of(),origin(),"csrf-missing").statusCode());
