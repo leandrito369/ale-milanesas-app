@@ -1,0 +1,52 @@
+name: BC06 - Preparacion 18 escenarios (NO ejecucion E2E)
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inventario-y-regresion:
+    name: Inventario BC06 y regresion B1 (18 NO_EJECUTADO)
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout aplicacion
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Checkout G0 por SHA inmutable
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          repository: leandrito369/ale-milanesas
+          ref: 1263ffc17bd0eb7f3c69faaa9ff5ae556cf9de7e
+          path: g0-source
+          persist-credentials: false
+      - name: Validar integridad de los 18 escenarios y salidas negativas
+        run: python3 -m unittest discover -s scripts/testing/tests -p 'test_*.py' -v
+      - name: Ejecutar evaluacion de preparacion (NO implementa negocio)
+        run: python3 scripts/testing/bc06_readiness.py --g0-root g0-source --out bc06-evidence
+      - name: Configurar Java 21
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Comprobar disponibilidad de Docker/Testcontainers
+        run: docker info --format '{{.ServerVersion}}'
+      - name: Regresion real del backend existente (NO computa BC06)
+        run: mvn -B -ntp clean verify
+      - name: Cobertura observada de la regresion existente
+        run: python3 scripts/testing/report_coverage.py
+      - name: Conservar inventario y reportes, incluso con fallos
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: bc06-readiness-not-functional-execution
+          path: |
+            bc06-evidence/
+            target/surefire-reports/
+            target/site/jacoco/
+          if-no-files-found: warn
