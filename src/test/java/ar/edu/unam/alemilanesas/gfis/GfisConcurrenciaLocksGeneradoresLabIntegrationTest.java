@@ -77,18 +77,21 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
 
     @Test
     void dosAdministradoresSimultaneosConClavesDistintasSoloUnoConfirmaYSeConservaPe1() throws Exception {
-        PedidoFixture f = new PedidoFixture(jdbc);
+        PedidoFixture f = tx.execute(s -> new PedidoFixture(jdbc));
+        assertNotNull(f);
         long admin1 = f.base + 1;
         long admin2 = f.base + 50;
         long repartidor = f.base + 3;
         long cliente = f.base;
 
-        jdbc.update("""
-                INSERT INTO "USUARIO" ("idUsuario","nombreUsuario","credencialProtegida","estado",
-                    "cambioCredencialPendiente","fechaHoraAlta")
-                VALUES (?,?,'HASH_TEST','HABILITADO',false,now())
-                """, admin2, "admin2_gfis_" + admin2);
-        jdbc.update("INSERT INTO \"USUARIO_ROL\" VALUES (?,'ADMINISTRADOR',now())", admin2);
+        tx.executeWithoutResult(s -> {
+            jdbc.update("""
+                    INSERT INTO "USUARIO" ("idUsuario","nombreUsuario","credencialProtegida","estado",
+                        "cambioCredencialPendiente","fechaHoraAlta")
+                    VALUES (?,?,'HASH_TEST','HABILITADO',false,now())
+                    """, admin2, "admin2_gfis_" + admin2);
+            jdbc.update("INSERT INTO \"USUARIO_ROL\" VALUES (?,'ADMINISTRADOR',now())", admin2);
+        });
 
         long pedido = pedidos.cargarPedido(f.vendedor(), f.datos()).idPedido();
         long recorrido = GfisLabSupport.crearRecorridoExplicito(jdbc, repartidor, "REC-2ADMIN");
@@ -163,7 +166,8 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
 
     @Test
     void replayIdempotenteC1aRetornaReciboHistoricoYDetectaConflictoDeHuella() {
-        PedidoFixture f = new PedidoFixture(jdbc);
+        PedidoFixture f = tx.execute(s -> new PedidoFixture(jdbc));
+        assertNotNull(f);
         long admin = f.base + 1;
         long repartidor = f.base + 3;
         long cliente = f.base;
@@ -252,7 +256,8 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
 
     @Test
     void generadoresB2HibridoPermitenConcurrenciaMultiClienteSinLockGlobal2929001Ni23505() throws Exception {
-        PedidoFixture f = new PedidoFixture(jdbc);
+        PedidoFixture f = tx.execute(s -> new PedidoFixture(jdbc));
+        assertNotNull(f);
         long admin = f.base + 1;
         long repartidor = f.base + 3;
         long clienteA = f.base;
@@ -330,7 +335,8 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
 
     @Test
     void convivenciaConcurrenteConServiciosRealesMainUc29Uc22Uc43Sin40P01Ni23505() throws Exception {
-        PedidoFixture f = new PedidoFixture(jdbc);
+        PedidoFixture f = tx.execute(s -> new PedidoFixture(jdbc));
+        assertNotNull(f);
         long admin = f.base + 1;
         long repartidor = f.base + 3;
         long cliente = f.base;

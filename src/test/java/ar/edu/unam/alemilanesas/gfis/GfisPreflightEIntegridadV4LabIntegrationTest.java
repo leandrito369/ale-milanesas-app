@@ -62,9 +62,11 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
 
     @Test
     void preflightVerificaV1V3IntactasSinBackfillHeuristicoDeCobroIdPedido() {
-        Integer flywayAplicadas = jdbc.queryForObject(
-                "SELECT count(*) FROM flyway_schema_history WHERE success = true", Integer.class);
-        assertEquals(3, flywayAplicadas, "Flyway de aplicacion debe ejecutar exclusivamente V1-V3");
+        List<String> versionesFlyway = jdbc.queryForList(
+                "SELECT version FROM flyway_schema_history WHERE version IS NOT NULL AND success = true ORDER BY installed_rank",
+                String.class);
+        assertEquals(List.of("1", "2", "3"), versionesFlyway,
+                "Flyway de aplicacion debe ejecutar exclusivamente V1-V3");
 
         Integer nuevasTablas = jdbc.queryForObject("""
                 SELECT count(*) FROM information_schema.tables
@@ -77,7 +79,8 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
         assertEquals(8, nuevasTablas, "Las 8 tablas candidatas de laboratorio deben existir");
 
         // Verificar que un cobro manual historico con idPedido=NULL no recibe backfill heuristico
-        PedidoFixture f = new PedidoFixture(jdbc);
+        PedidoFixture f = tx.execute(s -> new PedidoFixture(jdbc));
+        assertNotNull(f);
         long idCliente = f.base;
         var cobro = cobros.registrarCobro(
                 f.sesiones.get("ADMINISTRADOR"), idCliente, null,
@@ -89,7 +92,8 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
 
     @Test
     void pe1FormulaR084Ex01ImpCYReembolsoRechazadoVsPendienteEnImpB() {
-        PedidoFixture f = new PedidoFixture(jdbc);
+        PedidoFixture f = tx.execute(s -> new PedidoFixture(jdbc));
+        assertNotNull(f);
         long idAdmin = f.base + 1;
         long idRepartidor = f.base + 3;
         long idCliente = f.base;
@@ -203,7 +207,8 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
 
     @Test
     void cierreT1K2MultiClienteMultiEntregaConservaInvariantesYRollbackEsAtomico() {
-        PedidoFixture f = new PedidoFixture(jdbc);
+        PedidoFixture f = tx.execute(s -> new PedidoFixture(jdbc));
+        assertNotNull(f);
         long idAdmin = f.base + 1;
         long idRepartidor = f.base + 3;
         long clienteA = f.base;
@@ -315,7 +320,8 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
 
     @Test
     void seguridadRbacSoloAdminD1SoloEfectivoDc0507AYCierreSinAplicacionesPositivas() {
-        PedidoFixture f = new PedidoFixture(jdbc);
+        PedidoFixture f = tx.execute(s -> new PedidoFixture(jdbc));
+        assertNotNull(f);
         long idAdmin = f.base + 1;
         long idRepartidor = f.base + 3;
         long clienteA = f.base;
@@ -398,7 +404,8 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
 
     @Test
     void controlesNegativosK2RechazanMulticlienteDesajusteDeSumaYMedioDistintoDeEfectivo() {
-        PedidoFixture f = new PedidoFixture(jdbc);
+        PedidoFixture f = tx.execute(s -> new PedidoFixture(jdbc));
+        assertNotNull(f);
         long idAdmin = f.base + 1;
         long idRepartidor = f.base + 3;
         long clienteA = f.base;
