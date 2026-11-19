@@ -80,6 +80,7 @@ public class PrecondicionesDespliegue implements BeanFactoryPostProcessor, Envir
         vetarPedidosUc43();
         vetarRecetasUc10();
         vetarPreparacionesUc28();
+        vetarCajaManualUc22();
         String origen=env.getProperty("ale.web.allowed-origin","");
         URI parsed;
         try {parsed=URI.create(origen);}
@@ -103,6 +104,12 @@ public class PrecondicionesDespliegue implements BeanFactoryPostProcessor, Envir
     private void vetarPreparacionesUc28() {
         if (Boolean.TRUE.equals(env.getProperty("ale.http.writes.preparaciones-uc28-enabled",Boolean.class))) {
             throw new IllegalStateException("I3-01c UC-28 (preparaciones) HTTP bloqueado en produccion");
+        }
+    }
+
+    private void vetarCajaManualUc22() {
+        if (Boolean.TRUE.equals(env.getProperty("ale.http.writes.finanzas-uc22-enabled", Boolean.class))) {
+            throw new IllegalStateException("I3-03 UC-22 (Caja manual) HTTP bloqueado en produccion");
         }
     }
 

@@ -68,7 +68,8 @@ public class SeguridadHttpInterna {
             @Value("${ale.http.writes.productos-uc48-enabled:false}") boolean habilitarEstadoProducto,
             @Value("${ale.http.writes.usuarios-uc17-enabled:false}") boolean habilitarAltaUsuario,
             @Value("${ale.http.writes.usuarios-uc18-enabled:false}") boolean habilitarGestionRoles,
-            @Value("${ale.http.writes.usuarios-uc55-enabled:false}") boolean habilitarEstadoUsuario) {
+            @Value("${ale.http.writes.usuarios-uc55-enabled:false}") boolean habilitarEstadoUsuario,
+            @Value("${ale.http.writes.finanzas-uc22-enabled:false}") boolean habilitarCajaManualUc22) {
         http.securityMatcher("/api/v1/**");
         // La API no autentica cookies. El sitio web (otra cadena) conserva CSRF.
         http.csrf(csrf -> csrf.ignoringRequestMatchers("/api/v1/**"));
@@ -234,6 +235,10 @@ public class SeguridadHttpInterna {
                             habilitarAjusteInventario && auth.get().isAuthenticated() &&
                             auth.get().getAuthorities().stream().anyMatch(
                                 rol -> ROL_PRODUCCION.equals(rol.getAuthority()))))
+                // I3-03 UC22: Caja manual solo ADMIN y gate independiente.
+                .requestMatchers(HttpMethod.POST, "/api/v1/finanzas/movimientos-caja")
+                    .access((auth, context) -> new org.springframework.security.authorization.AuthorizationDecision(
+                            administradorAutenticado(habilitarCajaManualUc22, auth)))
                 .anyRequest().denyAll());
         http.exceptionHandling(e->e
                 .authenticationEntryPoint((req,res,ex)->rechazar(res))
