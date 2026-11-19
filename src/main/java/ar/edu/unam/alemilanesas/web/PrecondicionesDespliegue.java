@@ -4,6 +4,7 @@ import java.net.URI;
 import org.springframework.beans.factory.config.BeanFactoryPostProcessor;
 import org.springframework.beans.factory.config.ConfigurableListableBeanFactory;
 import org.springframework.context.annotation.Profile;
+import org.springframework.context.EnvironmentAware;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Component;
 
@@ -14,13 +15,23 @@ import org.springframework.stereotype.Component;
  */
 @Component
 @Profile("prod")
-public class PrecondicionesDespliegue implements BeanFactoryPostProcessor {
-    private final Environment env;
+public class PrecondicionesDespliegue implements BeanFactoryPostProcessor, EnvironmentAware {
+    private Environment env;
+
+    // Los BFPP se crean antes de AutowiredAnnotationBeanPostProcessor.
+    // EnvironmentAware es atendido por ApplicationContextAwareProcessor, ya disponible.
+    public PrecondicionesDespliegue() {}
+
+    @Override
+    public void setEnvironment(Environment environment) {this.env=environment;}
 
     public PrecondicionesDespliegue(Environment env) {this.env=env;}
 
     @Override
     public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) {
+        if (env==null) {
+            throw new IllegalStateException("Environment requerido para validar precondiciones");
+        }
         // Ningún perfil prod puede habilitar una escritura comercial experimental,
         // aunque la variable de entorno de feature flag haya sido configurada.
         if (Boolean.TRUE.equals(env.getProperty(
