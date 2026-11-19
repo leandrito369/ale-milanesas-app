@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title th:text="${tituloError != null ? tituloError + ' · Ale Milanesas' : 'Aviso · Ale Milanesas'}">Aviso · Ale Milanesas</title>
+    <link rel="stylesheet" th:href="@{/demo/demo.css}" th:replace="~{demo/fragments :: cssDemo}">
+</head>
+<body>
+<div th:replace="~{demo/fragments :: cabecera('error')}"></div>
+
+<main id="contenido" class="container">
+    <section class="card" aria-labelledby="titulo-error">
+        <h1 id="titulo-error" th:text="${tituloError != null ? tituloError : 'No se pudo completar la operación'}">No se pudo completar la operación</h1>
+
+        <div class="alert alert-error" role="alert">
+            <p th:if="${codigoEstado != null}">
+                Estado HTTP: <strong th:text="${codigoEstado}">403</strong>
+            </p>
+            <p th:text="${detalleError != null ? detalleError : 'La solicitud fue rechazada o no tenés autorización para acceder a este recurso.'}">
+                La solicitud fue rechazada o no tenés autorización para acceder a este recurso.
+            </p>
+        </div>
+
+        <div class="actions">
+            <a class="btn btn-primary" th:href="@{/web/inicio}">Volver al inicio</a>
+            <a class="btn btn-secondary" th:href="@{/web/login}">Ir a iniciar sesión</a>
+        </div>
+    </section>
+</main>
+</body>
+</html>

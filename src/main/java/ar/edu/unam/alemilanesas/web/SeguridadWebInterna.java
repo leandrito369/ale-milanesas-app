@@ -19,7 +19,6 @@ import org.springframework.security.authentication.AnonymousAuthenticationToken;
 import org.springframework.security.web.csrf.CsrfException;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -41,13 +40,19 @@ public class SeguridadWebInterna {
     @Order(2)
     SecurityFilterChain seguridadWeb(HttpSecurity http,
                                      SeguridadHttpInterna.VerificadorSesionBearer sesiones,
-                                     @Value("${ale.web.allowed-origin:}") String origenPermitido) {
-        http.securityMatcher("/web/**");
+                                     @Value("${ale.web.allowed-origin:}") String origenPermitido,
+                                     org.springframework.core.env.Environment env) {
+        boolean demo = !env.matchesProfiles("prod");
+        boolean uc03 = demo && env.getProperty("ale.http.writes.pedidos-uc03-enabled", Boolean.class, false);
+        boolean uc43 = demo && env.getProperty("ale.http.writes.pedidos-uc43-enabled", Boolean.class, false);
+        http.securityMatcher("/web/**", "/demo/demo.css");
         http.httpBasic(AbstractHttpConfigurer::disable);
         http.formLogin(AbstractHttpConfigurer::disable);
         http.logout(AbstractHttpConfigurer::disable);
         // CSRF habilitado por defecto: incluso login/logout/rotacion/UC53.
-        http.sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED));
+        // La autenticación por cookie se revalida cada request, pero no es un login nuevo.
+        // AccesoWebController aplica fijación/CSRF explícitamente al autenticar.
+        http.sessionManagement(s -> s.requireExplicitAuthenticationStrategy(true));
         // HttpSession almacena CSRF, pero NUNCA Authentication. La autoridad
         // solo proviene de SESION_USUARIO revalidada contra PostgreSQL en cada request.
         http.securityContext(c -> c.securityContextRepository(
@@ -55,15 +60,33 @@ public class SeguridadWebInterna {
         http.authorizeHttpRequests(a -> a
                 .requestMatchers(HttpMethod.GET, RUTA_LOGIN_WEB).permitAll()
                 .requestMatchers(HttpMethod.POST, RUTA_LOGIN_WEB).permitAll()
+                // G1: reglas por operación antes del fallback histórico de acceso web.
+                .requestMatchers(HttpMethod.GET, "/demo/demo.css").access((auth, ctx) ->
+                    new org.springframework.security.authorization.AuthorizationDecision(demo))
+                .requestMatchers(HttpMethod.GET, "/web/demo/pedidos/nuevo")
+                    .access((auth, ctx) -> permiso(auth.get(), uc03, "VENDEDOR"))
+                .requestMatchers(HttpMethod.POST, "/web/demo/pedidos")
+                    .access((auth, ctx) -> permiso(auth.get(), uc03, "VENDEDOR"))
+                .requestMatchers(HttpMethod.GET, "/web/demo/pedidos/*/asignar")
+                    .access((auth, ctx) -> permiso(auth.get(), uc43, "VENDEDOR"))
+                .requestMatchers(HttpMethod.POST, "/web/demo/pedidos/*/asignar")
+                    .access((auth, ctx) -> permiso(auth.get(), uc43, "VENDEDOR"))
+                .requestMatchers(HttpMethod.GET, "/web/demo/clientes", "/web/demo/productos", "/web/demo/pedidos")
+                    .access((auth, ctx) -> permiso(auth.get(), demo, "ADMINISTRADOR", "VENDEDOR"))
+                .requestMatchers(HttpMethod.GET, "/web/demo/mis-entregas")
+                    .access((auth, ctx) -> permiso(auth.get(), demo, "REPARTIDOR"))
+                .requestMatchers("/web/demo", "/web/demo/**").denyAll()
                 .anyRequest().authenticated());
+        // sendError(401) abre un ERROR /error y el fallback denyAll lo convierte en 403.
+        // Terminar aquí mantiene 401 sin exponer /error ni saltar autorización.
         http.exceptionHandling(e -> e
-                .authenticationEntryPoint((req,resp,ex)->resp.sendError(401))
+                .authenticationEntryPoint((req,resp,ex)->resp.setStatus(401))
                 .accessDeniedHandler((req,resp,ex)->{
                     var actual=SecurityContextHolder.getContext().getAuthentication();
                     if (ex instanceof CsrfException) {
                         resp.sendError(403);
                     } else if (actual==null || actual instanceof AnonymousAuthenticationToken) {
-                        resp.sendError(401);
+                        resp.setStatus(401);
                     } else {
                         resp.sendError(403);
                     }
@@ -73,6 +96,16 @@ public class SeguridadWebInterna {
         http.addFilterBefore(new SesionCookieFilter(sesiones),
                 UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    private static org.springframework.security.authorization.AuthorizationDecision permiso(
+            org.springframework.security.core.Authentication auth, boolean habilitado, String... roles) {
+        boolean permitido = habilitado && auth != null && auth.isAuthenticated()
+                && auth.getAuthorities().stream().noneMatch(a ->
+                    SeguridadHttpInterna.ROL_CAMBIO_PENDIENTE.equals(a.getAuthority()))
+                && auth.getAuthorities().stream().anyMatch(a ->
+                    java.util.Arrays.asList(roles).contains(a.getAuthority()));
+        return new org.springframework.security.authorization.AuthorizationDecision(permitido);
     }
 
     static String tokenCookie(HttpServletRequest req) {
@@ -102,12 +135,14 @@ public class SeguridadWebInterna {
         @Override
         protected void doFilterInternal(HttpServletRequest req,HttpServletResponse res,
                                         FilterChain chain) throws ServletException,IOException {
+            res.setHeader("Cache-Control","no-store");
+            res.setHeader("Pragma","no-cache");
             if (muta(req.getMethod()) && origenInvalido(req)) {
                 res.sendError(403);
                 return;
             }
             res.setHeader("Content-Security-Policy",
-                    "default-src 'none'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
+                    "default-src 'none'; style-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'");
             res.setHeader("X-Content-Type-Options","nosniff");
             chain.doFilter(req,res);
         }
@@ -179,7 +214,7 @@ public class SeguridadWebInterna {
                 } else if (!RUTA_LOGIN_WEB.equals(req.getServletPath())) {
                     // Cookie presentada pero expirada/revocada/ilegible:
                     // 401 inmediato, nunca autoridad cacheada en HttpSession.
-                    res.sendError(401);
+                    res.setStatus(401);
                     return;
                 }
             }

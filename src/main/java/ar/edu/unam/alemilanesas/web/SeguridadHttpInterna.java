@@ -202,6 +202,9 @@ public class SeguridadHttpInterna {
                 // I3-01a UC09: lectura exclusiva Responsable de Producción, sin gate.
                 .requestMatchers(HttpMethod.GET, "/api/v1/stock")
                     .hasAuthority(ROL_PRODUCCION)
+                // I3-03 UC23: Libro Diario solo ADMIN, lectura sin gate de escritura.
+                .requestMatchers(HttpMethod.GET, "/api/v1/finanzas/libro-diario")
+                    .hasAuthority(ROL_ADMINISTRADOR)
                 // I3-01b UC10: receta versionada, ADMINISTRADOR bajo gate no-prod.
                 .requestMatchers(HttpMethod.POST, "/api/v1/productos/*/receta")
                     .access((auth,ctx) -> new org.springframework.security.authorization.AuthorizationDecision(
