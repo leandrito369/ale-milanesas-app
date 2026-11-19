@@ -221,7 +221,7 @@ public final class GfisLabSupport {
         boolean tieneDiferencia = importeDiferenciaFaltante.signum() > 0 || importeCustodiaNoImputada.signum() > 0;
         Long idAdminRes = ("CONFIRMADO".equals(estadoCierreDestino) && tieneDiferencia) ? idAdmin : null;
 
-        Long idCierre = jdbc.queryForObject("""
+        var insertado = jdbc.queryForMap("""
                 INSERT INTO "CIERRE_RECORRIDO_PE2" (
                     "idRecorrido","claveIdempotenciaCierre","versionHuella","huellaCanonica",
                     "idUsuarioAdministrador","fechaHoraRegistro","estadoCierre","medioPagoPermitido",
@@ -232,16 +232,16 @@ public final class GfisLabSupport {
                 VALUES (?,?,?,?,?,clock_timestamp(),?,'EFECTIVO',?,?,?,?,?,?,?,?,
                         CASE WHEN ?::bigint IS NOT NULL THEN clock_timestamp() ELSE NULL END,
                         ?::jsonb)
-                RETURNING "idCierreRecorrido"
+                RETURNING "idCierreRecorrido", "reciboHistoricoJson"::text AS recibo
                 """,
-                Long.class,
                 idRecorrido, claveIdempotencia, versionHuella, huellaCanonica,
                 idAdmin, estadoCierreDestino,
                 importeEsperado, importeEfectivoRecibido, totalImputado,
                 importeDiferenciaFaltante, importeCustodiaNoImputada,
                 motivoDiferencia, idAdminRes, motivoResolucionAdmin,
                 idAdminRes, reciboJson);
-        long cierreId = Objects.requireNonNull(idCierre);
+        long cierreId = ((Number) Objects.requireNonNull(insertado.get("idCierreRecorrido"))).longValue();
+        String reciboNormalizado = (String) Objects.requireNonNull(insertado.get("recibo"));
 
         // Agrupar aplicaciones por Cliente (K2: 1 COBRO REPARTO por Cliente y Cierre)
         Map<Long, List<AplicacionPlan>> porCliente = new LinkedHashMap<>();
@@ -357,7 +357,7 @@ public final class GfisLabSupport {
         jdbc.update("UPDATE \"RECORRIDO_REPARTO\" SET \"estadoOperativo\"=? WHERE \"idRecorrido\"=?",
                 nuevoEstadoRecorrido, idRecorrido);
 
-        return new ResultadoCierreLab(cierreId, estadoCierreDestino, false, reciboJson);
+        return new ResultadoCierreLab(cierreId, estadoCierreDestino, false, reciboNormalizado);
     }
 
     public static boolean estaBloqueadoPorPid(DataSource ds, int pidEsperando, int pidBloqueador) {
