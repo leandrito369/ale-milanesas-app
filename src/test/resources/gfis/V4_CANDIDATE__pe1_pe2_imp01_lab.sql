@@ -77,6 +77,7 @@ $alk$;
 CREATE SEQUENCE IF NOT EXISTS "seq_gfis_recorrido" START 1;
 CREATE SEQUENCE IF NOT EXISTS "seq_gfis_recorrido_asignacion" START 1;
 CREATE SEQUENCE IF NOT EXISTS "seq_gfis_cierre_recorrido" START 1;
+CREATE SEQUENCE IF NOT EXISTS "seq_gfis_revision_conciliacion" START 1;
 CREATE SEQUENCE IF NOT EXISTS "seq_gfis_propuesta_app" START 1;
 CREATE SEQUENCE IF NOT EXISTS "seq_gfis_aplicacion_k2" START 1;
 CREATE SEQUENCE IF NOT EXISTS "seq_gfis_evento_imp" START 1;
@@ -412,6 +413,7 @@ CREATE TRIGGER "tg_gfis_validar_recorrido_entrega"
 CREATE TABLE "CIERRE_RECORRIDO_PE2" (
     "idCierreRecorrido" BIGINT NOT NULL DEFAULT nextval('"seq_gfis_cierre_recorrido"'),
     "idRecorrido" BIGINT NOT NULL,
+    "idRevisionVigente" BIGINT,
     "claveIdempotenciaPropuesta" UUID,
     "claveIdempotenciaCierre" UUID,
     "versionHuella" VARCHAR(20),
@@ -471,12 +473,13 @@ CREATE TABLE "CIERRE_RECORRIDO_PE2" (
         AND "importeCustodiaNoImputada" >= 0
         AND "importeImputadoPropuesto" + "importeCustodiaNoImputada" = "importeEfectivoRecibido"
     ),
-    -- Bloqueante 1 (T1-C2) + Bloqueante 4 (coherencia de tipo de resolucion):
+    -- Bloqueante 1 (T1-C2) + Bloqueante 4 + Alternativa A (revisiones versionadas):
     -- En PENDIENTE_CONCILIACION: importeImputadoConfirmado=0, sin clave/huella/recibo definitivo T1.
-    -- En estado terminal: importeImputadoConfirmado = importeImputadoPropuesto, recibo definitivo NOT NULL.
+    -- En CERRADO_CON_DIFERENCIA_RESUELTA: requiere idRevisionVigente (confirmada en T1-C2).
     CONSTRAINT "ck_gfis_cierre_coherencia_estado_y_diferencias" CHECK (
         (
             "estadoCierre" = 'CONFIRMADO'
+            AND "idRevisionVigente" IS NULL
             AND "claveIdempotenciaCierre" IS NOT NULL
             AND "versionHuella" IS NOT NULL
             AND "huellaCanonica" IS NOT NULL
@@ -506,6 +509,7 @@ CREATE TABLE "CIERRE_RECORRIDO_PE2" (
         )
         OR (
             "estadoCierre" = 'CERRADO_CON_DIFERENCIA_RESUELTA'
+            AND "idRevisionVigente" IS NOT NULL
             AND "claveIdempotenciaCierre" IS NOT NULL
             AND "versionHuella" IS NOT NULL
             AND "huellaCanonica" IS NOT NULL
@@ -529,8 +533,176 @@ CREATE TABLE "CIERRE_RECORRIDO_PE2" (
     )
 );
 
+-- Alternativa A (CANDIDATA, NO RATIFICADA): historial append-only de revisiones
+-- de conciliacion pendiente sobre una unica cabecera CIERRE_RECORRIDO_PE2.
+-- Permite rectificar errores materiales (A-D), reintentos idempotentes (F) e
+-- invalidacion sin borrado historico (H), bloqueando rectificaciones post-cierre (G)
+-- y preservando 0 efectos financieros antes del COMMIT T1-C2.
+CREATE TABLE "REVISION_CONCILIACION_PE2" (
+    "idRevisionConciliacion" BIGINT NOT NULL DEFAULT nextval('"seq_gfis_revision_conciliacion"'),
+    "idCierreRecorrido" BIGINT NOT NULL,
+    "numeroRevision" INTEGER NOT NULL,
+    "idRevisionAnterior" BIGINT,
+    "estadoRevision" VARCHAR(25) NOT NULL DEFAULT 'VIGENTE',
+    "claveIdempotenciaRevision" UUID NOT NULL,
+    "versionHuella" VARCHAR(20) NOT NULL,
+    "huellaCanonica" VARCHAR(128) NOT NULL,
+    "idUsuarioAdmin" BIGINT NOT NULL,
+    "fechaHoraRevision" TIMESTAMPTZ NOT NULL,
+    "importeEsperado" NUMERIC(18,2) NOT NULL,
+    "importeEfectivoRecibido" NUMERIC(18,2) NOT NULL,
+    "importeImputadoPropuesto" NUMERIC(18,2) NOT NULL,
+    "importeDiferenciaFaltante" NUMERIC(18,2) NOT NULL,
+    "importeCustodiaNoImputada" NUMERIC(18,2) NOT NULL,
+    "motivoRevision" TEXT NOT NULL,
+    "idUsuarioInvalidacion" BIGINT,
+    "motivoInvalidacion" TEXT,
+    "fechaHoraInvalidacion" TIMESTAMPTZ,
+    CONSTRAINT "pk_gfis_revision_conciliacion" PRIMARY KEY ("idRevisionConciliacion"),
+    CONSTRAINT "uq_gfis_rev_cierre_numero" UNIQUE ("idCierreRecorrido", "numeroRevision"),
+    CONSTRAINT "uq_gfis_rev_clave_idemp" UNIQUE ("claveIdempotenciaRevision"),
+    CONSTRAINT "fk_gfis_rev_cierre" FOREIGN KEY ("idCierreRecorrido")
+        REFERENCES "CIERRE_RECORRIDO_PE2" ("idCierreRecorrido") ON UPDATE RESTRICT ON DELETE RESTRICT,
+    CONSTRAINT "fk_gfis_rev_anterior" FOREIGN KEY ("idRevisionAnterior")
+        REFERENCES "REVISION_CONCILIACION_PE2" ("idRevisionConciliacion") ON UPDATE RESTRICT ON DELETE RESTRICT,
+    CONSTRAINT "fk_gfis_rev_admin" FOREIGN KEY ("idUsuarioAdmin")
+        REFERENCES "USUARIO" ("idUsuario") ON UPDATE RESTRICT ON DELETE RESTRICT,
+    CONSTRAINT "fk_gfis_rev_admin_inval" FOREIGN KEY ("idUsuarioInvalidacion")
+        REFERENCES "USUARIO" ("idUsuario") ON UPDATE RESTRICT ON DELETE RESTRICT,
+    CONSTRAINT "ck_gfis_rev_numero_pos" CHECK ("numeroRevision" > 0),
+    CONSTRAINT "ck_gfis_rev_cadena" CHECK (
+        ("numeroRevision" = 1 AND "idRevisionAnterior" IS NULL)
+        OR ("numeroRevision" > 1 AND "idRevisionAnterior" IS NOT NULL)
+    ),
+    CONSTRAINT "ck_gfis_rev_estado" CHECK (
+        "estadoRevision" IN ('VIGENTE', 'SUPERADA', 'INVALIDADA', 'CONFIRMADA_T1')
+    ),
+    CONSTRAINT "ck_gfis_rev_montos" CHECK (
+        "importeEsperado" >= 0
+        AND "importeEfectivoRecibido" >= 0
+        AND "importeImputadoPropuesto" >= 0
+        AND "importeDiferenciaFaltante" >= 0
+        AND "importeCustodiaNoImputada" >= 0
+        AND "importeImputadoPropuesto" + "importeCustodiaNoImputada" = "importeEfectivoRecibido"
+        AND ("importeDiferenciaFaltante" > 0 OR "importeCustodiaNoImputada" > 0)
+    ),
+    CONSTRAINT "ck_gfis_rev_motivo" CHECK (length(btrim("motivoRevision")) > 0),
+    CONSTRAINT "ck_gfis_rev_huella" CHECK (length(btrim("huellaCanonica")) > 0),
+    CONSTRAINT "ck_gfis_rev_inval" CHECK (
+        ("estadoRevision" <> 'INVALIDADA'
+            AND "idUsuarioInvalidacion" IS NULL
+            AND "motivoInvalidacion" IS NULL
+            AND "fechaHoraInvalidacion" IS NULL)
+        OR ("estadoRevision" = 'INVALIDADA'
+            AND "idUsuarioInvalidacion" IS NOT NULL
+            AND length(btrim(coalesce("motivoInvalidacion", ''))) > 0
+            AND "fechaHoraInvalidacion" IS NOT NULL)
+    )
+);
+
+-- A lo sumo 1 revision VIGENTE y a lo sumo 1 revision CONFIRMADA_T1 por cierre.
+CREATE UNIQUE INDEX "uq_gfis_rev_unica_vigente"
+    ON "REVISION_CONCILIACION_PE2" ("idCierreRecorrido")
+    WHERE "estadoRevision" = 'VIGENTE';
+
+CREATE UNIQUE INDEX "uq_gfis_rev_unica_confirmada"
+    ON "REVISION_CONCILIACION_PE2" ("idCierreRecorrido")
+    WHERE "estadoRevision" = 'CONFIRMADA_T1';
+
+ALTER TABLE "CIERRE_RECORRIDO_PE2"
+    ADD CONSTRAINT "fk_gfis_cierre_rev_vigente"
+    FOREIGN KEY ("idRevisionVigente")
+    REFERENCES "REVISION_CONCILIACION_PE2" ("idRevisionConciliacion")
+    ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+CREATE OR REPLACE FUNCTION "fn_gfis_validar_revision_conciliacion"()
+RETURNS trigger LANGUAGE plpgsql AS $rev$
+DECLARE
+    v_estado_cierre VARCHAR(40);
+    v_prev record;
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'T1-C2/REV: el historial de revisiones de conciliacion es inmutable y no se elimina';
+    END IF;
+
+    SELECT "estadoCierre" INTO v_estado_cierre
+      FROM "CIERRE_RECORRIDO_PE2"
+     WHERE "idCierreRecorrido" = NEW."idCierreRecorrido";
+
+    IF TG_OP = 'INSERT' THEN
+        IF v_estado_cierre <> 'PENDIENTE_CONCILIACION' THEN
+            RAISE EXCEPTION 'T1-C2/REV: prohibido registrar revisiones sobre cierre en estado %', v_estado_cierre;
+        END IF;
+        IF NEW."estadoRevision" <> 'VIGENTE' THEN
+            RAISE EXCEPTION 'T1-C2/REV: toda nueva revision debe nacer en estado VIGENTE';
+        END IF;
+        IF NOT EXISTS (
+            SELECT 1 FROM "USUARIO" u JOIN "USUARIO_ROL" ur ON ur."idUsuario" = u."idUsuario"
+             WHERE u."idUsuario" = NEW."idUsuarioAdmin"
+               AND u."estado" = 'HABILITADO'
+               AND ur."codigoRol" = 'ADMINISTRADOR'
+        ) THEN
+            RAISE EXCEPTION 'T1-C2/REV/RBAC: solo ADMINISTRADOR habilitado puede emitir revisiones de conciliacion';
+        END IF;
+        IF NEW."numeroRevision" > 1 THEN
+            SELECT "idCierreRecorrido", "numeroRevision", "estadoRevision"
+              INTO v_prev
+              FROM "REVISION_CONCILIACION_PE2"
+             WHERE "idRevisionConciliacion" = NEW."idRevisionAnterior";
+            IF NOT FOUND
+               OR v_prev."idCierreRecorrido" <> NEW."idCierreRecorrido"
+               OR v_prev."numeroRevision" <> NEW."numeroRevision" - 1
+               OR v_prev."estadoRevision" NOT IN ('SUPERADA', 'INVALIDADA') THEN
+                RAISE EXCEPTION 'T1-C2/REV: idRevisionAnterior invalida o no superada/invalidada para revision %', NEW."numeroRevision";
+            END IF;
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    -- UPDATE: solo transiciones desde VIGENTE hacia SUPERADA / INVALIDADA / CONFIRMADA_T1
+    IF OLD."estadoRevision" <> 'VIGENTE' THEN
+        RAISE EXCEPTION 'T1-C2/REV: revision en estado % es inmutable', OLD."estadoRevision";
+    END IF;
+    IF NEW."estadoRevision" = 'VIGENTE' THEN
+        RAISE EXCEPTION 'T1-C2/REV: actualizacion redundante sin cambio de estado de revision';
+    END IF;
+    IF ROW(NEW."idRevisionConciliacion", NEW."idCierreRecorrido", NEW."numeroRevision",
+           NEW."idRevisionAnterior", NEW."claveIdempotenciaRevision", NEW."versionHuella",
+           NEW."huellaCanonica", NEW."idUsuarioAdmin", NEW."fechaHoraRevision",
+           NEW."importeEsperado", NEW."importeEfectivoRecibido", NEW."importeImputadoPropuesto",
+           NEW."importeDiferenciaFaltante", NEW."importeCustodiaNoImputada", NEW."motivoRevision")
+       IS DISTINCT FROM
+       ROW(OLD."idRevisionConciliacion", OLD."idCierreRecorrido", OLD."numeroRevision",
+           OLD."idRevisionAnterior", OLD."claveIdempotenciaRevision", OLD."versionHuella",
+           OLD."huellaCanonica", OLD."idUsuarioAdmin", OLD."fechaHoraRevision",
+           OLD."importeEsperado", OLD."importeEfectivoRecibido", OLD."importeImputadoPropuesto",
+           OLD."importeDiferenciaFaltante", OLD."importeCustodiaNoImputada", OLD."motivoRevision") THEN
+        RAISE EXCEPTION 'T1-C2/REV: prohibido reescribir datos historicos de una revision existente';
+    END IF;
+    IF NEW."estadoRevision" IN ('SUPERADA', 'INVALIDADA') AND v_estado_cierre <> 'PENDIENTE_CONCILIACION' THEN
+        RAISE EXCEPTION 'T1-C2/REV: no se puede superar ni invalidar revision tras cierre terminal';
+    END IF;
+    IF NEW."estadoRevision" = 'INVALIDADA' AND NOT EXISTS (
+        SELECT 1 FROM "USUARIO" u JOIN "USUARIO_ROL" ur ON ur."idUsuario" = u."idUsuario"
+         WHERE u."idUsuario" = NEW."idUsuarioInvalidacion"
+           AND u."estado" = 'HABILITADO'
+           AND ur."codigoRol" = 'ADMINISTRADOR'
+    ) THEN
+        RAISE EXCEPTION 'T1-C2/REV/RBAC: solo ADMINISTRADOR habilitado puede invalidar una revision';
+    END IF;
+
+    RETURN NEW;
+END
+$rev$;
+
+CREATE TRIGGER "tg_gfis_validar_revision_conciliacion"
+    BEFORE INSERT OR UPDATE OR DELETE ON "REVISION_CONCILIACION_PE2"
+    FOR EACH ROW EXECUTE FUNCTION "fn_gfis_validar_revision_conciliacion"();
+
 CREATE OR REPLACE FUNCTION "fn_gfis_validar_admin_y_cierre"()
 RETURNS trigger LANGUAGE plpgsql AS $cierre$
+DECLARE
+    v_rev record;
 BEGIN
     IF TG_OP = 'DELETE' THEN
         RAISE EXCEPTION 'PE-2: cierre de recorrido es evidencia auditable y no se elimina';
@@ -576,30 +748,81 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    -- TG_OP = 'UPDATE': inmutabilidad estricta de estados terminales y transicion unica
+    -- TG_OP = 'UPDATE': inmutabilidad estricta de estados terminales
     IF OLD."estadoCierre" IN ('CONFIRMADO', 'CERRADO_CON_DIFERENCIA_RESUELTA') THEN
         RAISE EXCEPTION 'PE-2/C1-a: cierre terminal (%) y su recibo historico son inmutables', OLD."estadoCierre";
     END IF;
 
-    IF OLD."estadoCierre" = 'PENDIENTE_CONCILIACION'
-       AND NEW."estadoCierre" <> 'CERRADO_CON_DIFERENCIA_RESUELTA' THEN
-        RAISE EXCEPTION 'PE-2/T1-C2: unica transicion valida desde PENDIENTE_CONCILIACION es CERRADO_CON_DIFERENCIA_RESUELTA (recibido: %)',
-            NEW."estadoCierre";
+    -- Desde PENDIENTE_CONCILIACION: prohibido pasar a CONFIRMADO sin decision comercial expresa
+    IF OLD."estadoCierre" = 'PENDIENTE_CONCILIACION' AND NEW."estadoCierre" = 'CONFIRMADO' THEN
+        RAISE EXCEPTION 'PE-2/T1-C2: prohibido blanquear PENDIENTE_CONCILIACION hacia CONFIRMADO';
     END IF;
 
-    -- Preservar integra la evidencia historica registrada en PENDIENTE_CONCILIACION
+    -- Identidad y origen de la cabecera jamas se alteran
     IF ROW(NEW."idCierreRecorrido", NEW."idRecorrido", NEW."claveIdempotenciaPropuesta",
-           NEW."idUsuarioAdministrador", NEW."fechaHoraRegistro", NEW."medioPagoPermitido",
-           NEW."importeEsperado", NEW."importeEfectivoRecibido",
+           NEW."idUsuarioAdministrador", NEW."fechaHoraRegistro", NEW."medioPagoPermitido")
+       IS DISTINCT FROM
+       ROW(OLD."idCierreRecorrido", OLD."idRecorrido", OLD."claveIdempotenciaPropuesta",
+           OLD."idUsuarioAdministrador", OLD."fechaHoraRegistro", OLD."medioPagoPermitido") THEN
+        RAISE EXCEPTION 'PE-2/T1-C2: prohibido mutar identidad u origen de la cabecera de cierre';
+    END IF;
+
+    -- Caso A: actualizacion de cabecera en PENDIENTE_CONCILIACION (solo respaldada por REVISION_CONCILIACION_PE2)
+    IF OLD."estadoCierre" = 'PENDIENTE_CONCILIACION' AND NEW."estadoCierre" = 'PENDIENTE_CONCILIACION' THEN
+        IF NEW."idRevisionVigente" IS NULL THEN
+            -- Solo valido al invalidar la revision vigente (Escenario H), sin reescribir montos
+            IF OLD."idRevisionVigente" IS NULL
+               OR NOT EXISTS (
+                   SELECT 1 FROM "REVISION_CONCILIACION_PE2"
+                    WHERE "idRevisionConciliacion" = OLD."idRevisionVigente"
+                      AND "estadoRevision" = 'INVALIDADA'
+               ) THEN
+                RAISE EXCEPTION 'PE-2/REV: solo se puede desvincular idRevisionVigente tras invalidar la revision vigente';
+            END IF;
+            IF ROW(NEW."importeEsperado", NEW."importeEfectivoRecibido", NEW."importeImputadoPropuesto",
+                   NEW."importeDiferenciaFaltante", NEW."importeCustodiaNoImputada", NEW."motivoDiferencia")
+               IS DISTINCT FROM
+               ROW(OLD."importeEsperado", OLD."importeEfectivoRecibido", OLD."importeImputadoPropuesto",
+                   OLD."importeDiferenciaFaltante", OLD."importeCustodiaNoImputada", OLD."motivoDiferencia") THEN
+                RAISE EXCEPTION 'PE-2/REV: invalidar no puede reescribir silenciosamente montos de cabecera';
+            END IF;
+            RETURN NEW;
+        END IF;
+
+        -- Nueva revision VIGENTE: exige coincidencia exacta con REVISION_CONCILIACION_PE2 (cero mutacion silenciosa)
+        SELECT * INTO v_rev
+          FROM "REVISION_CONCILIACION_PE2"
+         WHERE "idRevisionConciliacion" = NEW."idRevisionVigente";
+
+        IF NOT FOUND
+           OR v_rev."idCierreRecorrido" <> OLD."idCierreRecorrido"
+           OR v_rev."estadoRevision" <> 'VIGENTE' THEN
+            RAISE EXCEPTION 'PE-2/REV: idRevisionVigente debe apuntar a una revision VIGENTE de este cierre';
+        END IF;
+
+        IF ROW(NEW."importeEsperado", NEW."importeEfectivoRecibido", NEW."importeImputadoPropuesto",
+               NEW."importeDiferenciaFaltante", NEW."importeCustodiaNoImputada", NEW."motivoDiferencia")
+           IS DISTINCT FROM
+           ROW(v_rev."importeEsperado", v_rev."importeEfectivoRecibido", v_rev."importeImputadoPropuesto",
+               v_rev."importeDiferenciaFaltante", v_rev."importeCustodiaNoImputada", v_rev."motivoRevision") THEN
+            RAISE EXCEPTION 'PE-2/REV: prohibido reescribir montos o motivo de cabecera sin una revision auditada coincidente';
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    -- Caso B: transicion definitiva PENDIENTE_CONCILIACION -> CERRADO_CON_DIFERENCIA_RESUELTA (T1-C2)
+    IF OLD."idRevisionVigente" IS NULL OR NEW."idRevisionVigente" IS DISTINCT FROM OLD."idRevisionVigente" THEN
+        RAISE EXCEPTION 'PE-2/T1-C2: confirmacion definitiva exige una revision VIGENTE activa (no invalidada)';
+    END IF;
+
+    IF ROW(NEW."importeEsperado", NEW."importeEfectivoRecibido",
            NEW."importeImputadoPropuesto", NEW."importeDiferenciaFaltante",
            NEW."importeCustodiaNoImputada", NEW."motivoDiferencia")
        IS DISTINCT FROM
-       ROW(OLD."idCierreRecorrido", OLD."idRecorrido", OLD."claveIdempotenciaPropuesta",
-           OLD."idUsuarioAdministrador", OLD."fechaHoraRegistro", OLD."medioPagoPermitido",
-           OLD."importeEsperado", OLD."importeEfectivoRecibido",
+       ROW(OLD."importeEsperado", OLD."importeEfectivoRecibido",
            OLD."importeImputadoPropuesto", OLD."importeDiferenciaFaltante",
            OLD."importeCustodiaNoImputada", OLD."motivoDiferencia") THEN
-        RAISE EXCEPTION 'PE-2/T1-C2: la resolucion administrativa no puede reescribir evidencia historica ni montos propuestos';
+        RAISE EXCEPTION 'PE-2/T1-C2: la confirmacion definitiva no puede alterar montos ni motivo de la revision vigente';
     END IF;
 
     RETURN NEW;
@@ -610,19 +833,22 @@ CREATE TRIGGER "tg_gfis_validar_admin_y_cierre"
     BEFORE INSERT OR UPDATE OR DELETE ON "CIERRE_RECORRIDO_PE2"
     FOR EACH ROW EXECUTE FUNCTION "fn_gfis_validar_admin_y_cierre"();
 
--- Planificacion NO financiera de aplicaciones mientras el cierre esta en PENDIENTE_CONCILIACION
+-- Planificacion NO financiera de aplicaciones vinculada a cada revision de conciliacion
 -- (G-ARQ-N2-01 s8: A_e propuesto es planificacion sin Cobro/PAGO/Caja/extincion V_e).
 CREATE TABLE "PROPUESTA_APLICACION_PENDIENTE" (
     "idPropuestaApp" BIGINT NOT NULL DEFAULT nextval('"seq_gfis_propuesta_app"'),
     "idCierreRecorrido" BIGINT NOT NULL,
+    "idRevisionConciliacion" BIGINT NOT NULL,
     "idCliente" BIGINT NOT NULL,
     "idPedido" BIGINT NOT NULL,
     "importePropuesto" NUMERIC(18,2) NOT NULL,
     "fechaHoraRegistro" TIMESTAMPTZ NOT NULL,
     CONSTRAINT "pk_gfis_propuesta_app" PRIMARY KEY ("idPropuestaApp"),
-    CONSTRAINT "uq_gfis_propuesta_cierre_pedido" UNIQUE ("idCierreRecorrido", "idPedido"),
+    CONSTRAINT "uq_gfis_propuesta_rev_pedido" UNIQUE ("idRevisionConciliacion", "idPedido"),
     CONSTRAINT "fk_gfis_propuesta_cierre" FOREIGN KEY ("idCierreRecorrido")
         REFERENCES "CIERRE_RECORRIDO_PE2" ("idCierreRecorrido") ON UPDATE RESTRICT ON DELETE RESTRICT,
+    CONSTRAINT "fk_gfis_propuesta_revision" FOREIGN KEY ("idRevisionConciliacion")
+        REFERENCES "REVISION_CONCILIACION_PE2" ("idRevisionConciliacion") ON UPDATE RESTRICT ON DELETE RESTRICT,
     CONSTRAINT "fk_gfis_propuesta_pe1_cliente" FOREIGN KEY ("idPedido", "idCliente")
         REFERENCES "RECONOCIMIENTO_ENTREGA_PE1" ("idPedido", "idCliente") ON UPDATE RESTRICT ON DELETE RESTRICT,
     CONSTRAINT "ck_gfis_propuesta_positiva" CHECK ("importePropuesto" > 0)
@@ -632,6 +858,7 @@ CREATE OR REPLACE FUNCTION "fn_gfis_validar_propuesta_pendiente"()
 RETURNS trigger LANGUAGE plpgsql AS $prop$
 DECLARE
     v_estado VARCHAR(40);
+    v_rev record;
 BEGIN
     IF TG_OP IN ('UPDATE', 'DELETE') THEN
         RAISE EXCEPTION 'T1-C2: las propuestas de aplicacion pendientes son evidencia historica inmutable';
@@ -643,6 +870,14 @@ BEGIN
 
     IF v_estado <> 'PENDIENTE_CONCILIACION' THEN
         RAISE EXCEPTION 'T1-C2: solo se registran propuestas de planificacion sobre un cierre en PENDIENTE_CONCILIACION';
+    END IF;
+
+    SELECT "idCierreRecorrido", "estadoRevision" INTO v_rev
+      FROM "REVISION_CONCILIACION_PE2"
+     WHERE "idRevisionConciliacion" = NEW."idRevisionConciliacion";
+
+    IF NOT FOUND OR v_rev."idCierreRecorrido" <> NEW."idCierreRecorrido" OR v_rev."estadoRevision" <> 'VIGENTE' THEN
+        RAISE EXCEPTION 'T1-C2/REV: la propuesta debe pertenecer a la revision VIGENTE del cierre';
     END IF;
 
     IF NOT EXISTS (
@@ -803,6 +1038,7 @@ CREATE TRIGGER "tg_gfis_aplicacion_k2_inmutable"
 CREATE TABLE "CUSTODIA_DIFERENCIA_RENDICION" (
     "idEventoCustodia" BIGINT NOT NULL DEFAULT nextval('"seq_gfis_custodia_diferencia"'),
     "idCierreRecorrido" BIGINT NOT NULL,
+    "idRevisionConciliacion" BIGINT,
     "idPedido" BIGINT,
     "idCliente" BIGINT,
     "tipoEvento" VARCHAR(30) NOT NULL,
@@ -814,6 +1050,8 @@ CREATE TABLE "CUSTODIA_DIFERENCIA_RENDICION" (
     CONSTRAINT "pk_gfis_custodia" PRIMARY KEY ("idEventoCustodia"),
     CONSTRAINT "fk_gfis_custodia_cierre" FOREIGN KEY ("idCierreRecorrido")
         REFERENCES "CIERRE_RECORRIDO_PE2" ("idCierreRecorrido") ON UPDATE RESTRICT ON DELETE RESTRICT,
+    CONSTRAINT "fk_gfis_custodia_revision" FOREIGN KEY ("idRevisionConciliacion")
+        REFERENCES "REVISION_CONCILIACION_PE2" ("idRevisionConciliacion") ON UPDATE RESTRICT ON DELETE RESTRICT,
     CONSTRAINT "fk_gfis_custodia_entrega" FOREIGN KEY ("idPedido")
         REFERENCES "ENTREGA" ("idPedido") ON UPDATE RESTRICT ON DELETE RESTRICT,
     CONSTRAINT "fk_gfis_custodia_cliente" FOREIGN KEY ("idCliente")
@@ -890,6 +1128,7 @@ CREATE OR REPLACE FUNCTION "fn_gfis_validar_egreso_custodia"()
 RETURNS trigger LANGUAGE plpgsql AS $ec$
 DECLARE
     v_ev record;
+    v_rev_vigente BIGINT;
     v_egresado_prev NUMERIC(18,2);
 BEGIN
     IF TG_OP IN ('UPDATE', 'DELETE') THEN
@@ -907,7 +1146,7 @@ BEGIN
         RAISE EXCEPTION 'E04-CUSTODIA/RBAC: solo ADMINISTRADOR habilitado puede registrar egreso de custodia';
     END IF;
 
-    SELECT "idCierreRecorrido", "tipoEvento", "importe"
+    SELECT "idCierreRecorrido", "idRevisionConciliacion", "tipoEvento", "importe"
       INTO v_ev
       FROM "CUSTODIA_DIFERENCIA_RENDICION"
      WHERE "idEventoCustodia" = NEW."idEventoCustodia"
@@ -919,6 +1158,15 @@ BEGIN
 
     IF v_ev."idCierreRecorrido" IS DISTINCT FROM NEW."idCierreRecorrido" THEN
         RAISE EXCEPTION 'E04-CUSTODIA: idCierreRecorrido del egreso no coincide con el evento de custodia';
+    END IF;
+
+    SELECT "idRevisionVigente" INTO v_rev_vigente
+      FROM "CIERRE_RECORRIDO_PE2"
+     WHERE "idCierreRecorrido" = NEW."idCierreRecorrido";
+
+    IF v_ev."idRevisionConciliacion" IS NOT NULL
+       AND v_ev."idRevisionConciliacion" IS DISTINCT FROM v_rev_vigente THEN
+        RAISE EXCEPTION 'E04-CUSTODIA/REV: no se puede registrar egreso contra un evento de custodia de revision superada o invalidada';
     END IF;
 
     SELECT COALESCE(SUM("importeEgreso"), 0) INTO v_egresado_prev
@@ -1008,24 +1256,46 @@ BEGIN
         END IF;
 
         IF NEW."estadoCierre" = 'PENDIENTE_CONCILIACION' THEN
-            SELECT COALESCE(SUM("importePropuesto"), 0) INTO v_suma_propuestas
-              FROM "PROPUESTA_APLICACION_PENDIENTE"
-             WHERE "idCierreRecorrido" = NEW."idCierreRecorrido";
-            IF v_suma_propuestas <> NEW."importeImputadoPropuesto" THEN
-                RAISE EXCEPTION 'T1-PENDIENTE: importeImputadoPropuesto (%) != suma de propuestas de planificacion (%)',
-                    NEW."importeImputadoPropuesto", v_suma_propuestas;
+            IF NEW."idRevisionVigente" IS NOT NULL THEN
+                SELECT COALESCE(SUM("importePropuesto"), 0) INTO v_suma_propuestas
+                  FROM "PROPUESTA_APLICACION_PENDIENTE"
+                 WHERE "idRevisionConciliacion" = NEW."idRevisionVigente";
+                IF v_suma_propuestas <> NEW."importeImputadoPropuesto" THEN
+                    RAISE EXCEPTION 'T1-PENDIENTE: importeImputadoPropuesto (%) != suma de propuestas de la revision vigente (%)',
+                        NEW."importeImputadoPropuesto", v_suma_propuestas;
+                END IF;
+            ELSE
+                IF NOT EXISTS (
+                    SELECT 1 FROM "REVISION_CONCILIACION_PE2"
+                     WHERE "idCierreRecorrido" = NEW."idCierreRecorrido"
+                       AND "estadoRevision" = 'INVALIDADA'
+                ) THEN
+                    RAISE EXCEPTION 'T1-PENDIENTE/REV: cierre en PENDIENTE_CONCILIACION requiere revision VIGENTE o evidencia de revision INVALIDADA';
+                END IF;
             END IF;
         END IF;
 
-        IF NEW."estadoCierre" = 'CERRADO_CON_DIFERENCIA_RESUELTA'
-           AND NEW."tipoResolucionAdmin" IN ('CUSTODIA_DEVUELTA_FISICAMENTE', 'MIXTA_FALTANTE_Y_CUSTODIA') THEN
-            SELECT COALESCE(SUM("importeEgreso"), 0) INTO v_suma_egresos_custodia
-              FROM "EGRESO_CUSTODIA_RENDICION"
-             WHERE "idCierreRecorrido" = NEW."idCierreRecorrido"
-               AND "tipoEgreso" = 'DEVOLUCION_FISICA_CON_RECIBO';
-            IF v_suma_egresos_custodia <> NEW."importeCustodiaNoImputada" THEN
-                RAISE EXCEPTION 'E04-CUSTODIA: devolucion fisica exige EGRESO_CUSTODIA_RENDICION con recibo por importe exacto % (registrado: %)',
-                    NEW."importeCustodiaNoImputada", v_suma_egresos_custodia;
+        IF NEW."estadoCierre" = 'CERRADO_CON_DIFERENCIA_RESUELTA' THEN
+            IF NOT EXISTS (
+                SELECT 1 FROM "REVISION_CONCILIACION_PE2"
+                 WHERE "idRevisionConciliacion" = NEW."idRevisionVigente"
+                   AND "idCierreRecorrido" = NEW."idCierreRecorrido"
+                   AND "estadoRevision" = 'CONFIRMADA_T1'
+            ) THEN
+                RAISE EXCEPTION 'T1-C2/REV: cierre resuelto debe referenciar una revision en estado CONFIRMADA_T1';
+            END IF;
+
+            IF NEW."tipoResolucionAdmin" IN ('CUSTODIA_DEVUELTA_FISICAMENTE', 'MIXTA_FALTANTE_Y_CUSTODIA') THEN
+                SELECT COALESCE(SUM(eg."importeEgreso"), 0) INTO v_suma_egresos_custodia
+                  FROM "EGRESO_CUSTODIA_RENDICION" eg
+                  JOIN "CUSTODIA_DIFERENCIA_RENDICION" cu ON cu."idEventoCustodia" = eg."idEventoCustodia"
+                 WHERE eg."idCierreRecorrido" = NEW."idCierreRecorrido"
+                   AND eg."tipoEgreso" = 'DEVOLUCION_FISICA_CON_RECIBO'
+                   AND (cu."idRevisionConciliacion" IS NULL OR cu."idRevisionConciliacion" = NEW."idRevisionVigente");
+                IF v_suma_egresos_custodia <> NEW."importeCustodiaNoImputada" THEN
+                    RAISE EXCEPTION 'E04-CUSTODIA: devolucion fisica exige EGRESO_CUSTODIA_RENDICION con recibo por importe exacto % de la revision confirmada (registrado: %)',
+                        NEW."importeCustodiaNoImputada", v_suma_egresos_custodia;
+                END IF;
             END IF;
         END IF;
     END IF;

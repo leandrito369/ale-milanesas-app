@@ -1,72 +1,96 @@
-# G-FIS (Fase A + Fase B — Corrección final R08.6 de los 5 bloqueantes) — Expediente de preflight, prototipo SQL candidato, campaña C3 y dictamen de aptitud
+# G-FIS (Fase A + Fase B — Auditoría final R08.6 y rectificación auditable de conciliaciones pendientes)
 
-**Fecha inicial:** 19/11/2026 · **Corrección final R08.6 (5 bloqueantes):** 20/11/2026 (UTC−03)  
-**Estado:** **FASE A + FASE B EN LABORATORIO AISLADO (PR `DRAFT #101` / NO MERGE)** · **PROMOCIÓN `V4` (`G-FIS` Fase C) Y `G-DEV / R09.1` NO AUTORIZADAS**.  
-**Invariantes preservadas:**
-- **`0` cambios en `src/main/**`** (`V1–V3`, servicios Java, `application.yml`, Demo y `source-lock.md` 100 % intactos).
-- **`S10 = NO ACREDITADO`** (tratamiento autónomo de G-ARQ Nivel 2).
-- **`A1`, `FA-1`, `FA-2` y `B1` son PROPUESTAS en validación técnica, NO RATIFICADAS todavía.**
-- Excluidos expresamente: `UC-07` físico (`#47/#48`), `PE-3` offline, recupero post-cierre (`E`), medios distintos de efectivo (`D1`), Demo e infraestructura/despliegue (`Issue #28` pausada).
+**Fecha inicial:** 19/11/2026 · **Auditoría final R08.6 (Entregables E-AG-01..E-AG-10):** 20/11/2026 (UTC−03)  
+**Estado:** **LABORATORIO AISLADO EN PR `DRAFT #101` (NO MERGE / NO DESPLEGAR)** · **`S10 = NO ACREDITADO`** · **`G-FIS Fase C = NO AUTORIZADA`** · **`G-DEV / R09.1 = NO AUTORIZADO`**.  
+**Invariantes no negociables verificadas:** `0` archivos modificados en `src/main/**`; `V1–V3`, `G0`, `docs/traceability/source-lock.md`, matriz RBAC `67×8`, `BC-07` (`15` proyecciones), Demo e `Issue #28` 100 % intactos; `UC-07` físico (`#47/#48`) y `PE-3` offline excluidos; `A1`, `FA-1`, `FA-2`, `B1` y **Alternativa A de rectificación versionada** son **PROPUESTAS CANDIDATAS, NO RATIFICADAS**.
 
 ---
 
-## 1. Snapshot congelado y trazabilidad normativa
+## E-AG-01 — Acta de preflight (M0 verificado el 20/11/2026)
 
-| Elemento | Repositorio / ruta | SHA / referencia | Estado |
+| Verificación | Repositorio / ruta | SHA / estado comprobado | Discrepancias |
 |---|---|---|---|
-| **Gobierno `main`** | `leandrito369/ale-milanesas` (`#67→#66→#65→#70→#71→#72→#73`) | `e3f4ee5a752b29329117c7bb097e2a851ea60ca5` | **Integrado** (documental; 0 PR cerradas) |
-| **Aplicación `main` base** | `leandrito369/ale-milanesas-app` (`#96→#88→#91→#87`) | `21db1f536d0d7153e5d4abb721115778dadf14b3` | **Integrado** |
-| **G0 `source-lock`** | `RD-B0-G0-001` (64 CU / 67 operaciones / RBAC 67×8 / BC07 15 filas) | `source_commit=1263ffc1` / `governance_commit=27738b08` | **Invariable** |
-| **Salvedad `S10`** | G-ARQ Nivel 1 | **NO ACREDITADO** | Conservada explícitamente |
+| **Gobierno `main`** | `leandrito369/ale-milanesas` (`#67→#66→#65→#70→#71→#72→#73`) | `e3f4ee5a752b29329117c7bb097e2a851ea60ca5` | Ninguna (coincide con SHA de referencia). |
+| **Aplicación `main`** | `leandrito369/ale-milanesas-app` (`#96→#88→#91→#87`) | `21db1f536d0d7153e5d4abb721115778dadf14b3` | Ninguna (coincide con SHA de referencia). |
+| **PR `#101` (HEAD de entrada)** | `exp/gfis-fase-ab-pe1-pe2-imp01-2026-11-19` (`OPEN / DRAFT`) | `8c3a85ea1fc6d7743fabbf3688c8096a811ebce2` | Ninguna (`8` archivos en `src/test/**` y `docs/implementation/**`, `0` en `src/main/**`). |
+| **Source-lock G0** | `docs/traceability/source-lock.md` | `source_commit=1263ffc1` / `governance_commit=27738b08` | Intacto. |
+| **Fuentes normativas leídas** | `AGENTS.md`, `CR-B0-F04-001`, `ACT-G-COM-001`, `RD-F04-002/003/005/006/007`, `#70`, `G-ARQ-N2-01/02`, `E-01..07`, `RD-I302-003..011`, G0 `UC-05/14/29/43`, RBAC `67×8`, `BC-07` | Verificadas en su texto exacto | `S10 = NO ACREDITADO`; `CR-C #47` / `CR-F #48` bloqueadas por `RCG-02`. |
+| **PRs abiertas en app** | `#9, #11, #12, #20, #22, #24, #89, #92, #101` | Ninguna alterada ni cerrada | Sin conflictos con ramas externas. |
 
 ---
 
-## 2. Resolución técnica de los 5 bloqueantes de integridad (`R08.6`)
+## E-AG-02 — Diagnóstico (M1) y análisis comparativo de alternativas (M2)
 
-| # | Bloqueante señalado | Corrección física implementada en laboratorio (`V4_CANDIDATE`) | Evidencia SQL / Testcontainers PG 17.11 |
-|---|---|---|---|
-| **1** | **`T1-C2` (`G-ARQ-N2-01 §8`):** `PENDIENTE_CONCILIACION` podía coexistir con Cobros/Caja/aplicaciones definitivas | Separación estricta: `PENDIENTE_CONCILIACION` fuerza `importeImputadoConfirmado = 0`, `claveIdempotenciaCierre IS NULL`, `reciboHistoricoJson IS NULL` y planifica en `PROPUESTA_APLICACION_PENDIENTE` (no financiera). Los triggers de `COBRO_RENDICION_K2` y `APLICACION_RENDICION_K2` **rechazan cualquier `INSERT`** si `estadoCierre = 'PENDIENTE_CONCILIACION'`. La confirmación definitiva se ejecuta en **un único `COMMIT` `T1-C2`** (`PENDIENTE_CONCILIACION → CERRADO_CON_DIFERENCIA_RESUELTA`) que crea de modo indivisible Cobros `K2`, Cuenta, Caja, aplicaciones, extinción parcial de `V_e` y `reciboHistoricoJson` inmutable (conservando `V_e^{vig}` remanente sin doble contabilización). | `GfisPreflightEIntegridadV4LabIntegrationTest.pendienteConciliacionNoGeneraEfectosFinancierosYConfirmacionT1C2ConCustodiaE04EsAtomica` (escenario exacto `G-ARQ-N2-01 §8`: `A1=70, A2=50, B1=60 → 170+10+10`) + `seguridadRbac...` (`0` apps). |
-| **2** | **Integridad de Recorrido (`fn_gfis_validar_recorrido_entrega`, `FA-1`, `FA-2`)** | `fn_gfis_validar_recorrido_entrega` **exige** `RECORRIDO_ASIGNACION(ACTIVA)` previa para `(idPedido, idRecorrido)` **y** `ASIGNACION_REPARTO` vigente (`fechaHoraFin IS NULL`) con el mismo Repartidor. **`FA-1` (propuesta):** `uq_gfis_unico_recorrido_abierto_repartidor` impide dos `Recorrido` `ABIERTO` simultáneos del mismo Repartidor. **`FA-2` (propuesta):** `fn_gfis_validar_admin_y_cierre` bloquea cualquier cierre/conciliación si existen Pedidos `PENDIENTE` en `RECORRIDO_ASIGNACION(ACTIVA)`. Sin modificar G0 ni contratos comerciales. | `GfisPreflightEIntegridadV4LabIntegrationTest.fronteraA_IntegridadRecorridoFa1Fa2ReasignacionUc43YEntregaSinPertenenciaRechazada`. |
-| **3** | **Unicidad y máquina de estados (cierre terminal vs conciliación pendiente concurrentes)** | `CIERRE_RECORRIDO_PE2` impone restricción incondicional **`CONSTRAINT uq_gfis_unico_cierre_por_recorrido UNIQUE ("idRecorrido")`**, imposibilitando a nivel B-tree/MVCC cualquier coexistencia entre `PENDIENTE_CONCILIACION` y un cierre terminal sin importar orden ni concurrencia. Estados terminales (`CONFIRMADO`, `CERRADO_CON_DIFERENCIA_RESUELTA`) son 100 % inmutables; la resolución administrativa no puede reescribir evidencia histórica ni habilitar segundo cierre financiero; `C1-a` replay valida `ADMINISTRADOR`, `idRecorrido` y huella. | `GfisConcurrenciaLocksGeneradoresLabIntegrationTest.concurrenciaCierreTerminalVsPendienteConciliacionMismoRecorridoNuncaCoexisten` (carrera real 2 hilos + ambos órdenes secuenciales → siempre `count=1` y `23505`). |
-| **4** | **Custodia y diferencias (`E-04`):** devolución física exige evidencia auditable con recibo y egreso | Nueva tabla append-only **`EGRESO_CUSTODIA_RENDICION`** (`numeroReciboDevolucion UNIQUE`, `receptorIdentificacion`, `importeEgreso`, `motivo`, `idUsuarioAdmin` `ADMINISTRADOR HABILITADO`, conservación `SUM(egresos) <= custodia`, sin `MOVIMIENTO_CAJA` de venta). Constraint trigger diferido `ct_gfis_cierre_total_k2` (`E04-CUSTODIA`) **rechaza al `COMMIT`** cualquier `CUSTODIA_DEVUELTA_FISICAMENTE` o `MIXTA_FALTANTE_Y_CUSTODIA` sin `EGRESO_CUSTODIA_RENDICION` por el importe exacto de custodia. Coherencia `CHECK` impide usar `FALTANTE_ASENTADO_SIN_RECUPERO_AUTOMATICO` cuando `importeCustodiaNoImputada > 0`. | `GfisPreflightEIntegridadV4LabIntegrationTest.pendienteConciliacionNoGeneraEfectosFinancierosYConfirmacionT1C2ConCustodiaE04EsAtomica` (pruebas negativas sin recibo / exceso / no-ADMIN y prueba positiva T1-C2 + recibo único + inmutabilidad). |
-| **5** | **`C-04` (`ART-GCON-D1`) y `L02`:** soporte físico de idempotencia de anulación + 64-bit seguro | Mantiene `L02` 64-bit sin cast `BIGINT -> INTEGER` (`hashtext(id::text)`) y estrategia de cutover atómico `B2` en `R09.1`. Añade tabla append-only **`ANULACION_COBRO_IDEMPOTENCIA`** (`claveIdempotenciaAnulacion PK`, `idCobro UNIQUE`, FKs a `COBRO`, `MOVIMIENTO_CUENTA` y `MOVIMIENTO_CAJA` contraasientos, `huellaCanonica`, `motivoNormalizado`, `reciboHistoricoJson` inmutable) + trigger `tg_gfis_validar_anulacion_idemp` que verifica `ADMINISTRADOR`, `COBRO='ANULADO'` y contraasientos reales. | `GfisL02AnulacionCandidataLabIntegrationTest` (`n2T10a` V1, `n2T10b` L02, `n2T10c` `BIGINT > 2^31-1`, **`n2T10d` C-04 replay / `403` / `409` / `A1` nueva clave / rollback sin consumir clave / inmutabilidad**). |
+### Diagnóstico de la brecha residual (`8c3a85ea`)
+En `8c3a85ea`, `PENDIENTE_CONCILIACION` garantizaba correctamente `0` efectos financieros antes de `T1-C2`, pero impedía corregir errores materiales antes de la confirmación definitiva porque:
+1. `CIERRE_RECORRIDO_PE2` bloqueaba mutar `importeImputadoPropuesto`, `importeDiferenciaFaltante`, `importeCustodiaNoImputada` y `motivoDiferencia`.
+2. `PROPUESTA_APLICACION_PENDIENTE` tenía `UNIQUE(idCierreRecorrido, idPedido)` sin versionado y prohibía `UPDATE`/`DELETE`.
+3. `CUSTODIA_DIFERENCIA_RENDICION` no distinguía entre un registro de custodia erróneo superado y el registro vigente para `EGRESO_CUSTODIA_RENDICION` (`E-04`).
+4. `uq_gfis_unico_cierre_por_recorrido` impedía crear una fila sucesora.
+
+Esto dejaba al `ADMINISTRADOR` atrapado ante errores materiales en los escenarios **A** (importe propuesto erróneo), **B** (Pedido equivocado), **C** (custodia/diferencia incorrecta), **D** (cobertura `422` detectada antes del cierre), **E** (carrera rectificación vs confirmación `T1-C2`), **F** (pérdida de ACK en rectificación), **G** (intento post-cierre) y **H** (invalidación sin borrar historia).
+
+### Comparativa obligatoria: Alternativa A vs Alternativa B
+
+| Dimensión | **Alternativa A — Rectificación versionada append-only (RECOMENDADA, CANDIDATA)** | **Alternativa B — Invalidación y nueva cabecera `CIERRE_RECORRIDO_PE2`** |
+|---|---|---|
+| **Operación G0 / subflujo** | Subflujo de rendición de **`UC-29`** (sin crear `UC-65`). | Subflujo de rendición de **`UC-29`** (sin crear `UC-65`). |
+| **Actor y ámbito** | Exclusivamente **`ADMINISTRADOR HABILITADO`** sobre `CIERRE_RECORRIDO_PE2` en estado `PENDIENTE_CONCILIACION` (sin ampliación RBAC). | Exclusivamente **`ADMINISTRADOR HABILITADO`**. |
+| **Máquina de estados** | Cabecera `CIERRE_RECORRIDO_PE2` conserva `PENDIENTE_CONCILIACION → CERRADO_CON_DIFERENCIA_RESUELTA` (o `CONFIRMADO` directo). Hija `REVISION_CONCILIACION_PE2`: `VIGENTE → {SUPERADA, INVALIDADA, CONFIRMADA_T1}`. | Cabecera añade estado `INVALIDADO` y permite múltiples filas `CIERRE_RECORRIDO_PE2` por `idRecorrido`. |
+| **Identidad e idempotencia** | `claveIdempotenciaRevision UUID UNIQUE` + `versionHuella` + `huellaCanonica` por cada revisión (replay/409 en escenario F); `claveIdempotenciaCierre` intacta para `C1-a`. | Requiere encadenar múltiples `idCierreRecorrido` y separar claves de cierre fallidas/invalidadas vs definitivas. |
+| **Persistencia y cardinalidad** | 1 `CIERRE_RECORRIDO_PE2` por Recorrido (`UNIQUE("idRecorrido")` **intacta**); `1..N` `REVISION_CONCILIACION_PE2` (máximo 1 `VIGENTE` y máximo 1 `CONFIRMADA_T1`); `PROPUESTA_APLICACION_PENDIENTE` y `CUSTODIA_DIFERENCIA_RENDICION` vinculadas por `idRevisionConciliacion`. | `1..N` `CIERRE_RECORRIDO_PE2` por Recorrido; **obliga a reemplazar `UNIQUE("idRecorrido")` por un índice único parcial**, debilitando el Bloqueante 3. |
+| **Invariantes SQL** | `UNIQUE("idRecorrido")` incondicional + `uq_gfis_rev_unica_vigente` + `uq_gfis_rev_unica_confirmada` + coincidencia exacta cabecera↔revisión `VIGENTE` (cero reescritura silenciosa) + `E04-CUSTODIA` exclusivamente sobre la revisión confirmada. | Índice parcial `WHERE estadoCierre <> 'INVALIDADO'`; riesgo de carrera concurrente al invalidar y crear nueva cabecera; mayor complejidad de FKs entre cabeceras. |
+| **Transacciones y locks `A2`** | `A2(NS_RECORRIDO, idRecorrido) → CIERRE_RECORRIDO_PE2 FOR UPDATE → REVISION_CONCILIACION_PE2 FOR UPDATE`; confirmación exige `numeroRevisionEsperado` (`409 REVISION_OBSOLETA` ante carrera E). | Requiere lock adicional a nivel Recorrido para serializar creación de nueva cabecera vs confirmación de la anterior. |
+| **Impacto `T1-C2`, `K2`, `C1-a`** | **Nulo sobre el COMMIT financiero:** `0` Cobros/Caja/`V_e` antes de `T1-C2`; `T1-C2` confirma solo la revisión `VIGENTE` (`CONFIRMADA_T1`) en un único `COMMIT`; `C1-a` intacto. | Complica `C1-a` al existir múltiples cabeceras históricas por Recorrido y obliga a distinguir replays de cabeceras invalidadas. |
+| **Compatibilidad con las 12 tablas** | **100 % aditiva** (+1 tabla `REVISION_CONCILIACION_PE2` → `13` tablas candidatas; `0` rupturas en las 28 pruebas previas). | Altera unicidad central de `CIERRE_RECORRIDO_PE2` y obliga a rediseñar controles del Bloqueante 3. |
+| **Riesgos y necesidad de RD/CR** | **No requiere nueva operación G0.** Requiere incorporar `REVISION_CONCILIACION_PE2` en `CR-B0-F04-001` / ratificación de `B1`, más definir explícitamente 2 bordes comerciales: (1) si una rectificación con `faltante=0 ∧ custodia=0` puede cerrar como `CONFIRMADO`, y (2) alcance operativo tras `INVALIDADA`. | Mismos requisitos comerciales más mayor riesgo técnico de concurrencia/auditoría. |
+
+**Recomendación fundamentada:** **Alternativa A (`REVISION_CONCILIACION_PE2`, CANDIDATA NO RATIFICADA)**, porque preserva incondicionalmente `UNIQUE("idRecorrido")` del Bloqueante 3, elimina toda posibilidad de reescritura silenciosa de cabecera, resuelve los 8 escenarios **A–H** con `0` efectos financieros anticipados y mantiene un único `COMMIT` `T1-C2`.
 
 ---
 
-## 3. Artefactos de laboratorio en PR `#101` (`12` tablas candidatas, `28` tests ejecutables, `0` cambios en `src/main/**`)
+## E-AG-03 — Matriz de trazabilidad (Escenarios A–H y controles no negociables)
 
-1. **`src/test/resources/gfis/V4_CANDIDATE__pe1_pe2_imp01_lab.sql`** (`12` tablas + vista `VW_IMP_A_DISPONIBILIDAD_COBRO` + `fn_gfis_advisory_lock_key` + secuencias `B2` + triggers de integridad).
-2. **`src/test/resources/gfis/V4_CANDIDATE_L02_ANULACION_LAB.sql`** (`fn_mr3_anular_cobro_manual` en orden `A2(3202, hashtext) → CLIENTE U → COBRO U` en contenedor aislado).
-3. **`src/test/java/ar/edu/unam/alemilanesas/gfis/GfisLabSupport.java`** (coordinador de laboratorio para cierre limpio `T1-C2`, planificación `PENDIENTE_CONCILIACION`, confirmación atómica `T1-C2` con egreso de custodia `E-04`, y anulación idempotente `C-04`).
-4. **`GfisPreflightEIntegridadV4LabIntegrationTest.java`** (`7` tests).
-5. **`GfisConcurrenciaLocksGeneradoresLabIntegrationTest.java`** (`8` tests).
-6. **`GfisCampanaC3AmpliadaLabIntegrationTest.java`** (`9` tests).
-7. **`GfisL02AnulacionCandidataLabIntegrationTest.java`** (`4` tests en contenedor aislado).
-
----
-
-## 4. Matriz de cobertura actualizada (`N2-T01..T20` — `28` tests de laboratorio PG 17.11)
-
-| ID | Escenario y controles verificados | Nivel | Cobertura en PR `#101` | Estado | Pendiente / hito destino |
+| Necesidad / Escenario | Requisito / RD / CR | Operación G0 / Subflujo | Tabla / Función / Constraint SQL | Prueba ejecutada en PR `#101` | Resultado |
 |---|---|---|---|---|---|
-| **N2-T01 / T02** | `K2` (1 Cobro/Cliente/Cierre, multi-Entrega y multi-Cliente) y conservación `A_e + V_e^{vig} = V_e^0` | P | `pendienteConciliacionNoGenera...` (`§8`: `110+60=170`, `V_{A2}^{vig}=10`) + `controlesNegativosK2...` | **PASS PARCIAL** *(SQL/P)* | Servicio productivo `UC-29 rendición` (`R09.3`). |
-| **N2-T03** | Rollback atómico `T1` ante error previo a `COMMIT` (`422`, `K2-CONSERVACION`, `E04-CUSTODIA`) | P | `cierreLimpioRollbackAtomico...` + `pendienteConciliacionNoGenera...` + `controlesNegativosK2...` | **PASS PARCIAL** *(SQL/P)* | Verificar en `@Transactional` de `R09.3`. |
-| **N2-T04 / T05** | Replay `C1-a` (en `CONFIRMADO` y en `CERRADO_CON_DIFERENCIA_RESUELTA`), `409` huella/ámbito, `403` no-ADMIN, nueva UUID sobre cerrado (`23505`) | P | `replayIdempotenteC1a...`, `pendienteConciliacionNoGenera...`, `n2T05_T14...` | **PASS PARCIAL** *(SQL/P)* | Sesión HTTP real + mapeo `RECORRIDO_YA_CERRADO` (`R09.3`). |
-| **N2-T06** | Dos `ADMINISTRADOR` simultáneos + carrera concurrente `CONFIRMADO` vs `PENDIENTE_CONCILIACION` (y ambos órdenes secuenciales) | P | `dosAdministradoresSimultaneos...` + `concurrenciaCierreTerminalVsPendienteConciliacionMismoRecorridoNuncaCoexisten` | **PASS PARCIAL** *(SQL/P)* | Validar con servicio HTTP/sesión real (`R09.3`). |
-| **N2-T07** | `PENDIENTE_CONCILIACION` con 0 efectos financieros (`§8`), `0` aplicaciones positivas, confirmación posterior en un único `COMMIT` `T1-C2`, egreso de custodia con recibo (`E-04`) | P | `pendienteConciliacionNoGenera...` + `seguridadRbac...` | **PASS PARCIAL** *(SQL/P)* | Ratificación humana de `B1`; implementación `R09.3`. |
-| **N2-T08 / T09** | `C3-03` (`UC-43` vs `UC-05/PE-1`) y `C3-08` (`UC-29` + `UC-22` vs `UC-05/PE-1/IMP-B`) + integridad Recorrido `FA-1`/`FA-2`/pertenencia `ACTIVA` | R + P | `n2T08a/b`, `n2T09a/b`, `fronteraA_IntegridadRecorridoFa1Fa2...` | **PASS PARCIAL** *(R+P)* | Ratificación `A1/FA-1/FA-2`; servicios `UC-05`/`UC-43` en `R09.1–R09.2`. |
-| **N2-T10a/b/c/d** | `L02` línea base `V1`, corrección `CLIENTE→COBRO`, **`BIGINT > Integer.MAX_VALUE`** sin `22003` y **modelo físico `C-04`** (`ANULACION_COBRO_IDEMPOTENCIA`) | R + P | `GfisL02AnulacionCandidataLabIntegrationTest` (`4/4` en contenedor aislado) | **PASS PARCIAL** *(aislado; `V1` intacta)* | Promoción `V4` (`G-FIS`); adaptación `CobroManualService` (`R09.1`). |
-| **N2-T13 / B2** | Multi-Cliente `[A,B]` vs `[B,A]`, secuencias `B2` y estrategia de cutover atómico desde `MAX+1`/`2929001` | R + P | `n2T13...`, `generadoresB2Hibrido...`, `compatibilidadTransicionLegacy...` | **PASS PARCIAL** *(R+P)* | Cutover atómico de `CobroManualService`/`UC-22` en `R09.1`. |
-| **N2-T14..T19** | `D1`, `IMP-C`, `4×8` + `40P01` retry, 5 señales `RCG-06`, `422` + diagnóstico, custodia segregada + egreso con recibo `E-04` | R + P | `n2T16`, `n2T17`, `n2T18`, `n2T05_T14`, `pendienteConciliacionNoGenera...` | **PASS PARCIAL** *(lab)* | Arqueo en 3 vistas + reconciliación `UC-15`/`UC-03` (`R09.1/R09.3`). |
-| **N2-T11 / T12 / T20** | `UC-07` (`CR-C`/`CR-F`), `PE-3` offline, E2E global | D | Excluidos estrictamente del corte `G-FIS` Pedidos originales | **DIFERIDO JUSTIFICADO** | `R09.4` / `R09.5` / `I7`. |
+| **A, B, C** — Rectificar importe, Pedido y custodia sin efectos financieros anticipados | `G-ARQ-N2-01 §8`, `RD-F04-002`, `E-04`, `CR-B0-F04-001` | `UC-29` rendición (`ADMIN`) | `REVISION_CONCILIACION_PE2`, `PROPUESTA_APLICACION_PENDIENTE(idRevisionConciliacion)`, `CUSTODIA_DIFERENCIA_RENDICION(idRevisionConciliacion)`, `fn_gfis_validar_egreso_custodia` | `GfisRectificacionPendienteLabIntegrationTest.escenariosABC_RectificarImportePedidoYCustodiaSinEfectosFinancierosYConfirmarT1C2ConE04` | **PASS PARCIAL** *(SQL/P PG 17.11)* |
+| **D** — Cobertura `422` y pertenencia revalidadas + rollback íntegro | `ART-GCON-B1`, `C1-EXPLÍCITO` | `UC-29` rendición (`ADMIN`) | `RECORRIDO_ENTREGA`, `RECONOCIMIENTO_ENTREGA_PE1`, `GfisLabSupport.rectificarPendienteConciliacionEnTx` | `GfisRectificacionPendienteLabIntegrationTest.escenarioD_RectificacionConCoberturaInsuficiente422OPedidoAjenoRevierteIntegramente` | **PASS PARCIAL** *(SQL/P PG 17.11)* |
+| **E** — Carrera rectificación vs confirmación `T1-C2` sin estados inconsistentes | `A2-GLOBAL`, `T1-C2`, `C1-a` | `UC-29` rendición (`ADMIN`) | `A2(NS_RECORRIDO)`, `CIERRE_RECORRIDO_PE2 FOR UPDATE`, control `numeroRevisionEsperado` (`409 REVISION_OBSOLETA`) | `GfisRectificacionPendienteLabIntegrationTest.escenarioE_CarreraConcurrenteRectificacionVsConfirmacionT1C2SinEstadosInconsistentes` | **PASS PARCIAL** *(SQL/P PG 17.11)* |
+| **F** — Replay idempotente tras pérdida de ACK, conflicto `409` y RBAC `403` | `C1-a`, `RCG-05`, `E-10`, RBAC `67×8` | `UC-29` rendición (`ADMIN`) | `uq_gfis_rev_clave_idemp`, `tg_gfis_validar_revision_conciliacion` | `GfisRectificacionPendienteLabIntegrationTest.escenarioF_ReplayIdempotenteDeRectificacionPorPerdidaDeAckConflicto409YRbac403` | **PASS PARCIAL** *(SQL/P PG 17.11)* |
+| **G** — Prohibido rectificar o mutar historial tras cierre terminal | `C1-a`, `RD-F04-002/005`, `E` | `UC-29` rendición (`ADMIN`) | `tg_gfis_validar_revision_conciliacion`, `tg_gfis_validar_admin_y_cierre` | `GfisRectificacionPendienteLabIntegrationTest.escenarioG_ProhibidoRectificarOAlterarRevisionesTrasCierreTerminal` | **PASS PARCIAL** *(SQL/P PG 17.11)* |
+| **H** — Invalidación sin borrado histórico, bloqueo de `T1-C2` y revisión sucesora | `RD-F04-002`, `G-ARQ-N2-01 §8` | `UC-29` rendición (`ADMIN`) | `REVISION_CONCILIACION_PE2(estadoRevision='INVALIDADA')`, `CIERRE_RECORRIDO_PE2(idRevisionVigente=NULL)`, `ct_gfis_cierre_total_k2` | `GfisRectificacionPendienteLabIntegrationTest.escenarioH_InvalidacionSinBorradoBloqueaT1YPermiteNuevaRevisionSucesora` | **PASS PARCIAL** *(SQL/P PG 17.11)* |
+| **Base previa (28 tests G-FIS)** — `T1-C2`, `K2`, `A2/B2`, `L02` 64-bit, `C-04`, `FA-1/FA-2`, `E-04`, `RCG-06`, `D7-A`, `DC05-07-A`, `C3-03/08` | `ACT-G-COM-001`, `#65–#73`, `G0` | `UC-05/29/43/22` (R+P / P) | 12 tablas previas + `V4_CANDIDATE_L02_ANULACION_LAB.sql` | 4 clases `Gfis*` previas (`7+8+9+4 = 28` tests) | **PASS PARCIAL** *(SQL/P y R+P)* |
+| **`UC-07` físico, `PE-3` offline, HTTP/UI/E2E global** | `CR-C #47`, `CR-F #48`, `I3–I7` | `UC-05/07/14/29` | Excluidos de `V4_CANDIDATE` | — | **DIFERIDO JUSTIFICADO** (`R09.1–R09.5`) |
 
 ---
 
-## 5. Dictamen de aptitud `G-FIS` (cierre de correcciones `R08.6`)
+## E-AG-04 / E-AG-05 / E-AG-06 — Plan de diff, pruebas y CI verificable
 
-- **Aptitud técnica del esquema físico candidato (`V4_CANDIDATE` + `L02` + `C-04`):** **APTO EN LABORATORIO** tras corregir los 5 bloqueantes de integridad (`T1-C2`, pertenencia `ACTIVA` + `FA-1`/`FA-2`, unicidad incondicional de cierre, egreso auditable de custodia `E-04`, y soporte físico `C-04` + `BIGINT` 64-bit).
-- **Dictamen de puerta `G-FIS` (promoción de `V4` a `src/main/resources/db/migration/`):** **`GO CONDICIONADO A RATIFICACIÓN EXPRESA DE FRONTERAS` (`NO-GO` automático mientras falten decisiones humanas):**
-  1. Ratificación expresa de **`A1` + `FA-1` + `FA-2`** (Recorrido explícito, 1 `ABIERTO` por Repartidor, 0 `PENDIENTE` activos antes del cierre, sin alterar G0 ni RBAC `UC-43` exclusivo `VENDEDOR`).
-  2. Ratificación expresa de **`B1` corregida bajo `T1-C2`** (`PENDIENTE_CONCILIACION` sin efectos financieros, confirmación definitiva en un único `COMMIT` `T1-C2`, conservación de `V_e^{vig}` remanente, y egreso de custodia con recibo `E-04`).
-  3. Autorización física expresa para promover `V4` (que incluirá las `12` tablas aditivas, la vista `VW_IMP_A_DISPONIBILIDAD_COBRO`, el reemplazo `L02` 64-bit y el soporte `C-04`, sin tocar `V1–V3`).
-- **Puerta `G-DEV / R09.1`:** permanece **cerrada, independiente y posterior a `G-FIS`**. PR `#101` continúa `OPEN / DRAFT / NO MERGE / NO DESPLEGAR`. Demo intacta; Issue `#28` pausada.
+- **Total de tablas candidatas de laboratorio:** **`13`** (`12` previas + `REVISION_CONCILIACION_PE2`), `0` cambios en `src/main/**`, `0` cambios en `V1–V3`.
+- **Total de pruebas G-FIS de laboratorio:** **`34` tests ejecutables** en PostgreSQL 17.11 efímero (`7` preflight/integridad + `8` concurrencia/locks/generadores + `9` campaña C3 ampliada + `4` L02/C-04 contenedor aislado + **`6` rectificación escenarios A–H**), sumadas a la regresión completa de `ale-milanesas-app` (**`750` tests totales**).
+- **Clasificación honesta de deuda técnica SonarCloud (en código `src/test/**`):** las incidencias reportadas en PR `#101` son exclusivamente smells de estilo JUnit en `src/test/java/**/gfis/**` (`java:S5778` lambdas multi-invocación en `assertThrows`, `java:S5961` >25 aserciones en un test compuesto), **`0` Security Hotspots**, **`0` Bugs**, **`0` Vulnerabilities**, **`0.0%` duplicación**. En este corte se eliminaron además `java:S1128` (`GfisLabSupport`), `java:S1481` (`GfisCampanaC3AmpliadaLabIntegrationTest`) y `java:S1135` (`GfisPreflightEIntegridadV4LabIntegrationTest`). Los enlaces exactos de `B1`, `B2` y `SonarCloud` del HEAD definitivo se adjuntan en el comentario de verificación de PR `#101` y en el reporte final al orquestador.
+
+---
+
+## E-AG-07 — Informe de integridad (controles no negociables §6)
+
+- **`PENDIENTE_CONCILIACION` (0 efectos financieros):** garantizado por `CHECK (importeImputadoConfirmado = 0)` + triggers en `COBRO_RENDICION_K2` y `APLICACION_RENDICION_K2` + `PROPUESTA_APLICACION_PENDIENTE` no financiera, incluso tras múltiples rectificaciones o invalidaciones.
+- **`T1-C2` + `K2` + conservación `A_e + V_e^{vig} = V_e^0`:** único `COMMIT` atómico sobre la revisión `VIGENTE → CONFIRMADA_T1`; máximo 1 `COBRO REPARTO` positivo por Cliente/cierre; conservación diferida al `COMMIT` (`ct_gfis_pe1_conservacion`, `ct_gfis_k2_cobro_suma`).
+- **Unicidad incondicional del cierre:** `CONSTRAINT uq_gfis_unico_cierre_por_recorrido UNIQUE ("idRecorrido")` permanece 100 % intacta.
+- **Recorrido explícito y pertenencia (`FA-1` / `FA-2`):** `fn_gfis_validar_recorrido_entrega` exige `RECORRIDO_ASIGNACION(ACTIVA)` y `ASIGNACION_REPARTO` vigente; `FA-1` y `FA-2` probadas como propuestas no ratificadas; `UC-43` estrictamente `VENDEDOR`.
+- **Custodia y `E-04`:** segregada de `MOVIMIENTO_CAJA`; devolución física exige `EGRESO_CUSTODIA_RENDICION` con recibo único y receptor sobre el evento de la **revisión confirmada** (rechaza eventos de revisiones superadas o invalidadas).
+- **`C1-a`, `C-04`, `D7-A`, `DC05-07-A`, `IMP-B/A/C`, `RCG-06`, `A2/B2` 64-bit:** 100 % preservados y verificados en regresión; `S10 = NO ACREDITADO`.
+
+---
+
+## E-AG-08 / E-AG-09 / E-AG-10 — Dictamen de salida y separación `G-FIS` vs `G-DEV`
+
+- **PR `#101`:** permanece **`OPEN / DRAFT / NO MERGE / NO DESPLEGAR`**, con **`9` archivos** exclusivamente en `src/test/**` y `docs/implementation/**` (`0` en `src/main/**`).
+- **Dictamen técnico de laboratorio para `R08.6 / G-FIS`:** **APTO TÉCNICAMENTE EN LABORATORIO (`GO CONDICIONADO` a decisiones humanas; `NO-GO` automático mientras no se ratifiquen las fronteras pendientes).**
+- **Decisiones comerciales / normativas humanas requeridas antes de autorizar `G-FIS` Fase C (promoción de `V4`):**
+  1. Ratificar **`A1` + `FA-1` + `FA-2`** (Recorrido explícito, 1 `ABIERTO` por Repartidor, 0 `PENDIENTE` activos antes del cierre, conservando `UC-43` exclusivo `VENDEDOR`).
+  2. Ratificar **`B1` corregida bajo `T1-C2` + Alternativa A (`REVISION_CONCILIACION_PE2`)**, definiendo explícitamente los 2 bordes comerciales:
+     - **B1-R1:** si una rectificación que corrige un error material y reduce las diferencias a `0` (`faltante = 0 ∧ custodia = 0`) puede confirmarse como `CONFIRMADO` (conservando el historial de revisiones) o exige permanecer bajo `CERRADO_CON_DIFERENCIA_RESUELTA`.
+     - **B1-R2:** si tras `INVALIDADA` (escenario H) el cierre permanece en `PENDIENTE_CONCILIACION` esperando una nueva revisión sucesora (modelo actual de Alternativa A) o si se habilita reabrir el estado operativo del Recorrido.
+  3. Autorizar expresamente **`G-FIS` Fase C** (promoción de `V4` a `src/main/resources/db/migration/` con las `13` tablas aditivas, vista `IMP-A`, reemplazo `L02` 64-bit y soporte `C-04`, sin tocar `V1–V3`).
+- **Puerta `G-DEV / R09.1`:** estrictamente **separada y posterior** a `G-FIS` (cutover atómico `A2/B2` en `CobroManualService`/`RegistrarMovimientoCajaService`, implementación `C-04` e `IMP-B`, y reconciliación `UC-15`/`UC-03`). Demo intacta; `Issue #28` pausada.

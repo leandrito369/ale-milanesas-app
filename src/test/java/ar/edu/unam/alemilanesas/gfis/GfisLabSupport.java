@@ -4,7 +4,6 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
-import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
@@ -70,6 +69,13 @@ public final class GfisLabSupport {
     public record AplicacionPlan(long idCliente, long idPedido, BigDecimal importeAplicado) {}
 
     public record ResultadoCierreLab(long idCierre, String estadoCierre, boolean replay, String reciboJson) {}
+
+    public record ResultadoRevisionLab(
+            long idCierre,
+            long idRevision,
+            int numeroRevision,
+            String estadoRevision,
+            boolean replay) {}
 
     public record EvidenciaEgresoCustodia(
             String numeroReciboDevolucion,
@@ -360,8 +366,9 @@ public final class GfisLabSupport {
     }
 
     /**
-     * Bloqueante 1 (G-ARQ-N2-01 s8): registra una rendicion con diferencias en
-     * PENDIENTE_CONCILIACION como pura planificacion/evidencia y custodia pendiente.
+     * Bloqueante 1 (G-ARQ-N2-01 s8) + Alternativa A (revisiones versionadas):
+     * Registra una rendicion con diferencias en PENDIENTE_CONCILIACION creando
+     * la cabecera y su revision 1 (VIGENTE) con propuestas de planificacion y custodia.
      * NO crea ningun COBRO, MOVIMIENTO_CUENTA, MOVIMIENTO_CAJA, APLICACION_RENDICION_K2
      * ni extingue V_e^{vig}. Tampoco emite recibo definitivo T1.
      */
@@ -400,28 +407,36 @@ public final class GfisLabSupport {
                 importeDiferenciaFaltante, importeCustodiaNoImputada, motivoDiferencia);
         long idCierre = Objects.requireNonNull(cierreId);
 
-        for (var prop : propuestasPlanificacion) {
-            jdbc.update("""
-                    INSERT INTO "PROPUESTA_APLICACION_PENDIENTE" (
-                        "idCierreRecorrido","idCliente","idPedido","importePropuesto","fechaHoraRegistro")
-                    VALUES (?,?,?,?,clock_timestamp())
-                    """, idCierre, prop.idCliente(), prop.idPedido(), prop.importeAplicado());
-        }
+        String huellaRev1 = construirHuellaRevision(
+                idCierre, importeEsperado, importeEfectivoRecibido, totalPropuesto,
+                importeDiferenciaFaltante, importeCustodiaNoImputada, motivoDiferencia, propuestasPlanificacion);
 
-        if (importeDiferenciaFaltante.signum() > 0) {
-            jdbc.update("""
-                    INSERT INTO "CUSTODIA_DIFERENCIA_RENDICION" (
-                        "idCierreRecorrido","tipoEvento","importe","motivo","idUsuarioAdmin","fechaHoraRegistro")
-                    VALUES (?,'FALTANTE_EFECTIVO',?,?,?,clock_timestamp())
-                    """, idCierre, importeDiferenciaFaltante, motivoDiferencia, idAdmin);
-        }
-        if (importeCustodiaNoImputada.signum() > 0) {
-            jdbc.update("""
-                    INSERT INTO "CUSTODIA_DIFERENCIA_RENDICION" (
-                        "idCierreRecorrido","tipoEvento","importe","motivo","idUsuarioAdmin","fechaHoraRegistro")
-                    VALUES (?,'CUSTODIA_NO_IMPUTADA',?,?,?,clock_timestamp())
-                    """, idCierre, importeCustodiaNoImputada, motivoDiferencia, idAdmin);
-        }
+        Long revId = jdbc.queryForObject("""
+                INSERT INTO "REVISION_CONCILIACION_PE2" (
+                    "idCierreRecorrido","numeroRevision","idRevisionAnterior","estadoRevision",
+                    "claveIdempotenciaRevision","versionHuella","huellaCanonica",
+                    "idUsuarioAdmin","fechaHoraRevision",
+                    "importeEsperado","importeEfectivoRecibido","importeImputadoPropuesto",
+                    "importeDiferenciaFaltante","importeCustodiaNoImputada","motivoRevision")
+                VALUES (?,1,NULL,'VIGENTE',?,'v1',?,?,clock_timestamp(),?,?,?,?,?,?)
+                RETURNING "idRevisionConciliacion"
+                """,
+                Long.class,
+                idCierre, claveIdempotenciaPropuesta, huellaRev1, idAdmin,
+                importeEsperado, importeEfectivoRecibido, totalPropuesto,
+                importeDiferenciaFaltante, importeCustodiaNoImputada, motivoDiferencia);
+        long idRev = Objects.requireNonNull(revId);
+
+        jdbc.update("""
+                UPDATE "CIERRE_RECORRIDO_PE2"
+                   SET "idRevisionVigente" = ?
+                 WHERE "idCierreRecorrido" = ?
+                """, idRev, idCierre);
+
+        registrarPropuestasYCustodiaDeRevision(
+                jdbc, idCierre, idRev, idAdmin,
+                importeDiferenciaFaltante, importeCustodiaNoImputada,
+                motivoDiferencia, propuestasPlanificacion);
 
         jdbc.update("UPDATE \"RECORRIDO_REPARTO\" SET \"estadoOperativo\"='PENDIENTE_CONCILIACION' WHERE \"idRecorrido\"=?",
                 idRecorrido);
@@ -430,19 +445,297 @@ public final class GfisLabSupport {
     }
 
     /**
-     * Bloqueante 1 + Bloqueante 4 (G-ARQ-N2-01 s8 + E-04):
-     * En UNA UNICA transaccion ACID T1-C2:
-     * 1) Registra resolucion administrativa autorizada (PENDIENTE_CONCILIACION -> CERRADO_CON_DIFERENCIA_RESUELTA)
-     * 2) Emite de manera indivisible todos los Cobros K2, Cuenta, Caja, aplicaciones y extincion parcial de V_e
-     *    correspondientes a las propuestas planificadas (conservando V_e^{vig} remanente)
-     * 3) Si hay devolucion fisica de custodia, registra EGRESO_CUSTODIA_RENDICION con recibo auditable
-     * 4) Persiste reciboHistoricoJson inmutable para replay C1-a y cierra el Recorrido.
+     * Alternativa A (CANDIDATA, NO RATIFICADA): rectifica una conciliacion en
+     * PENDIENTE_CONCILIACION emitiendo una nueva revision append-only (numeroRevision = N+1),
+     * superando la anterior sin borrar historial, revalidando pertenencia y cobertura (422)
+     * y soportando replay idempotente por claveIdempotenciaRevision (Escenario F).
+     * Produce 0 efectos financieros definitivos (0 Cobro, 0 PAGO, 0 Caja, 0 extincion V_e).
+     */
+    public static ResultadoRevisionLab rectificarPendienteConciliacionEnTx(
+            JdbcTemplate jdbc,
+            long idCierreRecorrido,
+            long idRecorrido,
+            long idAdmin,
+            UUID claveIdempotenciaRevision,
+            BigDecimal importeEsperado,
+            BigDecimal importeEfectivoRecibido,
+            BigDecimal importeDiferenciaFaltante,
+            BigDecimal importeCustodiaNoImputada,
+            String motivoRevision,
+            List<AplicacionPlan> propuestasCorregidas) {
+
+        exigirAdminHabilitadoEnLab(jdbc, idAdmin);
+        bloquearA2(jdbc, NS_RECORRIDO, idRecorrido);
+
+        BigDecimal totalPropuesto = propuestasCorregidas.stream()
+                .map(AplicacionPlan::importeAplicado)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+        String huella = construirHuellaRevision(
+                idCierreRecorrido, importeEsperado, importeEfectivoRecibido, totalPropuesto,
+                importeDiferenciaFaltante, importeCustodiaNoImputada, motivoRevision, propuestasCorregidas);
+
+        // Escenario F: replay idempotente de rectificacion por claveIdempotenciaRevision
+        var previas = jdbc.queryForList("""
+                SELECT "idRevisionConciliacion","idCierreRecorrido","numeroRevision",
+                       "estadoRevision","versionHuella","huellaCanonica"
+                  FROM "REVISION_CONCILIACION_PE2"
+                 WHERE "claveIdempotenciaRevision" = ?
+                """, claveIdempotenciaRevision);
+        if (!previas.isEmpty()) {
+            var row = previas.getFirst();
+            if (((Number) row.get("idCierreRecorrido")).longValue() != idCierreRecorrido) {
+                throw new IllegalStateException("REV CONFLICTO AMBITO 409: claveIdempotenciaRevision pertenece a otro cierre");
+            }
+            if (!"v1".equals(row.get("versionHuella")) || !huella.equals(row.get("huellaCanonica"))) {
+                throw new IllegalStateException("REV CONFLICTO HUELLA 409: claveIdempotenciaRevision reutilizada con otros datos");
+            }
+            return new ResultadoRevisionLab(
+                    idCierreRecorrido,
+                    ((Number) row.get("idRevisionConciliacion")).longValue(),
+                    ((Number) row.get("numeroRevision")).intValue(),
+                    (String) row.get("estadoRevision"),
+                    true);
+        }
+
+        // Bloquear cabecera de cierre y verificar estado PENDIENTE_CONCILIACION (Escenario G)
+        var cabecera = jdbc.queryForMap("""
+                SELECT "idRecorrido","estadoCierre","idRevisionVigente"
+                  FROM "CIERRE_RECORRIDO_PE2"
+                 WHERE "idCierreRecorrido" = ?
+                 FOR UPDATE
+                """, idCierreRecorrido);
+        if (((Number) cabecera.get("idRecorrido")).longValue() != idRecorrido) {
+            throw new IllegalStateException("Ambito inconsistente de cierre/recorrido en rectificacion");
+        }
+        String estadoActual = (String) cabecera.get("estadoCierre");
+        if (!"PENDIENTE_CONCILIACION".equals(estadoActual)) {
+            throw new IllegalStateException("REV CONFLICTO 409: no se puede rectificar cierre en estado terminal " + estadoActual);
+        }
+
+        // Escenario D: revalidar cobertura disponible (422 COBERTURA_NO_ACREDITADA) y pertenencia
+        for (var prop : propuestasCorregidas) {
+            Integer pertenece = jdbc.queryForObject("""
+                    SELECT count(*) FROM "RECORRIDO_ENTREGA"
+                     WHERE "idRecorrido" = ? AND "idPedido" = ?
+                    """, Integer.class, idRecorrido, prop.idPedido());
+            if (pertenece == null || pertenece == 0) {
+                throw new IllegalArgumentException("C1/REV: Pedido " + prop.idPedido() + " no pertenece al Recorrido " + idRecorrido);
+            }
+            BigDecimal disponible = jdbc.queryForObject("""
+                    SELECT "reconocimientoVigenteVvig" FROM "RECONOCIMIENTO_ENTREGA_PE1"
+                     WHERE "idPedido" = ? FOR SHARE
+                    """, BigDecimal.class, prop.idPedido());
+            BigDecimal disp = disponible == null ? BigDecimal.ZERO : disponible;
+            if (prop.importeAplicado().compareTo(disp) > 0) {
+                throw new CoberturaNoAcreditadaException(prop.idPedido(), prop.importeAplicado(), disp);
+            }
+        }
+
+        // Obtener ultima revision para encadenar (puede ser VIGENTE o INVALIDADA en Escenario H)
+        var ultima = jdbc.queryForMap("""
+                SELECT "idRevisionConciliacion","numeroRevision","estadoRevision"
+                  FROM "REVISION_CONCILIACION_PE2"
+                 WHERE "idCierreRecorrido" = ?
+                 ORDER BY "numeroRevision" DESC
+                 LIMIT 1
+                 FOR UPDATE
+                """, idCierreRecorrido);
+        long idAnterior = ((Number) ultima.get("idRevisionConciliacion")).longValue();
+        int numAnterior = ((Number) ultima.get("numeroRevision")).intValue();
+        String estadoAnterior = (String) ultima.get("estadoRevision");
+
+        if ("VIGENTE".equals(estadoAnterior)) {
+            jdbc.update("""
+                    UPDATE "REVISION_CONCILIACION_PE2"
+                       SET "estadoRevision" = 'SUPERADA'
+                     WHERE "idRevisionConciliacion" = ?
+                    """, idAnterior);
+        }
+
+        int nuevoNumero = numAnterior + 1;
+        Long nuevoId = jdbc.queryForObject("""
+                INSERT INTO "REVISION_CONCILIACION_PE2" (
+                    "idCierreRecorrido","numeroRevision","idRevisionAnterior","estadoRevision",
+                    "claveIdempotenciaRevision","versionHuella","huellaCanonica",
+                    "idUsuarioAdmin","fechaHoraRevision",
+                    "importeEsperado","importeEfectivoRecibido","importeImputadoPropuesto",
+                    "importeDiferenciaFaltante","importeCustodiaNoImputada","motivoRevision")
+                VALUES (?,?,?,'VIGENTE',?,'v1',?,?,clock_timestamp(),?,?,?,?,?,?)
+                RETURNING "idRevisionConciliacion"
+                """,
+                Long.class,
+                idCierreRecorrido, nuevoNumero, idAnterior,
+                claveIdempotenciaRevision, huella, idAdmin,
+                importeEsperado, importeEfectivoRecibido, totalPropuesto,
+                importeDiferenciaFaltante, importeCustodiaNoImputada, motivoRevision);
+        long idNuevaRev = Objects.requireNonNull(nuevoId);
+
+        registrarPropuestasYCustodiaDeRevision(
+                jdbc, idCierreRecorrido, idNuevaRev, idAdmin,
+                importeDiferenciaFaltante, importeCustodiaNoImputada,
+                motivoRevision, propuestasCorregidas);
+
+        jdbc.update("""
+                UPDATE "CIERRE_RECORRIDO_PE2"
+                   SET "idRevisionVigente" = ?,
+                       "importeEsperado" = ?,
+                       "importeEfectivoRecibido" = ?,
+                       "importeImputadoPropuesto" = ?,
+                       "importeDiferenciaFaltante" = ?,
+                       "importeCustodiaNoImputada" = ?,
+                       "motivoDiferencia" = ?
+                 WHERE "idCierreRecorrido" = ?
+                """,
+                idNuevaRev, importeEsperado, importeEfectivoRecibido, totalPropuesto,
+                importeDiferenciaFaltante, importeCustodiaNoImputada, motivoRevision, idCierreRecorrido);
+
+        return new ResultadoRevisionLab(idCierreRecorrido, idNuevaRev, nuevoNumero, "VIGENTE", false);
+    }
+
+    /**
+     * Escenario H (Alternativa A): invalida formalmente la revision VIGENTE sin borrar
+     * evidencia historica y desvincula idRevisionVigente de la cabecera, impidiendo
+     * confirmar T1-C2 hasta que un ADMIN emita una nueva revision valida.
+     */
+    public static void invalidarRevisionPendienteEnTx(
+            JdbcTemplate jdbc,
+            long idCierreRecorrido,
+            long idRecorrido,
+            long idAdmin,
+            String motivoInvalidacion) {
+
+        exigirAdminHabilitadoEnLab(jdbc, idAdmin);
+        bloquearA2(jdbc, NS_RECORRIDO, idRecorrido);
+
+        var cabecera = jdbc.queryForMap("""
+                SELECT "idRecorrido","estadoCierre","idRevisionVigente"
+                  FROM "CIERRE_RECORRIDO_PE2"
+                 WHERE "idCierreRecorrido" = ?
+                 FOR UPDATE
+                """, idCierreRecorrido);
+        if (((Number) cabecera.get("idRecorrido")).longValue() != idRecorrido) {
+            throw new IllegalStateException("Ambito inconsistente al invalidar revision");
+        }
+        if (!"PENDIENTE_CONCILIACION".equals(cabecera.get("estadoCierre"))) {
+            throw new IllegalStateException("REV CONFLICTO 409: no se puede invalidar un cierre terminal");
+        }
+        Object revVigObj = cabecera.get("idRevisionVigente");
+        if (revVigObj == null) {
+            throw new IllegalStateException("REV CONFLICTO 409: no existe revision VIGENTE para invalidar");
+        }
+        long idRevVig = ((Number) revVigObj).longValue();
+
+        jdbc.update("""
+                UPDATE "REVISION_CONCILIACION_PE2"
+                   SET "estadoRevision" = 'INVALIDADA',
+                       "idUsuarioInvalidacion" = ?,
+                       "motivoInvalidacion" = ?,
+                       "fechaHoraInvalidacion" = clock_timestamp()
+                 WHERE "idRevisionConciliacion" = ?
+                """, idAdmin, motivoInvalidacion, idRevVig);
+
+        jdbc.update("""
+                UPDATE "CIERRE_RECORRIDO_PE2"
+                   SET "idRevisionVigente" = NULL
+                 WHERE "idCierreRecorrido" = ?
+                """, idCierreRecorrido);
+    }
+
+    private static void registrarPropuestasYCustodiaDeRevision(
+            JdbcTemplate jdbc,
+            long idCierre,
+            long idRev,
+            long idAdmin,
+            BigDecimal importeDiferenciaFaltante,
+            BigDecimal importeCustodiaNoImputada,
+            String motivo,
+            List<AplicacionPlan> propuestas) {
+
+        for (var prop : propuestas) {
+            jdbc.update("""
+                    INSERT INTO "PROPUESTA_APLICACION_PENDIENTE" (
+                        "idCierreRecorrido","idRevisionConciliacion","idCliente","idPedido",
+                        "importePropuesto","fechaHoraRegistro")
+                    VALUES (?,?,?,?,?,clock_timestamp())
+                    """, idCierre, idRev, prop.idCliente(), prop.idPedido(), prop.importeAplicado());
+        }
+        if (importeDiferenciaFaltante.signum() > 0) {
+            jdbc.update("""
+                    INSERT INTO "CUSTODIA_DIFERENCIA_RENDICION" (
+                        "idCierreRecorrido","idRevisionConciliacion","tipoEvento",
+                        "importe","motivo","idUsuarioAdmin","fechaHoraRegistro")
+                    VALUES (?,?,'FALTANTE_EFECTIVO',?,?,?,clock_timestamp())
+                    """, idCierre, idRev, importeDiferenciaFaltante, motivo, idAdmin);
+        }
+        if (importeCustodiaNoImputada.signum() > 0) {
+            jdbc.update("""
+                    INSERT INTO "CUSTODIA_DIFERENCIA_RENDICION" (
+                        "idCierreRecorrido","idRevisionConciliacion","tipoEvento",
+                        "importe","motivo","idUsuarioAdmin","fechaHoraRegistro")
+                    VALUES (?,?,'CUSTODIA_NO_IMPUTADA',?,?,?,clock_timestamp())
+                    """, idCierre, idRev, importeCustodiaNoImputada, motivo, idAdmin);
+        }
+    }
+
+    private static String construirHuellaRevision(
+            long idCierre,
+            BigDecimal esperado,
+            BigDecimal recibido,
+            BigDecimal propuesto,
+            BigDecimal faltante,
+            BigDecimal custodia,
+            String motivo,
+            List<AplicacionPlan> apps) {
+        String appsCanon = apps.stream()
+                .sorted(Comparator.comparingLong(AplicacionPlan::idPedido))
+                .map(a -> a.idCliente() + ":" + a.idPedido() + ":" + a.importeAplicado().toPlainString())
+                .collect(Collectors.joining(";"));
+        String motivoNorm = motivo == null ? "" : motivo.trim().replaceAll("\\s+", " ");
+        return "REV:v1:" + idCierre + "|" + esperado.toPlainString() + "|" + recibido.toPlainString()
+                + "|" + propuesto.toPlainString() + "|" + faltante.toPlainString()
+                + "|" + custodia.toPlainString() + "|" + motivoNorm + "|" + appsCanon;
+    }
+
+    /**
+     * Sobrecarga compatible con tests existentes (asume numeroRevisionEsperado = 1).
      */
     public static ResultadoCierreLab confirmarResolucionT1K2EnTx(
             JdbcTemplate jdbc,
             long idCierreRecorrido,
             long idRecorrido,
             long idAdminResolucion,
+            UUID claveIdempotenciaCierre,
+            String versionHuella,
+            String huellaCanonica,
+            String tipoResolucionAdmin,
+            String motivoResolucionAdmin,
+            EvidenciaEgresoCustodia egresoCustodia,
+            boolean usarPuenteLegacy2929001,
+            boolean usarSecuenciasB2) {
+        return confirmarResolucionT1K2EnTx(
+                jdbc, idCierreRecorrido, idRecorrido, idAdminResolucion, 1,
+                claveIdempotenciaCierre, versionHuella, huellaCanonica,
+                tipoResolucionAdmin, motivoResolucionAdmin, egresoCustodia,
+                usarPuenteLegacy2929001, usarSecuenciasB2);
+    }
+
+    /**
+     * Bloqueante 1 + Bloqueante 4 + Escenario E (control de revision esperada):
+     * En UNA UNICA transaccion ACID T1-C2:
+     * 1) Valida revision VIGENTE == numeroRevisionEsperado (evita confirmar revision obsoleta)
+     * 2) Transiciona revision VIGENTE -> CONFIRMADA_T1 y cierre -> CERRADO_CON_DIFERENCIA_RESUELTA
+     * 3) Emite de manera indivisible Cobros K2, Cuenta, Caja, aplicaciones y extincion parcial V_e
+     *    exclusivamente a partir de las propuestas de la revision confirmada
+     * 4) Si hay devolucion fisica de custodia, registra EGRESO_CUSTODIA_RENDICION sobre el evento
+     *    CUSTODIA_NO_IMPUTADA de esa misma revision confirmada
+     * 5) Persiste reciboHistoricoJson inmutable para replay C1-a y cierra el Recorrido.
+     */
+    public static ResultadoCierreLab confirmarResolucionT1K2EnTx(
+            JdbcTemplate jdbc,
+            long idCierreRecorrido,
+            long idRecorrido,
+            long idAdminResolucion,
+            int numeroRevisionEsperado,
             UUID claveIdempotenciaCierre,
             String versionHuella,
             String huellaCanonica,
@@ -465,7 +758,7 @@ public final class GfisLabSupport {
         }
 
         var cabecera = jdbc.queryForMap("""
-                SELECT "idRecorrido","estadoCierre","importeImputadoPropuesto",
+                SELECT "idRecorrido","estadoCierre","idRevisionVigente","importeImputadoPropuesto",
                        "importeDiferenciaFaltante","importeCustodiaNoImputada"
                   FROM "CIERRE_RECORRIDO_PE2"
                  WHERE "idCierreRecorrido" = ?
@@ -474,6 +767,29 @@ public final class GfisLabSupport {
         if (((Number) cabecera.get("idRecorrido")).longValue() != idRecorrido) {
             throw new IllegalStateException("Ambito inconsistente de cierre/recorrido");
         }
+        String estadoCab = (String) cabecera.get("estadoCierre");
+        if (!"PENDIENTE_CONCILIACION".equals(estadoCab)) {
+            throw new IllegalStateException("C1-a CONFLICTO 409: cierre ya se encuentra en estado terminal " + estadoCab);
+        }
+        Object revVigObj = cabecera.get("idRevisionVigente");
+        if (revVigObj == null) {
+            throw new IllegalStateException("REV CONFLICTO 409: no existe revision VIGENTE (revision previa invalidada)");
+        }
+        long idRevVigente = ((Number) revVigObj).longValue();
+
+        var rev = jdbc.queryForMap("""
+                SELECT "numeroRevision","estadoRevision"
+                  FROM "REVISION_CONCILIACION_PE2"
+                 WHERE "idRevisionConciliacion" = ?
+                 FOR UPDATE
+                """, idRevVigente);
+        int numRevActual = ((Number) rev.get("numeroRevision")).intValue();
+        if (numRevActual != numeroRevisionEsperado || !"VIGENTE".equals(rev.get("estadoRevision"))) {
+            throw new IllegalStateException(
+                    "REV CONFLICTO 409 REVISION_OBSOLETA: se esperaba revision " + numeroRevisionEsperado
+                            + " pero la revision vigente es " + numRevActual);
+        }
+
         BigDecimal totalPropuesto = (BigDecimal) cabecera.get("importeImputadoPropuesto");
         BigDecimal faltante = (BigDecimal) cabecera.get("importeDiferenciaFaltante");
         BigDecimal custodia = (BigDecimal) cabecera.get("importeCustodiaNoImputada");
@@ -481,16 +797,23 @@ public final class GfisLabSupport {
         List<AplicacionPlan> propuestas = jdbc.query("""
                 SELECT "idCliente","idPedido","importePropuesto"
                   FROM "PROPUESTA_APLICACION_PENDIENTE"
-                 WHERE "idCierreRecorrido" = ?
+                 WHERE "idRevisionConciliacion" = ?
                  ORDER BY "idPedido" ASC
                 """,
                 (rs, n) -> new AplicacionPlan(rs.getLong(1), rs.getLong(2), rs.getBigDecimal(3)),
-                idCierreRecorrido);
+                idRevVigente);
 
         Map<Long, BigDecimal> coberturaPorPedido = bloquearClientesPedidosYPe1(jdbc, propuestas);
 
+        jdbc.update("""
+                UPDATE "REVISION_CONCILIACION_PE2"
+                   SET "estadoRevision" = 'CONFIRMADA_T1'
+                 WHERE "idRevisionConciliacion" = ?
+                """, idRevVigente);
+
         String reciboJson = "{\"idRecorrido\":" + idRecorrido
                 + ",\"estado\":\"CERRADO_CON_DIFERENCIA_RESUELTA\""
+                + ",\"numeroRevisionConfirmada\":" + numRevActual
                 + ",\"tipoResolucion\":\"" + tipoResolucionAdmin + "\""
                 + ",\"imputado\":\"" + totalPropuesto
                 + "\",\"custodia\":\"" + custodia
@@ -525,9 +848,10 @@ public final class GfisLabSupport {
                     SELECT "idEventoCustodia"
                       FROM "CUSTODIA_DIFERENCIA_RENDICION"
                      WHERE "idCierreRecorrido" = ?
+                       AND "idRevisionConciliacion" = ?
                        AND "tipoEvento" = 'CUSTODIA_NO_IMPUTADA'
                      ORDER BY "idEventoCustodia" ASC LIMIT 1
-                    """, Long.class, idCierreRecorrido);
+                    """, Long.class, idCierreRecorrido, idRevVigente);
             jdbc.update("""
                     INSERT INTO "EGRESO_CUSTODIA_RENDICION" (
                         "idEventoCustodia","idCierreRecorrido","tipoEgreso","importeEgreso",

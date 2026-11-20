@@ -611,7 +611,6 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
     void n2T17_CincoSenalesExactasRcg06YContencionSelectivaImpCSinBackfill() {
         PedidoFixture f = tx.execute(s -> new PedidoFixture(jdbc));
         assertNotNull(f);
-        long idAdmin = f.base + 1;
         long idRep = f.base + 3;
 
         long cA = f.base + 70;

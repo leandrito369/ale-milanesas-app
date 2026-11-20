@@ -78,12 +78,12 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
                  WHERE table_schema = current_schema()
                    AND table_name IN (
                        'RECONOCIMIENTO_ENTREGA_PE1','RECORRIDO_REPARTO','RECORRIDO_ASIGNACION',
-                       'RECORRIDO_ENTREGA','CIERRE_RECORRIDO_PE2','PROPUESTA_APLICACION_PENDIENTE',
-                       'COBRO_RENDICION_K2','APLICACION_RENDICION_K2','CUSTODIA_DIFERENCIA_RENDICION',
-                       'EGRESO_CUSTODIA_RENDICION','EVENTO_IMPUTACION_FINANCIERA',
-                       'ANULACION_COBRO_IDEMPOTENCIA')
+                       'RECORRIDO_ENTREGA','CIERRE_RECORRIDO_PE2','REVISION_CONCILIACION_PE2',
+                       'PROPUESTA_APLICACION_PENDIENTE','COBRO_RENDICION_K2','APLICACION_RENDICION_K2',
+                       'CUSTODIA_DIFERENCIA_RENDICION','EGRESO_CUSTODIA_RENDICION',
+                       'EVENTO_IMPUTACION_FINANCIERA','ANULACION_COBRO_IDEMPOTENCIA')
                 """, Integer.class);
-        assertEquals(12, nuevasTablas, "Las 12 tablas candidatas de laboratorio deben existir");
+        assertEquals(13, nuevasTablas, "Las 13 tablas candidatas de laboratorio deben existir");
 
         PedidoFixture f = tx.execute(s -> new PedidoFixture(jdbc));
         assertNotNull(f);
@@ -506,7 +506,7 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
                 """, recorrido, UUID.randomUUID(), idAdmin));
         assertTrue(exD1.getMessage().contains("ck_gfis_cierre_d1_solo_efectivo"));
 
-        // 3) Cierre con 0 aplicaciones positivas (todo faltante = 200): PENDIENTE -> CERRADO_CON_DIFERENCIA_RESUELTA
+        // 3) Cierre con 0 aplicaciones positivas (faltante integro = 200): PENDIENTE -> CERRADO_CON_DIFERENCIA_RESUELTA
         var resPend = tx.execute(status -> GfisLabSupport.registrarPendienteConciliacionEnTx(
                 jdbc, recorrido, idAdmin, UUID.randomUUID(),
                 new BigDecimal("200.00"), BigDecimal.ZERO.setScale(2),
