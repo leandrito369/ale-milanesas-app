@@ -70,7 +70,7 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
 
         Integer nuevasTablas = jdbc.queryForObject("""
                 SELECT count(*) FROM information_schema.tables
-                 WHERE table_schema = 'public'
+                 WHERE table_schema = current_schema()
                    AND table_name IN (
                        'RECONOCIMIENTO_ENTREGA_PE1','RECORRIDO_REPARTO','RECORRIDO_ENTREGA',
                        'CIERRE_RECORRIDO_PE2','COBRO_RENDICION_K2','APLICACION_RENDICION_K2',
@@ -428,7 +428,7 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
                 new BigDecimal("100.00"), "IMP_B");
 
         // 1) Cobro K2 con importe 100 pero aplicacion de solo 80 => rechazado al COMMIT por ct_gfis_k2_cobro_suma
-        assertThrows(DataAccessException.class, () -> tx.executeWithoutResult(status -> {
+        RuntimeException exSuma = assertThrows(RuntimeException.class, () -> tx.executeWithoutResult(status -> {
             Long idCierre = jdbc.queryForObject("""
                     INSERT INTO "CIERRE_RECORRIDO_PE2" (
                         "idRecorrido","claveIdempotenciaCierre","versionHuella","huellaCanonica",
@@ -455,6 +455,9 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
                     UPDATE "RECONOCIMIENTO_ENTREGA_PE1" SET "reconocimientoVigenteVvig"=20 WHERE "idPedido"=?
                     """, pedA);
         }), "K2 debe rechazar desajuste entre COBRO.importe y suma de aplicaciones");
+        String msgSuma = mensajeRaiz(exSuma);
+        assertTrue(msgSuma.contains("K2-CONSERVACION"),
+                "Debe disparar constraint trigger K2-CONSERVACION al COMMIT: " + msgSuma);
 
         // 2) Cobro K2 de Cliente A intentando aplicarse a Entrega de Cliente B (multicliente) => FK rechaza
         assertThrows(DataAccessException.class, () -> tx.executeWithoutResult(status -> {
@@ -504,5 +507,15 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
         }));
         assertTrue(exMedio.getMessage().contains("D1:"),
                 "Debe rechazar medioPago distinto de EFECTIVO en COBRO_RENDICION_K2: " + exMedio.getMessage());
+    }
+
+    private static String mensajeRaiz(Throwable ex) {
+        StringBuilder sb = new StringBuilder();
+        Throwable cur = ex;
+        while (cur != null) {
+            if (cur.getMessage() != null) sb.append(cur.getMessage()).append(" | ");
+            cur = cur.getCause();
+        }
+        return sb.toString();
     }
 }

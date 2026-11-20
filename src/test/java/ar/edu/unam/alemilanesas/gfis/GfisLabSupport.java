@@ -257,17 +257,14 @@ public final class GfisLabSupport {
         }
         List<AplicacionPlan> appsOrdenadas = aplicaciones.stream()
                 .sorted(Comparator.comparingLong(AplicacionPlan::idPedido)).toList();
+        Map<Long, BigDecimal> coberturaPorPedido = new LinkedHashMap<>();
         for (var app : appsOrdenadas) {
             jdbc.queryForObject("SELECT \"idPedido\" FROM \"PEDIDO\" WHERE \"idPedido\"=? FOR UPDATE",
                     Long.class, app.idPedido());
             BigDecimal vvigActual = jdbc.queryForObject(
                     "SELECT \"reconocimientoVigenteVvig\" FROM \"RECONOCIMIENTO_ENTREGA_PE1\" WHERE \"idPedido\"=? FOR UPDATE",
                     BigDecimal.class, app.idPedido());
-            if (vvigActual == null || app.importeAplicado().compareTo(vvigActual) > 0) {
-                throw new CoberturaNoAcreditadaException(
-                        app.idPedido(), app.importeAplicado(),
-                        vvigActual == null ? BigDecimal.ZERO : vvigActual);
-            }
+            coberturaPorPedido.put(app.idPedido(), vvigActual == null ? BigDecimal.ZERO : vvigActual);
         }
 
         BigDecimal totalImputado = appsOrdenadas.stream()
@@ -283,6 +280,9 @@ public final class GfisLabSupport {
         boolean tieneDiferencia = importeDiferenciaFaltante.signum() > 0 || importeCustodiaNoImputada.signum() > 0;
         Long idAdminRes = ("CONFIRMADO".equals(estadoCierreDestino) && tieneDiferencia) ? idAdmin : null;
 
+        // Insertar primero la cabecera de cierre para que uq_gfis_unico_cierre_confirmado_recorrido
+        // dispare 23505 (futuro RECORRIDO_YA_CERRADO) antes de evaluar 422 cobertura;
+        // si 422 falla luego, la transaccion T1 hace rollback integral de esta fila.
         var insertado = jdbc.queryForMap("""
                 INSERT INTO "CIERRE_RECORRIDO_PE2" (
                     "idRecorrido","claveIdempotenciaCierre","versionHuella","huellaCanonica",
@@ -304,6 +304,14 @@ public final class GfisLabSupport {
                 idAdminRes, reciboJson);
         long cierreId = ((Number) Objects.requireNonNull(insertado.get("idCierreRecorrido"))).longValue();
         String reciboNormalizado = (String) Objects.requireNonNull(insertado.get("recibo"));
+
+        // Validar cobertura disponible (422 COBERTURA_NO_ACREDITADA) antes de crear Cobro/Cuenta/Caja
+        for (var app : appsOrdenadas) {
+            BigDecimal disponible = coberturaPorPedido.getOrDefault(app.idPedido(), BigDecimal.ZERO);
+            if (app.importeAplicado().compareTo(disponible) > 0) {
+                throw new CoberturaNoAcreditadaException(app.idPedido(), app.importeAplicado(), disponible);
+            }
+        }
 
         // Agrupar aplicaciones por Cliente (K2: 1 COBRO REPARTO por Cliente y Cierre)
         Map<Long, List<AplicacionPlan>> porCliente = new LinkedHashMap<>();
