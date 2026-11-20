@@ -333,15 +333,16 @@ class GfisL02AnulacionCandidataLabIntegrationTest {
         long idAdmin = f.base + 1;
         long idCliente = f.base;
 
-        jdbc.execute("""
-                SELECT setval('"seq_gfis_mov_cuenta_id"', GREATEST((SELECT COALESCE(MAX("idMovimientoCuenta"),0) FROM "MOVIMIENTO_CUENTA"), 1), true);
-                SELECT setval('"seq_gfis_mov_caja_id"', GREATEST((SELECT COALESCE(MAX("idMovimientoCaja"),0) FROM "MOVIMIENTO_CAJA"), 1), true);
-                """);
-
         var cobro1 = cobros.registrarCobro(f.sesiones.get("ADMINISTRADOR"), idCliente, null,
                 new BigDecimal("120.00"), "EFECTIVO", UUID.randomUUID());
         var cobro2 = cobros.registrarCobro(f.sesiones.get("ADMINISTRADOR"), idCliente, null,
                 new BigDecimal("90.00"), "EFECTIVO", UUID.randomUUID());
+
+        // Sincronizar secuencias B2 > MAX despues de los cobros legacy (MAX+1) antes de ejecutar C-04 con B2
+        jdbc.execute("""
+                SELECT setval('"seq_gfis_mov_cuenta_id"', GREATEST((SELECT COALESCE(MAX("idMovimientoCuenta"),0) FROM "MOVIMIENTO_CUENTA"), 1), true);
+                SELECT setval('"seq_gfis_mov_caja_id"', GREATEST((SELECT COALESCE(MAX("idMovimientoCaja"),0) FROM "MOVIMIENTO_CAJA"), 1), true);
+                """);
 
         // 1) Anulacion idempotente valida C-04
         UUID claveAnul1 = UUID.randomUUID();
