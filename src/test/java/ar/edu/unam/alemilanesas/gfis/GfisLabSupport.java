@@ -26,6 +26,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
  */
 public final class GfisLabSupport {
     public static final String RUTA_V4_CANDIDATE = "gfis/V4_CANDIDATE__pe1_pe2_imp01_lab.sql";
+    public static final String RUTA_V4_L02_CANDIDATE = "gfis/V4_CANDIDATE_L02_ANULACION_LAB.sql";
 
     // Namespaces candidatos A2-GLOBAL (G-ARQ-N2-02): dos enteros por dominio/recurso
     public static final int NS_RECORRIDO = 4100;
@@ -37,21 +38,57 @@ public final class GfisLabSupport {
     // Lock puente de compatibilidad con escritores legacy (CobroManualService / UC-22)
     public static final long LOCK_LEGACY_FINANCIERO = 2929001L;
 
+    public static final class CoberturaNoAcreditadaException extends RuntimeException {
+        public final long idPedido;
+        public final BigDecimal solicitado;
+        public final BigDecimal disponible;
+        public CoberturaNoAcreditadaException(long idPedido, BigDecimal solicitado, BigDecimal disponible) {
+            super("422 COBERTURA_NO_ACREDITADA: pedido=" + idPedido
+                    + " solicitado=" + solicitado + " disponible=" + disponible);
+            this.idPedido = idPedido;
+            this.solicitado = solicitado;
+            this.disponible = disponible;
+        }
+    }
+
+    public record ResultadoPreflightRcg06(
+            int senalA_cobroIdPedidoPendienteSinReserva,
+            int senalB_saldoAFavorConPedidosPendientes,
+            int senalC_reembolsoPendienteSinConciliar,
+            int senalD_creditoSinIdPedidoPotencialmenteConsumido,
+            int senalE_pagosOnlineYEntregasPendientesDeCierre) {
+        public boolean requiereContencionSelectivaImpC() {
+            return senalA_cobroIdPedidoPendienteSinReserva > 0
+                    || senalB_saldoAFavorConPedidosPendientes > 0
+                    || senalC_reembolsoPendienteSinConciliar > 0
+                    || senalD_creditoSinIdPedidoPotencialmenteConsumido > 0
+                    || senalE_pagosOnlineYEntregasPendientesDeCierre > 0;
+        }
+    }
+
     private GfisLabSupport() {}
 
     public static void aplicarMigracionCandidataV4EnLaboratorio(DataSource dataSource) {
+        aplicarScriptSqlEnLaboratorio(dataSource, RUTA_V4_CANDIDATE);
+    }
+
+    public static void aplicarCorreccionCandidataL02EnLaboratorio(DataSource dataSource) {
+        aplicarScriptSqlEnLaboratorio(dataSource, RUTA_V4_L02_CANDIDATE);
+    }
+
+    private static void aplicarScriptSqlEnLaboratorio(DataSource dataSource, String ruta) {
         String sql;
         try {
-            sql = new ClassPathResource(RUTA_V4_CANDIDATE).getContentAsString(StandardCharsets.UTF_8);
+            sql = new ClassPathResource(ruta).getContentAsString(StandardCharsets.UTF_8);
         } catch (IOException ex) {
-            throw new IllegalStateException("No se pudo leer SQL candidato G-FIS: " + RUTA_V4_CANDIDATE, ex);
+            throw new IllegalStateException("No se pudo leer SQL candidato G-FIS: " + ruta, ex);
         }
         try (Connection c = dataSource.getConnection(); Statement st = c.createStatement()) {
             c.setAutoCommit(false);
             st.execute(sql);
             c.commit();
         } catch (SQLException ex) {
-            throw new IllegalStateException("Error aplicando SQL candidato V4 en laboratorio G-FIS", ex);
+            throw new IllegalStateException("Error aplicando SQL candidato en laboratorio G-FIS: " + ruta, ex);
         }
     }
 
@@ -167,22 +204,41 @@ public final class GfisLabSupport {
             boolean usarPuenteLegacy2929001,
             boolean usarSecuenciasB2) {
 
+        // 2.3 Obligatorio: una UUID valida NO sustituye autorizacion ni ambito.
+        // Validacion en BD de laboratorio (NO reemplaza futura autenticacion de sesion HTTP/servicio R09).
+        Integer adminValido = jdbc.queryForObject("""
+                SELECT count(*)
+                  FROM "USUARIO" u
+                  JOIN "USUARIO_ROL" ur ON ur."idUsuario" = u."idUsuario"
+                 WHERE u."idUsuario" = ?
+                   AND u."estado" = 'HABILITADO'
+                   AND ur."codigoRol" = 'ADMINISTRADOR'
+                """, Integer.class, idAdmin);
+        if (adminValido == null || adminValido == 0) {
+            throw new SecurityException("C1-a/RBAC 403: solo ADMINISTRADOR habilitado puede operar o consultar replay de cierre");
+        }
+
         bloquearA2(jdbc, NS_RECORRIDO, idRecorrido);
         if (usarPuenteLegacy2929001) {
             bloquearPuenteLegacyFinanciero(jdbc);
         }
 
-        // C1-a: verificacion idempotente por claveIdempotenciaCierre
+        // C1-a: verificacion idempotente por claveIdempotenciaCierre (tras validar autorizacion y ambito)
         var existentes = jdbc.queryForList("""
-                SELECT "idCierreRecorrido","estadoCierre","versionHuella","huellaCanonica","reciboHistoricoJson"::text AS recibo
+                SELECT "idCierreRecorrido","idRecorrido","estadoCierre","versionHuella","huellaCanonica","reciboHistoricoJson"::text AS recibo
                   FROM "CIERRE_RECORRIDO_PE2"
                  WHERE "claveIdempotenciaCierre" = ?
                 """, claveIdempotencia);
         if (!existentes.isEmpty()) {
             var row = existentes.getFirst();
+            long recorridoPersistido = ((Number) row.get("idRecorrido")).longValue();
+            if (recorridoPersistido != idRecorrido) {
+                throw new IllegalStateException(
+                        "C1-a CONFLICTO AMBITO 409: claveIdempotenciaCierre pertenece a otro Recorrido");
+            }
             if (!versionHuella.equals(row.get("versionHuella"))
                     || !huellaCanonica.equals(row.get("huellaCanonica"))) {
-                throw new IllegalStateException("C1-a CONFLICTO 409: misma claveIdempotenciaCierre con distinta huella");
+                throw new IllegalStateException("C1-a CONFLICTO HUELLA 409: misma claveIdempotenciaCierre con distinta huella");
             }
             return new ResultadoCierreLab(
                     ((Number) row.get("idCierreRecorrido")).longValue(),
@@ -204,8 +260,14 @@ public final class GfisLabSupport {
         for (var app : appsOrdenadas) {
             jdbc.queryForObject("SELECT \"idPedido\" FROM \"PEDIDO\" WHERE \"idPedido\"=? FOR UPDATE",
                     Long.class, app.idPedido());
-            jdbc.queryForObject("SELECT \"idPedido\" FROM \"RECONOCIMIENTO_ENTREGA_PE1\" WHERE \"idPedido\"=? FOR UPDATE",
-                    Long.class, app.idPedido());
+            BigDecimal vvigActual = jdbc.queryForObject(
+                    "SELECT \"reconocimientoVigenteVvig\" FROM \"RECONOCIMIENTO_ENTREGA_PE1\" WHERE \"idPedido\"=? FOR UPDATE",
+                    BigDecimal.class, app.idPedido());
+            if (vvigActual == null || app.importeAplicado().compareTo(vvigActual) > 0) {
+                throw new CoberturaNoAcreditadaException(
+                        app.idPedido(), app.importeAplicado(),
+                        vvigActual == null ? BigDecimal.ZERO : vvigActual);
+            }
         }
 
         BigDecimal totalImputado = appsOrdenadas.stream()
@@ -372,6 +434,76 @@ public final class GfisLabSupport {
         } catch (SQLException ex) {
             throw new IllegalStateException(ex);
         }
+    }
+
+    /**
+     * Evalua las cinco senales literales de preflight RCG-06 (ACTA_G_COM_001 / ADENDA_RD_I302_E07)
+     * para un Cliente dado, sin backfill heuristico de COBRO.idPedido.
+     */
+    public static ResultadoPreflightRcg06 evaluarPreflightRcg06Cliente(JdbcTemplate jdbc, long idCliente) {
+        int senalA = Objects.requireNonNull(jdbc.queryForObject("""
+                SELECT count(*)
+                  FROM "COBRO" c
+                  JOIN "PEDIDO" p ON p."idPedido" = c."idPedido"
+                 WHERE c."idCliente" = ?
+                   AND c."estadoCobro" = 'CONFIRMADO'
+                   AND p."estado" = 'PENDIENTE'
+                   AND NOT EXISTS (
+                       SELECT 1 FROM "EVENTO_IMPUTACION_FINANCIERA" e
+                        WHERE e."idCobro" = c."idCobro" AND e."idPedido" = p."idPedido"
+                   )
+                """, Integer.class, idCliente));
+
+        int senalB = Objects.requireNonNull(jdbc.queryForObject("""
+                SELECT CASE
+                    WHEN COALESCE((
+                        SELECT mc."saldoResultante" FROM "MOVIMIENTO_CUENTA" mc
+                         WHERE mc."idCliente" = ?
+                         ORDER BY mc."numeroSecuenciaCliente" DESC LIMIT 1
+                    ), 0) < 0
+                    AND EXISTS (
+                        SELECT 1 FROM "PEDIDO" p WHERE p."idCliente" = ? AND p."estado" = 'PENDIENTE'
+                    ) THEN 1 ELSE 0 END
+                """, Integer.class, idCliente, idCliente));
+
+        int senalC = Objects.requireNonNull(jdbc.queryForObject("""
+                SELECT count(*)
+                  FROM "REEMBOLSO" r
+                  JOIN "COBRO" c ON c."idCobro" = r."idCobro"
+                 WHERE c."idCliente" = ?
+                   AND r."estado" = 'PENDIENTE'
+                """, Integer.class, idCliente));
+
+        int senalD = Objects.requireNonNull(jdbc.queryForObject("""
+                SELECT count(*)
+                  FROM "COBRO" c
+                 WHERE c."idCliente" = ?
+                   AND c."estadoCobro" = 'CONFIRMADO'
+                   AND c."idPedido" IS NULL
+                   AND NOT EXISTS (
+                       SELECT 1 FROM "EVENTO_IMPUTACION_FINANCIERA" e
+                        WHERE e."idCobro" = c."idCobro"
+                   )
+                """, Integer.class, idCliente));
+
+        int senalE = Objects.requireNonNull(jdbc.queryForObject("""
+                SELECT count(*)
+                  FROM "COBRO" c
+                 WHERE c."idCliente" = ?
+                   AND c."origen" = 'ONLINE'
+                   AND c."estadoCobro" = 'CONFIRMADO'
+                   AND EXISTS (
+                       SELECT 1 FROM "ENTREGA" en
+                       JOIN "PEDIDO" p ON p."idPedido" = en."idPedido"
+                       LEFT JOIN "RECORRIDO_ENTREGA" re ON re."idPedido" = en."idPedido"
+                       LEFT JOIN "CIERRE_RECORRIDO_PE2" cr
+                              ON cr."idRecorrido" = re."idRecorrido" AND cr."estadoCierre" = 'CONFIRMADO'
+                        WHERE p."idCliente" = c."idCliente"
+                          AND cr."idCierreRecorrido" IS NULL
+                   )
+                """, Integer.class, idCliente));
+
+        return new ResultadoPreflightRcg06(senalA, senalB, senalC, senalD, senalE);
     }
 
     public static int backendPid(Connection c) throws SQLException {
