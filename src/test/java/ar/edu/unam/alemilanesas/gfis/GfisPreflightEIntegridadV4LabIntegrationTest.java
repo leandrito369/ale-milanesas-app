@@ -1,6 +1,8 @@
 package ar.edu.unam.alemilanesas.gfis;
 
 import ar.edu.unam.alemilanesas.finanzas.CobroManualService;
+import ar.edu.unam.alemilanesas.ventas.AsignacionRepartoFixture;
+import ar.edu.unam.alemilanesas.ventas.AsignarRepartoService;
 import ar.edu.unam.alemilanesas.ventas.CargarPedidoService;
 import ar.edu.unam.alemilanesas.ventas.PedidoFixture;
 import java.math.BigDecimal;
@@ -51,6 +53,7 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
     @Autowired JdbcTemplate jdbc;
     @Autowired TransactionTemplate tx;
     @Autowired CargarPedidoService pedidos;
+    @Autowired AsignarRepartoService asignaciones;
     @Autowired CobroManualService cobros;
 
     @BeforeEach
@@ -72,11 +75,12 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
                 SELECT count(*) FROM information_schema.tables
                  WHERE table_schema = current_schema()
                    AND table_name IN (
-                       'RECONOCIMIENTO_ENTREGA_PE1','RECORRIDO_REPARTO','RECORRIDO_ENTREGA',
-                       'CIERRE_RECORRIDO_PE2','COBRO_RENDICION_K2','APLICACION_RENDICION_K2',
-                       'CUSTODIA_DIFERENCIA_RENDICION','EVENTO_IMPUTACION_FINANCIERA')
+                       'RECONOCIMIENTO_ENTREGA_PE1','RECORRIDO_REPARTO','RECORRIDO_ASIGNACION',
+                       'RECORRIDO_ENTREGA','CIERRE_RECORRIDO_PE2','COBRO_RENDICION_K2',
+                       'APLICACION_RENDICION_K2','CUSTODIA_DIFERENCIA_RENDICION',
+                       'EVENTO_IMPUTACION_FINANCIERA')
                 """, Integer.class);
-        assertEquals(8, nuevasTablas, "Las 8 tablas candidatas de laboratorio deben existir");
+        assertEquals(9, nuevasTablas, "Las 9 tablas candidatas de laboratorio deben existir");
 
         // Verificar que un cobro manual historico con idPedido=NULL no recibe backfill heuristico
         PedidoFixture f = tx.execute(s -> new PedidoFixture(jdbc));
@@ -252,23 +256,38 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
         assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM \"CIERRE_RECORRIDO_PE2\" WHERE \"idRecorrido\"=?",
                 Integer.class, recorrido));
 
-        // 2) Cierre T1 + K2 valido con diferencia parcial en pedA2 (10 de faltante) y 10 de custodia:
+        // 2) Maquina de estados Frontera B (corregida): prohibido marcar CONFIRMADO cuando
+        //    existen diferencias abiertas (faltante=10, custodia=10), incluso con motivo.
+        assertThrows(DataAccessException.class, () -> tx.executeWithoutResult(status ->
+                GfisLabSupport.ejecutarCierreT1K2EnTx(
+                        jdbc, recorrido, idAdmin, UUID.randomUUID(), "v1", "h-ilegal-conf-dif", "CONFIRMADO",
+                        new BigDecimal("430.00"), new BigDecimal("430.00"),
+                        new BigDecimal("10.00"), new BigDecimal("10.00"),
+                        "Intento ilegal de cerrar CONFIRMADO con diferencias", null,
+                        List.of(
+                                new GfisLabSupport.AplicacionPlan(clienteA, pedA1, new BigDecimal("100.00")),
+                                new GfisLabSupport.AplicacionPlan(clienteA, pedA2, new BigDecimal("70.00")),
+                                new GfisLabSupport.AplicacionPlan(clienteB, pedB1, new BigDecimal("250.00"))),
+                        true, false)),
+                "Frontera B: CONFIRMADO exige importeDiferenciaFaltante=0 e importeCustodiaNoImputada=0");
+
+        // 3) Cierre T1 + K2 valido con diferencia parcial en pedA2 (10 de faltante) y 10 de custodia:
+        //    Debe nacer en PENDIENTE_CONCILIACION (nunca CONFIRMADO directo):
         //    Cliente A: pedA1=100 + pedA2=70 => 1 solo COBRO de 170.00 (V_e^vig remanente pedA2 = 10.00)
         //    Cliente B: pedB1=250 => 1 solo COBRO de 250.00 (V_e^vig = 0.00)
         //    Efectivo recibido = 430.00 (420 imputado + 10 custodia), faltante = 10.00
         var res = tx.execute(status -> GfisLabSupport.ejecutarCierreT1K2EnTx(
-                jdbc, recorrido, idAdmin, UUID.randomUUID(), "v1", "h-ok-k2", "CONFIRMADO",
+                jdbc, recorrido, idAdmin, UUID.randomUUID(), "v1", "h-ok-k2", "PENDIENTE_CONCILIACION",
                 new BigDecimal("430.00"), new BigDecimal("430.00"),
                 new BigDecimal("10.00"), new BigDecimal("10.00"),
-                "Faltante 10 en pedA2 y custodia 10 no imputada",
-                "Administrador valida diferencia y custodia sin segundo Cobro",
+                "Faltante 10 en pedA2 y custodia 10 no imputada", null,
                 List.of(
                         new GfisLabSupport.AplicacionPlan(clienteA, pedA1, new BigDecimal("100.00")),
                         new GfisLabSupport.AplicacionPlan(clienteA, pedA2, new BigDecimal("70.00")),
                         new GfisLabSupport.AplicacionPlan(clienteB, pedB1, new BigDecimal("250.00"))),
                 true, false));
         assertNotNull(res);
-        assertEquals("CONFIRMADO", res.estadoCierre());
+        assertEquals("PENDIENTE_CONCILIACION", res.estadoCierre());
 
         // K2: exactamente 2 Cobros REPARTO (1 por Cliente), no 3
         Integer cobrosK2 = jdbc.queryForObject(
@@ -291,11 +310,56 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
         assertEquals(0, new BigDecimal("420.00").compareTo(sumaCajaCierre),
                 "S08: custodia de 10 no debe generar ingreso de venta duplicado en MOVIMIENTO_CAJA");
 
-        // Conservacion exacta A_e + V_e^{vig} = V_e^0 en pedA2 (70 + 10 = 80)
+        // Prohibido blanquear PENDIENTE_CONCILIACION -> CONFIRMADO o mutar montos al resolver
+        assertThrows(DataAccessException.class, () -> jdbc.update("""
+                UPDATE "CIERRE_RECORRIDO_PE2"
+                   SET "estadoCierre" = 'CONFIRMADO'
+                 WHERE "idCierreRecorrido" = ?
+                """, res.idCierre()),
+                "Frontera B: prohibido transicionar PENDIENTE_CONCILIACION -> CONFIRMADO");
+        assertThrows(DataAccessException.class, () -> jdbc.update("""
+                UPDATE "CIERRE_RECORRIDO_PE2"
+                   SET "estadoCierre" = 'CERRADO_CON_DIFERENCIA_RESUELTA',
+                       "importeDiferenciaFaltante" = 0,
+                       "idUsuarioResolucionAdmin" = ?,
+                       "tipoResolucionAdmin" = 'MIXTA_FALTANTE_Y_CUSTODIA',
+                       "motivoResolucionAdmin" = 'Intento ilegal alterando montos',
+                       "fechaHoraResolucion" = clock_timestamp()
+                 WHERE "idCierreRecorrido" = ?
+                """, idAdmin, res.idCierre()),
+                "Frontera B: resolucion administrativa no puede alterar montos originales");
+
+        // Resolucion administrativa valida: PENDIENTE_CONCILIACION -> CERRADO_CON_DIFERENCIA_RESUELTA
+        // (NO extingue V_e^{vig}, NO crea Cobro/Caja, NO habilita recupero post-cierre E)
+        int cobrosAntesRes = jdbc.queryForObject("SELECT count(*) FROM \"COBRO\"", Integer.class);
+        int cajaAntesRes = jdbc.queryForObject("SELECT count(*) FROM \"MOVIMIENTO_CAJA\"", Integer.class);
+        tx.executeWithoutResult(status -> GfisLabSupport.resolverDiferenciaAdministrativaEnTx(
+                jdbc, res.idCierre(), recorrido, idAdmin,
+                "MIXTA_FALTANTE_Y_CUSTODIA",
+                "Faltante 10 asentado sin recupero automatico y custodia 10 devuelta fisicamente con recibo"));
+
+        assertEquals("CERRADO_CON_DIFERENCIA_RESUELTA", jdbc.queryForObject(
+                "SELECT \"estadoCierre\" FROM \"CIERRE_RECORRIDO_PE2\" WHERE \"idCierreRecorrido\"=?",
+                String.class, res.idCierre()));
+        assertEquals(cobrosAntesRes, jdbc.queryForObject("SELECT count(*) FROM \"COBRO\"", Integer.class),
+                "Resolucion administrativa NO debe crear nuevos Cobros");
+        assertEquals(cajaAntesRes, jdbc.queryForObject("SELECT count(*) FROM \"MOVIMIENTO_CAJA\"", Integer.class),
+                "Resolucion administrativa NO debe crear nuevos asientos de Caja");
+
+        // Conservacion exacta A_e + V_e^{vig} = V_e^0 en pedA2 (70 + 10 = 80) preservada intacta
         BigDecimal vvigA2 = jdbc.queryForObject(
                 "SELECT \"reconocimientoVigenteVvig\" FROM \"RECONOCIMIENTO_ENTREGA_PE1\" WHERE \"idPedido\"=?",
                 BigDecimal.class, pedA2);
-        assertEquals(0, new BigDecimal("10.00").compareTo(vvigA2));
+        assertEquals(0, new BigDecimal("10.00").compareTo(vvigA2),
+                "Frontera B: resolucion administrativa NO extingue V_e^{vig} remanente");
+
+        // Inmutabilidad estricta de CERRADO_CON_DIFERENCIA_RESUELTA
+        assertThrows(DataAccessException.class, () -> jdbc.update("""
+                UPDATE "CIERRE_RECORRIDO_PE2"
+                   SET "motivoResolucionAdmin" = 'Intento de edicion posterior'
+                 WHERE "idCierreRecorrido" = ?
+                """, res.idCierre()),
+                "CERRADO_CON_DIFERENCIA_RESUELTA debe ser inmutable");
 
         // D7-A: prohibido anular Cobro REPARTO incluso invocando fn_mr3_anular_cobro_manual
         Long idCobroA = jdbc.queryForObject(
@@ -305,8 +369,8 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
                 "SELECT \"fn_mr3_anular_cobro_manual\"(" + idCobroA + "," + idAdmin + ",9999001,9999002,'Intento ilegal')"));
         assertTrue(exD7a.getMessage().contains("D7-A"), "Debe disparar guard SQL D7-A: " + exD7a.getMessage());
 
-        // Cuestion abierta documentada: NO permitir segundo cierre confirmado sobre mismo recorrido
-        // aunque exista V_e^{vig} = 10.00 remanente (sin inventar recupero post-cierre E)
+        // C1-a / Frontera B: prohibido segundo cierre (ni CONFIRMADO ni PENDIENTE_CONCILIACION)
+        // sobre recorrido ya en estado terminal CERRADO_CON_DIFERENCIA_RESUELTA (sin recupero E)
         assertThrows(DataAccessException.class, () -> tx.executeWithoutResult(status ->
                 GfisLabSupport.ejecutarCierreT1K2EnTx(
                         jdbc, recorrido, idAdmin, UUID.randomUUID(), "v1", "h-segundo-cierre", "CONFIRMADO",
@@ -315,7 +379,15 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
                         null, null,
                         List.of(new GfisLabSupport.AplicacionPlan(clienteA, pedA2, new BigDecimal("10.00"))),
                         true, false)),
-                "C1-a / E: prohibido segundo cierre confirmado sobre el mismo Recorrido");
+                "C1-a / E: uq_gfis_unico_cierre_terminal_recorrido debe rechazar segundo cierre terminal");
+        assertThrows(DataAccessException.class, () -> tx.executeWithoutResult(status ->
+                GfisLabSupport.ejecutarCierreT1K2EnTx(
+                        jdbc, recorrido, idAdmin, UUID.randomUUID(), "v1", "h-segundo-pend", "PENDIENTE_CONCILIACION",
+                        new BigDecimal("10.00"), BigDecimal.ZERO.setScale(2),
+                        new BigDecimal("10.00"), BigDecimal.ZERO.setScale(2),
+                        "Intento ilegal de abrir nueva conciliacion", null,
+                        List.of(), true, false)),
+                "C1-a / Frontera B: prohibido abrir nueva conciliacion sobre recorrido con cierre terminal");
     }
 
     @Test
@@ -375,6 +447,23 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
                 "SELECT \"reconocimientoVigenteVvig\" FROM \"RECONOCIMIENTO_ENTREGA_PE1\" WHERE \"idPedido\"=?",
                 BigDecimal.class, ped)),
                 "Efectivo no recibido no debe extinguir V_e^{vig} ni generar Cobro ficticio");
+
+        // Resolucion administrativa de cierre con 0 aplicaciones positivas (Frontera B propuesta):
+        // cierra administrativamente (CERRADO_CON_DIFERENCIA_RESUELTA), 0 Cobro/Caja, V_e^{vig}=200 intacto
+        tx.executeWithoutResult(status -> GfisLabSupport.resolverDiferenciaAdministrativaEnTx(
+                jdbc, resCeroApps.idCierre(), recorrido, idAdmin,
+                "FALTANTE_ASENTADO_SIN_RECUPERO_AUTOMATICO",
+                "Faltante total 200 asentado administrativamente; sin recupero automatico ni extincion financiera"));
+        assertEquals("CERRADO_CON_DIFERENCIA_RESUELTA", jdbc.queryForObject(
+                "SELECT \"estadoCierre\" FROM \"CIERRE_RECORRIDO_PE2\" WHERE \"idCierreRecorrido\"=?",
+                String.class, resCeroApps.idCierre()));
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT count(*) FROM \"COBRO_RENDICION_K2\" WHERE \"idCierreRecorrido\"=?",
+                Integer.class, resCeroApps.idCierre()));
+        assertEquals(0, new BigDecimal("200.00").compareTo(jdbc.queryForObject(
+                "SELECT \"reconocimientoVigenteVvig\" FROM \"RECONOCIMIENTO_ENTREGA_PE1\" WHERE \"idPedido\"=?",
+                BigDecimal.class, ped)),
+                "Resolucion administrativa con 0 aplicaciones NO debe extinguir V_e^{vig}");
 
         // 4) DC05-07-A: un Cobro manual con reserva activa NO puede anularse; tras liberar reserva SI puede
         var cobroManual = cobros.registrarCobro(
@@ -507,6 +596,71 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
         }));
         assertTrue(exMedio.getMessage().contains("D1:"),
                 "Debe rechazar medioPago distinto de EFECTIVO en COBRO_RENDICION_K2: " + exMedio.getMessage());
+    }
+
+    @Test
+    void fronteraA_PertenenciaPreEntregaReasignacionUc43YConsistenciaRepartidor() {
+        var f = tx.execute(s -> new AsignacionRepartoFixture(jdbc, pedidos));
+        assertNotNull(f);
+
+        // 1) Verificar RBAC real de UC-43: ADMINISTRADOR NO esta autorizado (solo VENDEDOR)
+        assertThrows(SecurityException.class, () -> asignaciones.asignarOReasignar(
+                f.origen.sesiones.get("ADMINISTRADOR"), f.datos(f.primero, null)),
+                "RBAC G0: UC-43 es exclusivo de VENDEDOR, nunca ADMINISTRADOR");
+
+        // 2) Asignacion inicial UC-43 (VENDEDOR) y vinculacion pre-ENTREGA a Recorrido 1
+        var asig1 = asignaciones.asignarOReasignar(f.vendedor(), f.datos(f.primero, null));
+        long recRep1 = GfisLabSupport.crearRecorridoExplicito(jdbc, f.primero, "REC-FA-1");
+        long recRep2 = GfisLabSupport.crearRecorridoExplicito(jdbc, f.segundo, "REC-FA-2");
+
+        // Rechazar vinculacion a Recorrido de otro Repartidor
+        assertThrows(DataAccessException.class, () ->
+                GfisLabSupport.vincularAsignacionARecorridoEnLab(jdbc, recRep2, f.pendiente, asig1.numeroAsignacion()),
+                "Frontera A: no se puede vincular asignacion de Repartidor 1 a Recorrido de Repartidor 2");
+
+        // Vinculacion valida pre-ENTREGA
+        GfisLabSupport.vincularAsignacionARecorridoEnLab(jdbc, recRep1, f.pendiente, asig1.numeroAsignacion());
+
+        // Rechazar segunda pertenencia ACTIVA simultanea para el mismo Pedido
+        long recRep1Otro = GfisLabSupport.crearRecorridoExplicito(jdbc, f.primero, "REC-FA-1B");
+        assertThrows(DataAccessException.class, () ->
+                GfisLabSupport.vincularAsignacionARecorridoEnLab(jdbc, recRep1Otro, f.pendiente, asig1.numeroAsignacion()),
+                "Frontera A: un Pedido PENDIENTE pertenece a lo sumo a un Recorrido activo");
+
+        // 3) Reasignacion UC-43 (VENDEDOR) a Repartidor 2: desvincula Recorrido 1 preservando historial
+        //    de ASIGNACION_REPARTO #1 y vincula asignacion #2 al Recorrido 2
+        var asig2 = asignaciones.asignarOReasignar(f.vendedor(), f.datos(f.segundo, "Cambio de turno reparto"));
+        assertEquals(2, asig2.numeroAsignacion());
+        GfisLabSupport.desvincularAsignacionPorReasignacionEnLab(
+                jdbc, f.pendiente, asig1.numeroAsignacion(), "Cambio de turno reparto");
+        GfisLabSupport.vincularAsignacionARecorridoEnLab(jdbc, recRep2, f.pendiente, asig2.numeroAsignacion());
+
+        // Verificar preservacion historica de ASIGNACION_REPARTO (2 filas) y RECORRIDO_ASIGNACION (2 filas)
+        assertEquals(2, jdbc.queryForObject(
+                "SELECT count(*) FROM \"ASIGNACION_REPARTO\" WHERE \"idPedido\"=?", Integer.class, f.pendiente));
+        assertEquals("DESVINCULADA_POR_REASIGNACION", jdbc.queryForObject(
+                "SELECT \"estadoPertenencia\" FROM \"RECORRIDO_ASIGNACION\" WHERE \"idPedido\"=? AND \"numeroAsignacion\"=1",
+                String.class, f.pendiente));
+        assertEquals("ACTIVA", jdbc.queryForObject(
+                "SELECT \"estadoPertenencia\" FROM \"RECORRIDO_ASIGNACION\" WHERE \"idPedido\"=? AND \"numeroAsignacion\"=2",
+                String.class, f.pendiente));
+
+        // 4) Al entregar con Repartidor 2: vincular ENTREGA a Recorrido 1 (ajeno) falla; a Recorrido 2 pasa a ENTREGADA
+        assertThrows(DataAccessException.class, () -> tx.executeWithoutResult(s ->
+                GfisLabSupport.registrarEntregaPe1EnLaboratorio(
+                        jdbc, f.pendiente, f.origen.base, f.segundo, recRep1,
+                        new BigDecimal("200.00"), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2),
+                        new BigDecimal("200.00"), "IMP_B")),
+                "Frontera A: ENTREGA de Repartidor 2 no puede vincularse al Recorrido de Repartidor 1");
+
+        tx.executeWithoutResult(s -> GfisLabSupport.registrarEntregaPe1EnLaboratorio(
+                jdbc, f.pendiente, f.origen.base, f.segundo, recRep2,
+                new BigDecimal("200.00"), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2),
+                new BigDecimal("200.00"), "IMP_B"));
+
+        assertEquals("ENTREGADA", jdbc.queryForObject(
+                "SELECT \"estadoPertenencia\" FROM \"RECORRIDO_ASIGNACION\" WHERE \"idPedido\"=? AND \"numeroAsignacion\"=2",
+                String.class, f.pendiente));
     }
 
     private static String mensajeRaiz(Throwable ex) {

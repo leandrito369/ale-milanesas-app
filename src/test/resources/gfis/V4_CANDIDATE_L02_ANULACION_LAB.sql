@@ -45,8 +45,11 @@ BEGIN
         RAISE EXCEPTION 'Cobro no encontrado';
     END IF;
 
-    -- Paso 2: precedencia global A2-GLOBAL compatible: A2(NS_CLIENTE, idCliente) -> CLIENTE U -> COBRO U
-    PERFORM pg_advisory_xact_lock(3202, v_id_cliente::integer);
+    -- Paso 2: precedencia global A2-GLOBAL compatible sin cast BIGINT->INTEGER:
+    -- A2(NS_CLIENTE=3202, hashtext(idCliente::text)) -> CLIENTE U -> COBRO U
+    -- Evita SQLSTATE 22003 para cualquier BIGINT > Integer.MAX_VALUE (2_147_483_647)
+    -- y preserva exclusion exacta por fila mediante CLIENTE FOR UPDATE.
+    PERFORM pg_advisory_xact_lock(3202, hashtext(v_id_cliente::text));
     PERFORM 1 FROM "CLIENTE" WHERE "idCliente" = v_id_cliente FOR UPDATE;
 
     SELECT * INTO c
@@ -154,3 +157,4 @@ BEGIN
      WHERE "idCobro" = p_id_cobro;
 END;
 $gfis_l02$;
+

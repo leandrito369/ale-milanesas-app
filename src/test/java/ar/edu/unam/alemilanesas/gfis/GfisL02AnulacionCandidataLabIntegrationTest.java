@@ -116,7 +116,7 @@ class GfisL02AnulacionCandidataLabIntegrationTest {
                     }
                     connAlineada.commit();
                     return "COMMIT";
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     connAlineada.rollback();
                     return extraerSqlState(t);
                 }
@@ -128,7 +128,7 @@ class GfisL02AnulacionCandidataLabIntegrationTest {
                     jdbc.execute("SELECT \"fn_mr3_anular_cobro_manual\"("
                             + cobro.idCobro() + "," + admin + ",9810001,9810002,'Prueba inversion L02 V1')");
                     return "COMMIT";
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     return extraerSqlState(t);
                 }
             });
@@ -205,7 +205,7 @@ class GfisL02AnulacionCandidataLabIntegrationTest {
                 """);
 
         AtomicInteger deadlocks = new AtomicInteger();
-        List<Throwable> errores = new ArrayList<>();
+        List<Exception> errores = new ArrayList<>();
         CountDownLatch listos = new CountDownLatch(2);
         CountDownLatch largada = new CountDownLatch(1);
 
@@ -220,7 +220,7 @@ class GfisL02AnulacionCandidataLabIntegrationTest {
                         jdbc.execute("SELECT \"fn_mr3_anular_cobro_manual\"("
                                 + cobroAAnular.idCobro() + "," + admin + "," + idMc + "," + idCj + ",'Anulacion L02 concurrente')");
                     });
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     if ("40P01".equals(extraerSqlState(t))) deadlocks.incrementAndGet();
                     errores.add(t);
                 }
@@ -236,7 +236,7 @@ class GfisL02AnulacionCandidataLabIntegrationTest {
                             BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), null, null,
                             List.of(new GfisLabSupport.AplicacionPlan(cliente, pedK2, new BigDecimal("200.00"))),
                             false, true));
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     if ("40P01".equals(extraerSqlState(t))) deadlocks.incrementAndGet();
                     errores.add(t);
                     return null;
@@ -268,6 +268,55 @@ class GfisL02AnulacionCandidataLabIntegrationTest {
                     BigDecimal.class, cliente);
             assertEquals(0, new BigDecimal("-200.00").compareTo(saldoFinal));
         }
+    }
+
+    @Test
+    @Order(3)
+    void n2T10c_IdClienteBigintMayorAIntMaxNoDesborda22003EnL02NiEnA2() throws Exception {
+        // Verifica eliminacion del cast BIGINT->INTEGER (Integer.MAX_VALUE = 2_147_483_647)
+        // tanto en V4_CANDIDATE_L02_ANULACION_LAB.sql como en GfisLabSupport.bloquearA2.
+        PedidoFixture f = tx.execute(s -> new PedidoFixture(jdbc));
+        assertNotNull(f);
+        long idClienteBig = 3_000_000_000L; // > Integer.MAX_VALUE
+
+        jdbc.update("""
+                INSERT INTO "CLIENTE" ("idCliente","nombres","telefonoPrincipal","estado","categoriaComercial","fechaHoraAlta")
+                VALUES (?, 'Cliente BigInt 64-bit', '3764888999', 'ACTIVO', 'CUMPLIDOR', now())
+                """, idClienteBig);
+
+        // 1) A2(NS_CLIENTE, hashtext(id::text)) sobre BIGINT > Integer.MAX_VALUE serializa sin overflow
+        try (Connection c1 = dataSource.getConnection();
+             Connection c2 = dataSource.getConnection()) {
+            c1.setAutoCommit(false);
+            c2.setAutoCommit(false);
+            try (PreparedStatement ps1 = c1.prepareStatement("SELECT pg_advisory_xact_lock(?, hashtext(?::text))");
+                 PreparedStatement ps2 = c2.prepareStatement("SELECT pg_try_advisory_xact_lock(?, hashtext(?::text))")) {
+                ps1.setInt(1, GfisLabSupport.NS_CLIENTE);
+                ps1.setString(2, Long.toString(idClienteBig));
+                ps1.execute();
+
+                ps2.setInt(1, GfisLabSupport.NS_CLIENTE);
+                ps2.setString(2, Long.toString(idClienteBig));
+                try (var rs = ps2.executeQuery()) {
+                    assertTrue(rs.next() && !rs.getBoolean(1),
+                            "A2 con hashtext debe excluir mutuamente para BIGINT > Integer.MAX_VALUE");
+                }
+            }
+            c1.rollback();
+            c2.rollback();
+        }
+
+        // 2) Anulacion real via CobroManualService + fn_mr3_anular_cobro_manual (L02) sin 22003
+        var cobroBig = cobros.registrarCobro(f.sesiones.get("ADMINISTRADOR"), idClienteBig, null,
+                new BigDecimal("150.00"), "EFECTIVO", UUID.randomUUID());
+        var anuladoBig = cobros.anularCobroManual(
+                f.sesiones.get("ADMINISTRADOR"), cobroBig.idCobro(), "Anulacion BIGINT > 2^31-1 OK");
+        assertEquals("ANULADO", anuladoBig.estado());
+        assertEquals(0, BigDecimal.ZERO.compareTo(anuladoBig.saldoConfirmado()));
+
+        // 3) Tambien probar GfisLabSupport.bloquearA2 directamente con BIGINT > Integer.MAX_VALUE
+        assertDoesNotThrow(() -> tx.executeWithoutResult(s ->
+                GfisLabSupport.bloquearA2(jdbc, GfisLabSupport.NS_CLIENTE, idClienteBig)));
     }
 
     private static String extraerSqlState(Throwable t) {

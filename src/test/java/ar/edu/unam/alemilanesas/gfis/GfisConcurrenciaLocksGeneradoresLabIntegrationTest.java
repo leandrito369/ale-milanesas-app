@@ -352,7 +352,7 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
         // espera real simultanea de CobroManualService, UC-22 (PR #91), UC-43 y cierre T1+K2
         AtomicInteger deadlocks = new AtomicInteger();
         AtomicInteger duplicados = new AtomicInteger();
-        List<Throwable> errores = new ArrayList<>();
+        List<Exception> errores = new ArrayList<>();
 
         ExecutorService pool = Executors.newFixedThreadPool(4);
         try (Connection barrera = dataSource.getConnection()) {
@@ -373,7 +373,7 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
                             null, null,
                             List.of(new GfisLabSupport.AplicacionPlan(cliente, pedEntrega, new BigDecimal("250.00"))),
                             true, false));
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     clasificarError(t, deadlocks, duplicados, errores);
                 }
             });
@@ -383,7 +383,7 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
                     cobros.registrarCobro(
                             f.sesiones.get("ADMINISTRADOR"), cliente, null,
                             new BigDecimal("50.00"), "EFECTIVO", UUID.randomUUID());
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     clasificarError(t, deadlocks, duplicados, errores);
                 }
             });
@@ -394,7 +394,7 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
                             f.sesiones.get("ADMINISTRADOR"), "INGRESO",
                             new BigDecimal("75.00"), "Reposicion cambio caja", "Prueba convivencia #91",
                             UUID.randomUUID());
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     clasificarError(t, deadlocks, duplicados, errores);
                 }
             });
@@ -404,7 +404,7 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
                     asignaciones.asignarOReasignar(
                             f.vendedor(),
                             new AsignarRepartoService.DatosAsignacion(pedAsignar, repartidor, null));
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     clasificarError(t, deadlocks, duplicados, errores);
                 }
             });
@@ -453,8 +453,62 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
                 "Hallazgo L02 acreditado: V1 bloquea COBRO antes que CLIENTE; requiere reordenamiento controlado en Fase C/R09.1");
     }
 
+    @Test
+    void compatibilidadTransicionLegacyMaxMasUnoVsSecuenciasB2YMitigacionSin23505() {
+        PedidoFixture f = tx.execute(s -> new PedidoFixture(jdbc));
+        assertNotNull(f);
+        long admin = f.base + 1;
+
+        // 1) Acreditar el riesgo real de mezcla descoordinada (MAX+1 + nextval() simultaneos):
+        //    Seed de secuencia en MAX actual; luego escritor legacy UC-22 (#91) inserta MAX+1;
+        //    un escritor B2 descoordinado que pida nextval() recibe el mismo ID => SQLSTATE 23505.
+        jdbc.execute("""
+                SELECT setval('"seq_gfis_mov_caja_id"', GREATEST((SELECT COALESCE(MAX("idMovimientoCaja"),0) FROM "MOVIMIENTO_CAJA"), 1),
+                              (SELECT EXISTS (SELECT 1 FROM "MOVIMIENTO_CAJA")));
+                """);
+        var legacyCaja = cajaManual.registrarMovimientoCaja(
+                f.sesiones.get("ADMINISTRADOR"), "INGRESO",
+                new BigDecimal("10.00"), "Escritor legacy MAX+1 (#91)", "Prueba riesgo mezcla",
+                UUID.randomUUID());
+
+        long idColisionB2 = GfisLabSupport.siguientePkMovCajaB2(jdbc);
+        assertEquals(legacyCaja.idMovimientoCaja(), idColisionB2,
+                "Mezclar escritor legacy MAX+1 con nextval() sin cutover atomico produce el mismo ID");
+        Exception exColision = assertThrows(Exception.class, () -> jdbc.update("""
+                INSERT INTO "MOVIMIENTO_CAJA" (
+                    "idMovimientoCaja","tipoMovimiento","importe","fechaHoraMovimiento",
+                    "origen","concepto","idUsuarioRegistro")
+                VALUES (?,'INGRESO',10.00,clock_timestamp(),'MANUAL','Colision mezcla',?)
+                """, idColisionB2, admin));
+        assertEquals("23505", extraerSqlState(exColision),
+                "Debe reproducir SQLSTATE 23505 ante mezcla descoordinada MAX+1 vs nextval()");
+
+        // 2) Mitigacion verificada de cutover atomico en R09.1:
+        //    Resincronizar setval > MAX una vez retirados 100 % los escritores MAX+1
+        //    garantiza asignacion monotona sin colision 23505.
+        jdbc.execute("""
+                SELECT setval('"seq_gfis_mov_caja_id"', GREATEST((SELECT COALESCE(MAX("idMovimientoCaja"),0) FROM "MOVIMIENTO_CAJA"), 1), true);
+                """);
+        long idPostCutover1 = GfisLabSupport.siguientePkMovCajaB2(jdbc);
+        long idPostCutover2 = GfisLabSupport.siguientePkMovCajaB2(jdbc);
+        assertTrue(idPostCutover1 > legacyCaja.idMovimientoCaja());
+        assertEquals(idPostCutover1 + 1L, idPostCutover2);
+        jdbc.update("""
+                INSERT INTO "MOVIMIENTO_CAJA" (
+                    "idMovimientoCaja","tipoMovimiento","importe","fechaHoraMovimiento",
+                    "origen","concepto","idUsuarioRegistro")
+                VALUES (?,'INGRESO',15.00,clock_timestamp(),'MANUAL','Post cutover B2 #1',?)
+                """, idPostCutover1, admin);
+        jdbc.update("""
+                INSERT INTO "MOVIMIENTO_CAJA" (
+                    "idMovimientoCaja","tipoMovimiento","importe","fechaHoraMovimiento",
+                    "origen","concepto","idUsuarioRegistro")
+                VALUES (?,'INGRESO',20.00,clock_timestamp(),'MANUAL','Post cutover B2 #2',?)
+                """, idPostCutover2, admin);
+    }
+
     private static void clasificarError(
-            Throwable t, AtomicInteger deadlocks, AtomicInteger duplicados, List<Throwable> errores) {
+            Exception t, AtomicInteger deadlocks, AtomicInteger duplicados, List<Exception> errores) {
         String state = extraerSqlState(t);
         if ("40P01".equals(state)) {
             deadlocks.incrementAndGet();

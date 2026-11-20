@@ -121,7 +121,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
                     }
                     connUc05.commit();
                     return "COMMIT";
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     connUc05.rollback();
                     return extraerSqlState(t);
                 }
@@ -132,7 +132,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
                 try {
                     asignaciones.asignarOReasignar(f.vendedor(), f.datos(f.segundo, "Reasignacion C3-03"));
                     return "COMMIT";
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     return extraerSqlState(t);
                 }
             });
@@ -181,11 +181,11 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
             }));
 
             assertTrue(pedidoBloqueado.await(10, TimeUnit.SECONDS));
-            Future<Throwable> futUc43 = pool.submit(() -> {
+            Future<Exception> futUc43 = pool.submit(() -> {
                 try {
                     asignaciones.asignarOReasignar(f.vendedor(), f.datos(f.segundo, "Tarde tras entrega"));
                     return null;
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     return t;
                 }
             });
@@ -200,7 +200,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
             liberarEntrega.countDown();
 
             assertEquals("ENTREGADO", futUc05.get(20, TimeUnit.SECONDS));
-            Throwable errUc43 = futUc43.get(20, TimeUnit.SECONDS);
+            Exception errUc43 = futUc43.get(20, TimeUnit.SECONDS);
             assertNotNull(errUc43, "UC-43 debe revalidar estado ENTREGADO y rechazar reasignacion");
             assertNotEquals("40P01", extraerSqlState(errUc43), "Orden alineado no debe producir 40P01");
             assertEquals(1, jdbc.queryForObject(
@@ -247,7 +247,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
                     }
                     connUc05.commit();
                     return "COMMIT";
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     connUc05.rollback();
                     return extraerSqlState(t);
                 }
@@ -259,7 +259,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
                     cobros.registrarCobro(f.sesiones.get("ADMINISTRADOR"), idCliente, idPedido,
                             new BigDecimal("100.00"), "EFECTIVO", UUID.randomUUID());
                     return "COMMIT";
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     return extraerSqlState(t);
                 }
             });
@@ -293,7 +293,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
 
         AtomicInteger deadlocks = new AtomicInteger();
         AtomicInteger duplicados = new AtomicInteger();
-        List<Throwable> errores = new ArrayList<>();
+        List<Exception> errores = new ArrayList<>();
 
         CountDownLatch listos = new CountDownLatch(3);
         CountDownLatch largada = new CountDownLatch(1);
@@ -344,7 +344,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
                         jdbc.update("INSERT INTO \"ORIGEN_MOVIMIENTO_CUENTA\" (\"idMovimientoCuenta\",\"idPedidoEntrega\") VALUES (?,?)",
                                 idMov, ped);
                     });
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     registrarError(t, deadlocks, duplicados, errores);
                 }
             });
@@ -355,7 +355,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
                     assertTrue(largada.await(5, TimeUnit.SECONDS));
                     cobros.registrarCobro(f.sesiones.get("ADMINISTRADOR"), idCliente, null,
                             new BigDecimal("80.00"), "EFECTIVO", UUID.randomUUID());
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     registrarError(t, deadlocks, duplicados, errores);
                 }
             });
@@ -366,7 +366,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
                     assertTrue(largada.await(5, TimeUnit.SECONDS));
                     cajaManual.registrarMovimientoCaja(f.sesiones.get("ADMINISTRADOR"), "INGRESO",
                             new BigDecimal("50.00"), "Fondo fijo", "N2-T09", UUID.randomUUID());
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     registrarError(t, deadlocks, duplicados, errores);
                 }
             });
@@ -542,7 +542,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
                         jdbc.queryForObject("SELECT \"idCliente\" FROM \"CLIENTE\" WHERE \"idCliente\"=? FOR UPDATE", Long.class, c2);
                     });
                     return "COMMIT";
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     return extraerSqlState(t);
                 }
             });
@@ -563,7 +563,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
                     }
                     connInterferencia.commit();
                     return "COMMIT";
-                } catch (Throwable t) {
+                } catch (Exception t) {
                     connInterferencia.rollback();
                     return extraerSqlState(t);
                 }
@@ -821,7 +821,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
     }
 
     private static void registrarError(
-            Throwable t, AtomicInteger deadlocks, AtomicInteger duplicados, List<Throwable> errores) {
+            Exception t, AtomicInteger deadlocks, AtomicInteger duplicados, List<Exception> errores) {
         String st = extraerSqlState(t);
         if ("40P01".equals(st)) deadlocks.incrementAndGet();
         else if ("23505".equals(st)) duplicados.incrementAndGet();

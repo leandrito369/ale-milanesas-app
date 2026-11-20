@@ -62,9 +62,16 @@ $uq_cobro$;
 
 -- -----------------------------------------------------------------------------
 -- BLOQUE 1: B2-HIBRIDO — Secuencias para PKs tecnicas nuevas y puente seguro
--- para PKs globales financieras (ordinales de negocio permanecen por agregado)
+-- para PKs globales financieras (ordinales de negocio permanecen por agregado),
+-- mas proyeccion segura BIGINT -> int4 sin desbordamiento 22003 para A2(ns, k).
 -- -----------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION "fn_gfis_advisory_lock_key"(p_id BIGINT)
+RETURNS INTEGER LANGUAGE sql IMMUTABLE STRICT AS $alk$
+    SELECT hashtext(p_id::text);
+$alk$;
+
 CREATE SEQUENCE IF NOT EXISTS "seq_gfis_recorrido" START 1;
+CREATE SEQUENCE IF NOT EXISTS "seq_gfis_recorrido_asignacion" START 1;
 CREATE SEQUENCE IF NOT EXISTS "seq_gfis_cierre_recorrido" START 1;
 CREATE SEQUENCE IF NOT EXISTS "seq_gfis_aplicacion_k2" START 1;
 CREATE SEQUENCE IF NOT EXISTS "seq_gfis_evento_imp" START 1;
@@ -181,8 +188,11 @@ CREATE TRIGGER "tg_gfis_proteger_pe1"
 
 -- -----------------------------------------------------------------------------
 -- BLOQUE 3: C1-EXPLICITO — Identidad durable de Recorrido y pertenencia
--- NOTA: el DDL NO resuelve silenciosamente el criterio comercial de inicio/fin
--- de un Recorrido ni lo infiere por (idUsuarioRepartidor, fechaReparto).
+-- pre-ENTREGA (RECORRIDO_ASIGNACION vinculada a ASIGNACION_REPARTO) y
+-- post-ENTREGA (RECORRIDO_ENTREGA).
+-- NOTA (Frontera A — PROPUESTA, NO RATIFICADA): el DDL de laboratorio modela
+-- la alternativa A1 corregida respetando UC-43 exclusivo VENDEDOR y sin
+-- introducir una operacion G0 nueva ni alterar RBAC 67x8.
 -- -----------------------------------------------------------------------------
 CREATE TABLE "RECORRIDO_REPARTO" (
     "idRecorrido" BIGINT NOT NULL DEFAULT nextval('"seq_gfis_recorrido"'),
@@ -198,6 +208,116 @@ CREATE TABLE "RECORRIDO_REPARTO" (
     )
 );
 
+-- Pertenencia auditable de Pedidos PENDIENTE al Recorrido ANTES de existir ENTREGA,
+-- enlazada a ASIGNACION_REPARTO(idPedido, numeroAsignacion) para preservar historial UC-43.
+CREATE TABLE "RECORRIDO_ASIGNACION" (
+    "idRecorridoAsignacion" BIGINT NOT NULL DEFAULT nextval('"seq_gfis_recorrido_asignacion"'),
+    "idRecorrido" BIGINT NOT NULL,
+    "idPedido" BIGINT NOT NULL,
+    "numeroAsignacion" INTEGER NOT NULL,
+    "estadoPertenencia" VARCHAR(40) NOT NULL DEFAULT 'ACTIVA',
+    "fechaHoraVinculacion" TIMESTAMPTZ NOT NULL,
+    "fechaHoraDesvinculacion" TIMESTAMPTZ,
+    "motivoDesvinculacion" TEXT,
+    CONSTRAINT "pk_gfis_recorrido_asignacion" PRIMARY KEY ("idRecorridoAsignacion"),
+    CONSTRAINT "uq_gfis_recorrido_asig_ref" UNIQUE ("idPedido", "numeroAsignacion"),
+    CONSTRAINT "fk_gfis_recorrido_asig_rec" FOREIGN KEY ("idRecorrido")
+        REFERENCES "RECORRIDO_REPARTO" ("idRecorrido") ON UPDATE RESTRICT ON DELETE RESTRICT,
+    CONSTRAINT "fk_gfis_recorrido_asig_ar" FOREIGN KEY ("idPedido", "numeroAsignacion")
+        REFERENCES "ASIGNACION_REPARTO" ("idPedido", "numeroAsignacion") ON UPDATE RESTRICT ON DELETE RESTRICT,
+    CONSTRAINT "ck_gfis_recorrido_asig_estado" CHECK (
+        "estadoPertenencia" IN (
+            'ACTIVA',
+            'DESVINCULADA_POR_REASIGNACION',
+            'DESVINCULADA_POR_REPROGRAMACION',
+            'DESVINCULADA_POR_CANCELACION',
+            'ENTREGADA'
+        )
+    ),
+    CONSTRAINT "ck_gfis_recorrido_asig_desv" CHECK (
+        ("estadoPertenencia" IN ('ACTIVA', 'ENTREGADA') AND "fechaHoraDesvinculacion" IS NULL)
+        OR ("estadoPertenencia" IN (
+                'DESVINCULADA_POR_REASIGNACION',
+                'DESVINCULADA_POR_REPROGRAMACION',
+                'DESVINCULADA_POR_CANCELACION'
+            ) AND "fechaHoraDesvinculacion" IS NOT NULL
+              AND length(btrim(coalesce("motivoDesvinculacion", ''))) > 0)
+    )
+);
+
+-- Un Pedido PENDIENTE pertenece a lo sumo a un Recorrido activo a la vez.
+CREATE UNIQUE INDEX "uq_gfis_recorrido_asig_activa_pedido"
+    ON "RECORRIDO_ASIGNACION" ("idPedido")
+    WHERE "estadoPertenencia" = 'ACTIVA';
+
+CREATE OR REPLACE FUNCTION "fn_gfis_validar_recorrido_asignacion"()
+RETURNS trigger LANGUAGE plpgsql AS $ra$
+DECLARE
+    v_rec_rep BIGINT;
+    v_rec_est VARCHAR(25);
+    v_ar_rep BIGINT;
+    v_ar_fin TIMESTAMPTZ;
+    v_ped_est VARCHAR(20);
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'FRONTERA-A: historial de pertenencia RECORRIDO_ASIGNACION no se elimina';
+    END IF;
+
+    IF TG_OP = 'INSERT' THEN
+        SELECT "idUsuarioRepartidor", "estadoOperativo"
+          INTO v_rec_rep, v_rec_est
+          FROM "RECORRIDO_REPARTO"
+         WHERE "idRecorrido" = NEW."idRecorrido";
+
+        IF v_rec_est <> 'ABIERTO' THEN
+            RAISE EXCEPTION 'FRONTERA-A: solo un Recorrido ABIERTO admite nuevas vinculaciones de Pedido';
+        END IF;
+
+        SELECT "idUsuarioRepartidor", "fechaHoraFin"
+          INTO v_ar_rep, v_ar_fin
+          FROM "ASIGNACION_REPARTO"
+         WHERE "idPedido" = NEW."idPedido"
+           AND "numeroAsignacion" = NEW."numeroAsignacion";
+
+        IF v_ar_rep IS DISTINCT FROM v_rec_rep THEN
+            RAISE EXCEPTION 'FRONTERA-A: Repartidor de ASIGNACION_REPARTO (%) no coincide con RECORRIDO_REPARTO (%)',
+                v_ar_rep, v_rec_rep;
+        END IF;
+
+        IF NEW."estadoPertenencia" = 'ACTIVA' THEN
+            IF v_ar_fin IS NOT NULL THEN
+                RAISE EXCEPTION 'FRONTERA-A: no se puede vincular como ACTIVA una asignacion ya cerrada';
+            END IF;
+            SELECT "estado" INTO v_ped_est FROM "PEDIDO" WHERE "idPedido" = NEW."idPedido";
+            IF v_ped_est <> 'PENDIENTE' THEN
+                RAISE EXCEPTION 'FRONTERA-A: solo Pedidos PENDIENTE se vinculan como ACTIVA al Recorrido';
+            END IF;
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    -- UPDATE: solo transiciones desde ACTIVA hacia estado terminal, sin alterar identidad
+    IF OLD."estadoPertenencia" <> 'ACTIVA' THEN
+        RAISE EXCEPTION 'FRONTERA-A: pertenencia en estado % es inmutable', OLD."estadoPertenencia";
+    END IF;
+    IF ROW(NEW."idRecorridoAsignacion", NEW."idRecorrido", NEW."idPedido",
+           NEW."numeroAsignacion", NEW."fechaHoraVinculacion")
+       IS DISTINCT FROM
+       ROW(OLD."idRecorridoAsignacion", OLD."idRecorrido", OLD."idPedido",
+           OLD."numeroAsignacion", OLD."fechaHoraVinculacion") THEN
+        RAISE EXCEPTION 'FRONTERA-A: prohibido mutar identidad o Recorrido de una pertenencia existente';
+    END IF;
+    IF NEW."estadoPertenencia" = 'ACTIVA' THEN
+        RAISE EXCEPTION 'FRONTERA-A: actualizacion redundante sin cambio de estado de pertenencia';
+    END IF;
+    RETURN NEW;
+END
+$ra$;
+
+CREATE TRIGGER "tg_gfis_validar_recorrido_asignacion"
+    BEFORE INSERT OR UPDATE OR DELETE ON "RECORRIDO_ASIGNACION"
+    FOR EACH ROW EXECUTE FUNCTION "fn_gfis_validar_recorrido_asignacion"();
+
 CREATE TABLE "RECORRIDO_ENTREGA" (
     "idRecorrido" BIGINT NOT NULL,
     "idPedido" BIGINT NOT NULL,
@@ -210,8 +330,57 @@ CREATE TABLE "RECORRIDO_ENTREGA" (
         REFERENCES "ENTREGA" ("idPedido") ON UPDATE RESTRICT ON DELETE RESTRICT
 );
 
+CREATE OR REPLACE FUNCTION "fn_gfis_validar_recorrido_entrega"()
+RETURNS trigger LANGUAGE plpgsql AS $re$
+DECLARE
+    v_rec_rep BIGINT;
+    v_rec_est VARCHAR(25);
+    v_ent_rep BIGINT;
+    v_rec_asig BIGINT;
+BEGIN
+    IF TG_OP IN ('UPDATE', 'DELETE') THEN
+        RAISE EXCEPTION 'FRONTERA-A: el vinculo RECORRIDO_ENTREGA es inmutable una vez registrado';
+    END IF;
+
+    SELECT "idUsuarioRepartidor", "estadoOperativo"
+      INTO v_rec_rep, v_rec_est
+      FROM "RECORRIDO_REPARTO"
+     WHERE "idRecorrido" = NEW."idRecorrido";
+
+    IF v_rec_est <> 'ABIERTO' THEN
+        RAISE EXCEPTION 'FRONTERA-A: no se puede vincular Entrega a Recorrido en estado %', v_rec_est;
+    END IF;
+
+    SELECT "idUsuarioRepartidor" INTO v_ent_rep
+      FROM "ENTREGA"
+     WHERE "idPedido" = NEW."idPedido";
+
+    IF v_ent_rep IS DISTINCT FROM v_rec_rep THEN
+        RAISE EXCEPTION 'FRONTERA-A: Repartidor de ENTREGA (%) no coincide con RECORRIDO_REPARTO (%)',
+            v_ent_rep, v_rec_rep;
+    END IF;
+
+    SELECT "idRecorrido" INTO v_rec_asig
+      FROM "RECORRIDO_ASIGNACION"
+     WHERE "idPedido" = NEW."idPedido"
+       AND "estadoPertenencia" = 'ACTIVA';
+
+    IF FOUND AND v_rec_asig IS DISTINCT FROM NEW."idRecorrido" THEN
+        RAISE EXCEPTION 'FRONTERA-A: Pedido % posee pertenencia ACTIVA en otro Recorrido (%)',
+            NEW."idPedido", v_rec_asig;
+    END IF;
+
+    RETURN NEW;
+END
+$re$;
+
+CREATE TRIGGER "tg_gfis_validar_recorrido_entrega"
+    BEFORE INSERT OR UPDATE OR DELETE ON "RECORRIDO_ENTREGA"
+    FOR EACH ROW EXECUTE FUNCTION "fn_gfis_validar_recorrido_entrega"();
+
 -- -----------------------------------------------------------------------------
--- BLOQUE 4: PE-2 — Cierre unico (C1-a), Cobros K2, Aplicaciones y Custodia
+-- BLOQUE 4: PE-2 — Cierre unico (C1-a), maquina de estados estricta (Frontera B
+-- PROPUESTA, NO RATIFICADA), Cobros K2, Aplicaciones y Custodia
 -- -----------------------------------------------------------------------------
 CREATE TABLE "CIERRE_RECORRIDO_PE2" (
     "idCierreRecorrido" BIGINT NOT NULL DEFAULT nextval('"seq_gfis_cierre_recorrido"'),
@@ -221,7 +390,7 @@ CREATE TABLE "CIERRE_RECORRIDO_PE2" (
     "huellaCanonica" VARCHAR(128) NOT NULL,
     "idUsuarioAdministrador" BIGINT NOT NULL,
     "fechaHoraRegistro" TIMESTAMPTZ NOT NULL,
-    "estadoCierre" VARCHAR(25) NOT NULL,
+    "estadoCierre" VARCHAR(40) NOT NULL,
     "medioPagoPermitido" VARCHAR(20) NOT NULL DEFAULT 'EFECTIVO',
     "importeEsperado" NUMERIC(18,2) NOT NULL,
     "importeEfectivoRecibido" NUMERIC(18,2) NOT NULL,
@@ -230,6 +399,7 @@ CREATE TABLE "CIERRE_RECORRIDO_PE2" (
     "importeCustodiaNoImputada" NUMERIC(18,2) NOT NULL,
     "motivoDiferencia" TEXT,
     "idUsuarioResolucionAdmin" BIGINT,
+    "tipoResolucionAdmin" VARCHAR(50),
     "motivoResolucionAdmin" TEXT,
     "fechaHoraResolucion" TIMESTAMPTZ,
     "reciboHistoricoJson" JSONB NOT NULL,
@@ -242,7 +412,19 @@ CREATE TABLE "CIERRE_RECORRIDO_PE2" (
     CONSTRAINT "fk_gfis_cierre_admin_res" FOREIGN KEY ("idUsuarioResolucionAdmin")
         REFERENCES "USUARIO" ("idUsuario") ON UPDATE RESTRICT ON DELETE RESTRICT,
     CONSTRAINT "ck_gfis_cierre_estado" CHECK (
-        "estadoCierre" IN ('PENDIENTE_CONCILIACION', 'CONFIRMADO')
+        "estadoCierre" IN (
+            'PENDIENTE_CONCILIACION',
+            'CONFIRMADO',
+            'CERRADO_CON_DIFERENCIA_RESUELTA'
+        )
+    ),
+    CONSTRAINT "ck_gfis_cierre_tipo_resolucion" CHECK (
+        "tipoResolucionAdmin" IS NULL
+        OR "tipoResolucionAdmin" IN (
+            'FALTANTE_ASENTADO_SIN_RECUPERO_AUTOMATICO',
+            'CUSTODIA_DEVUELTA_FISICAMENTE',
+            'MIXTA_FALTANTE_Y_CUSTODIA'
+        )
     ),
     CONSTRAINT "ck_gfis_cierre_d1_solo_efectivo" CHECK (
         "medioPagoPermitido" = 'EFECTIVO'
@@ -255,24 +437,47 @@ CREATE TABLE "CIERRE_RECORRIDO_PE2" (
         AND "importeCustodiaNoImputada" >= 0
         AND "importeImputadoTotal" + "importeCustodiaNoImputada" = "importeEfectivoRecibido"
     ),
-    CONSTRAINT "ck_gfis_cierre_motivo_diferencia" CHECK (
-        ("importeDiferenciaFaltante" = 0 AND "importeCustodiaNoImputada" = 0)
-        OR length(btrim(coalesce("motivoDiferencia", ''))) > 0
-    ),
-    CONSTRAINT "ck_gfis_cierre_resolucion_admin" CHECK (
-        "estadoCierre" <> 'CONFIRMADO'
-        OR ("importeDiferenciaFaltante" = 0 AND "importeCustodiaNoImputada" = 0)
-        OR ("idUsuarioResolucionAdmin" IS NOT NULL
+    CONSTRAINT "ck_gfis_cierre_coherencia_estado_y_diferencias" CHECK (
+        (
+            "estadoCierre" = 'CONFIRMADO'
+            AND "importeDiferenciaFaltante" = 0
+            AND "importeCustodiaNoImputada" = 0
+            AND "idUsuarioResolucionAdmin" IS NULL
+            AND "tipoResolucionAdmin" IS NULL
+            AND "motivoResolucionAdmin" IS NULL
+            AND "fechaHoraResolucion" IS NULL
+        )
+        OR (
+            "estadoCierre" = 'PENDIENTE_CONCILIACION'
+            AND ("importeDiferenciaFaltante" > 0 OR "importeCustodiaNoImputada" > 0)
+            AND length(btrim(coalesce("motivoDiferencia", ''))) > 0
+            AND "idUsuarioResolucionAdmin" IS NULL
+            AND "tipoResolucionAdmin" IS NULL
+            AND "motivoResolucionAdmin" IS NULL
+            AND "fechaHoraResolucion" IS NULL
+        )
+        OR (
+            "estadoCierre" = 'CERRADO_CON_DIFERENCIA_RESUELTA'
+            AND ("importeDiferenciaFaltante" > 0 OR "importeCustodiaNoImputada" > 0)
+            AND length(btrim(coalesce("motivoDiferencia", ''))) > 0
+            AND "idUsuarioResolucionAdmin" IS NOT NULL
+            AND "tipoResolucionAdmin" IS NOT NULL
+            AND length(btrim(coalesce("motivoResolucionAdmin", ''))) > 0
             AND "fechaHoraResolucion" IS NOT NULL
-            AND length(btrim(coalesce("motivoResolucionAdmin", ''))) > 0)
+        )
     )
 );
 
--- Unicidad fisica de cierre confirmado por Recorrido (resiste 2 ADMIN concurrentes
--- con claves UUID distintas).
-CREATE UNIQUE INDEX "uq_gfis_unico_cierre_confirmado_recorrido"
+-- Unicidad fisica de cierre terminal por Recorrido (cubre CONFIRMADO y
+-- CERRADO_CON_DIFERENCIA_RESUELTA; resiste 2 ADMIN concurrentes con UUID distintas).
+CREATE UNIQUE INDEX "uq_gfis_unico_cierre_terminal_recorrido"
     ON "CIERRE_RECORRIDO_PE2" ("idRecorrido")
-    WHERE "estadoCierre" = 'CONFIRMADO';
+    WHERE "estadoCierre" IN ('CONFIRMADO', 'CERRADO_CON_DIFERENCIA_RESUELTA');
+
+-- Unicidad fisica de conciliacion pendiente activa por Recorrido.
+CREATE UNIQUE INDEX "uq_gfis_unico_pendiente_recorrido"
+    ON "CIERRE_RECORRIDO_PE2" ("idRecorrido")
+    WHERE "estadoCierre" = 'PENDIENTE_CONCILIACION';
 
 CREATE OR REPLACE FUNCTION "fn_gfis_validar_admin_y_cierre"()
 RETURNS trigger LANGUAGE plpgsql AS $cierre$
@@ -303,8 +508,46 @@ BEGIN
         RAISE EXCEPTION 'PE-2/RBAC: solo ADMINISTRADOR habilitado puede resolver diferencias';
     END IF;
 
-    IF TG_OP = 'UPDATE' AND OLD."estadoCierre" = 'CONFIRMADO' THEN
-        RAISE EXCEPTION 'PE-2/C1-a: cierre CONFIRMADO y su recibo historico son inmutables';
+    IF TG_OP = 'INSERT' THEN
+        IF NEW."estadoCierre" = 'CERRADO_CON_DIFERENCIA_RESUELTA' THEN
+            RAISE EXCEPTION 'PE-2/FRONTERA-B: cierre con diferencia debe registrarse primero en PENDIENTE_CONCILIACION';
+        END IF;
+        IF NEW."estadoCierre" = 'PENDIENTE_CONCILIACION'
+           AND EXISTS (
+               SELECT 1 FROM "CIERRE_RECORRIDO_PE2"
+                WHERE "idRecorrido" = NEW."idRecorrido"
+                  AND "estadoCierre" IN ('CONFIRMADO', 'CERRADO_CON_DIFERENCIA_RESUELTA')
+           ) THEN
+            RAISE EXCEPTION 'PE-2/C1-a: prohibido abrir conciliacion sobre un recorrido que ya posee cierre terminal';
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    -- TG_OP = 'UPDATE': inmutabilidad estricta de estados terminales y maquina de estados Frontera B
+    IF OLD."estadoCierre" IN ('CONFIRMADO', 'CERRADO_CON_DIFERENCIA_RESUELTA') THEN
+        RAISE EXCEPTION 'PE-2/C1-a: cierre terminal (%) y su recibo historico son inmutables', OLD."estadoCierre";
+    END IF;
+
+    IF OLD."estadoCierre" = 'PENDIENTE_CONCILIACION'
+       AND NEW."estadoCierre" <> 'CERRADO_CON_DIFERENCIA_RESUELTA' THEN
+        RAISE EXCEPTION 'PE-2/FRONTERA-B: unica transicion valida desde PENDIENTE_CONCILIACION es CERRADO_CON_DIFERENCIA_RESUELTA (recibido: %)',
+            NEW."estadoCierre";
+    END IF;
+
+    IF ROW(NEW."idCierreRecorrido", NEW."idRecorrido", NEW."claveIdempotenciaCierre",
+           NEW."versionHuella", NEW."huellaCanonica", NEW."idUsuarioAdministrador",
+           NEW."fechaHoraRegistro", NEW."medioPagoPermitido", NEW."importeEsperado",
+           NEW."importeEfectivoRecibido", NEW."importeImputadoTotal",
+           NEW."importeDiferenciaFaltante", NEW."importeCustodiaNoImputada",
+           NEW."motivoDiferencia", NEW."reciboHistoricoJson")
+       IS DISTINCT FROM
+       ROW(OLD."idCierreRecorrido", OLD."idRecorrido", OLD."claveIdempotenciaCierre",
+           OLD."versionHuella", OLD."huellaCanonica", OLD."idUsuarioAdministrador",
+           OLD."fechaHoraRegistro", OLD."medioPagoPermitido", OLD."importeEsperado",
+           OLD."importeEfectivoRecibido", OLD."importeImputadoTotal",
+           OLD."importeDiferenciaFaltante", OLD."importeCustodiaNoImputada",
+           OLD."motivoDiferencia", OLD."reciboHistoricoJson") THEN
+        RAISE EXCEPTION 'PE-2/FRONTERA-B: resolucion administrativa no puede mutar montos, identidad ni recibo historico';
     END IF;
 
     RETURN NEW;
@@ -774,3 +1017,4 @@ $d7a$;
 CREATE TRIGGER "tg_gfis_guard_d7a_y_reservas_cobro"
     BEFORE UPDATE OF "estadoCobro" ON "COBRO"
     FOR EACH ROW EXECUTE FUNCTION "fn_gfis_guard_d7a_y_reservas_cobro"();
+

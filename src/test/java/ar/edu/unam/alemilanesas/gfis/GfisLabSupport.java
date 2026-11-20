@@ -93,8 +93,33 @@ public final class GfisLabSupport {
     }
 
     public static void bloquearA2(JdbcTemplate jdbc, int namespace, long recursoId) {
-        int idInt = Math.toIntExact(recursoId);
-        jdbc.queryForObject("SELECT pg_advisory_xact_lock(?, ?)", Object.class, namespace, idInt);
+        jdbc.queryForObject(
+                "SELECT pg_advisory_xact_lock(?, hashtext(?::text))",
+                Object.class,
+                namespace,
+                Long.toString(recursoId));
+    }
+
+    /**
+     * Adquiere multiples locks A2(namespace, hashtext(id::text)) en estricto orden
+     * ascendente de clave hash int4 para eliminar ciclos incluso ante colisiones hash.
+     */
+    public static void bloquearA2LoteOrdenadoPorHash(JdbcTemplate jdbc, int namespace, List<Long> recursoIds) {
+        if (recursoIds.isEmpty()) {
+            return;
+        }
+        String csv = recursoIds.stream()
+                .distinct()
+                .map(Object::toString)
+                .collect(java.util.stream.Collectors.joining(","));
+        jdbc.queryForList("""
+                SELECT pg_advisory_xact_lock(?, k)
+                  FROM (
+                      SELECT DISTINCT hashtext(v::text) AS k
+                        FROM unnest(string_to_array(?, ',')::bigint[]) AS v
+                       ORDER BY 1 ASC
+                  ) ordenado
+                """, Object.class, namespace, csv);
     }
 
     public static void bloquearPuenteLegacyFinanciero(JdbcTemplate jdbc) {
@@ -165,6 +190,13 @@ public final class GfisLabSupport {
                 INSERT INTO "RECORRIDO_ENTREGA" ("idRecorrido","idPedido","fechaHoraVinculacion")
                 VALUES (?,?,clock_timestamp())
                 """, idRecorrido, idPedido);
+        jdbc.update("""
+                UPDATE "RECORRIDO_ASIGNACION"
+                   SET "estadoPertenencia" = 'ENTREGADA'
+                 WHERE "idPedido" = ?
+                   AND "idRecorrido" = ?
+                   AND "estadoPertenencia" = 'ACTIVA'
+                """, idPedido, idRecorrido);
     }
 
     public static long crearRecorridoExplicito(JdbcTemplate jdbc, long idRepartidor, String ref) {
@@ -174,6 +206,66 @@ public final class GfisLabSupport {
                 RETURNING "idRecorrido"
                 """, Long.class, idRepartidor, ref);
         return Objects.requireNonNull(id);
+    }
+
+    public static long vincularAsignacionARecorridoEnLab(
+            JdbcTemplate jdbc, long idRecorrido, long idPedido, int numeroAsignacion) {
+        Long id = jdbc.queryForObject("""
+                INSERT INTO "RECORRIDO_ASIGNACION" (
+                    "idRecorrido","idPedido","numeroAsignacion","estadoPertenencia","fechaHoraVinculacion")
+                VALUES (?,?,?,'ACTIVA',clock_timestamp())
+                RETURNING "idRecorridoAsignacion"
+                """, Long.class, idRecorrido, idPedido, numeroAsignacion);
+        return Objects.requireNonNull(id);
+    }
+
+    public static void desvincularAsignacionPorReasignacionEnLab(
+            JdbcTemplate jdbc, long idPedido, int numeroAsignacion, String motivo) {
+        int filas = jdbc.update("""
+                UPDATE "RECORRIDO_ASIGNACION"
+                   SET "estadoPertenencia" = 'DESVINCULADA_POR_REASIGNACION',
+                       "fechaHoraDesvinculacion" = clock_timestamp(),
+                       "motivoDesvinculacion" = ?
+                 WHERE "idPedido" = ?
+                   AND "numeroAsignacion" = ?
+                   AND "estadoPertenencia" = 'ACTIVA'
+                """, motivo, idPedido, numeroAsignacion);
+        if (filas != 1) {
+            throw new IllegalStateException("No existia pertenencia ACTIVA para desvincular en Pedido=" + idPedido);
+        }
+    }
+
+    /**
+     * Resolucion administrativa de discrepancia (Frontera B — PROPUESTA, NO RATIFICADA):
+     * transiciona PENDIENTE_CONCILIACION -> CERRADO_CON_DIFERENCIA_RESUELTA sin extinguir
+     * V_e^{vig} ni emitir Cobro/Caja ficticios.
+     */
+    public static void resolverDiferenciaAdministrativaEnTx(
+            JdbcTemplate jdbc,
+            long idCierreRecorrido,
+            long idRecorrido,
+            long idAdminResolucion,
+            String tipoResolucionAdmin,
+            String motivoResolucionAdmin) {
+        bloquearA2(jdbc, NS_RECORRIDO, idRecorrido);
+        int filas = jdbc.update("""
+                UPDATE "CIERRE_RECORRIDO_PE2"
+                   SET "estadoCierre" = 'CERRADO_CON_DIFERENCIA_RESUELTA',
+                       "idUsuarioResolucionAdmin" = ?,
+                       "tipoResolucionAdmin" = ?,
+                       "motivoResolucionAdmin" = ?,
+                       "fechaHoraResolucion" = clock_timestamp()
+                 WHERE "idCierreRecorrido" = ?
+                   AND "idRecorrido" = ?
+                """, idAdminResolucion, tipoResolucionAdmin, motivoResolucionAdmin, idCierreRecorrido, idRecorrido);
+        if (filas != 1) {
+            throw new IllegalStateException("Cierre no encontrado para resolucion administrativa: " + idCierreRecorrido);
+        }
+        jdbc.update("""
+                UPDATE "RECORRIDO_REPARTO"
+                   SET "estadoOperativo" = 'CERRADO'
+                 WHERE "idRecorrido" = ?
+                """, idRecorrido);
     }
 
     public record AplicacionPlan(long idCliente, long idPedido, BigDecimal importeAplicado) {}
@@ -247,11 +339,13 @@ public final class GfisLabSupport {
                     (String) row.get("recibo"));
         }
 
-        // Orden determinista de locks: CLIENTE ASC -> PEDIDO ASC -> PE-1 ASC
+        // Orden determinista en dos fases:
+        // Fase 1: A2(NS_CLIENTE, hashtext(id)) ordenado por int4 ASC (libre de ciclos incluso con colision hash)
+        // Fase 2: CLIENTE FOR UPDATE en idCliente ASC -> PEDIDO FOR UPDATE ASC -> PE-1 FOR UPDATE ASC
         List<Long> clientesOrdenados = aplicaciones.stream()
                 .map(AplicacionPlan::idCliente).distinct().sorted().toList();
+        bloquearA2LoteOrdenadoPorHash(jdbc, NS_CLIENTE, clientesOrdenados);
         for (long idCliente : clientesOrdenados) {
-            bloquearA2(jdbc, NS_CLIENTE, idCliente);
             jdbc.queryForObject("SELECT \"idCliente\" FROM \"CLIENTE\" WHERE \"idCliente\"=? FOR UPDATE",
                     Long.class, idCliente);
         }
@@ -277,31 +371,26 @@ public final class GfisLabSupport {
                 + "\",\"custodia\":\"" + importeCustodiaNoImputada
                 + "\",\"faltante\":\"" + importeDiferenciaFaltante + "\"}";
 
-        boolean tieneDiferencia = importeDiferenciaFaltante.signum() > 0 || importeCustodiaNoImputada.signum() > 0;
-        Long idAdminRes = ("CONFIRMADO".equals(estadoCierreDestino) && tieneDiferencia) ? idAdmin : null;
-
-        // Insertar primero la cabecera de cierre para que uq_gfis_unico_cierre_confirmado_recorrido
+        // Insertar primero la cabecera de cierre para que uq_gfis_unico_cierre_terminal_recorrido
         // dispare 23505 (futuro RECORRIDO_YA_CERRADO) antes de evaluar 422 cobertura;
         // si 422 falla luego, la transaccion T1 hace rollback integral de esta fila.
+        // Nota Frontera B: resolucion administrativa es un acto posterior separado sobre
+        // PENDIENTE_CONCILIACION -> CERRADO_CON_DIFERENCIA_RESUELTA (sin campos de resolucion en INSERT).
         var insertado = jdbc.queryForMap("""
                 INSERT INTO "CIERRE_RECORRIDO_PE2" (
                     "idRecorrido","claveIdempotenciaCierre","versionHuella","huellaCanonica",
                     "idUsuarioAdministrador","fechaHoraRegistro","estadoCierre","medioPagoPermitido",
                     "importeEsperado","importeEfectivoRecibido","importeImputadoTotal",
                     "importeDiferenciaFaltante","importeCustodiaNoImputada",
-                    "motivoDiferencia","idUsuarioResolucionAdmin","motivoResolucionAdmin",
-                    "fechaHoraResolucion","reciboHistoricoJson")
-                VALUES (?,?,?,?,?,clock_timestamp(),?,'EFECTIVO',?,?,?,?,?,?,?,?,
-                        CASE WHEN ?::bigint IS NOT NULL THEN clock_timestamp() ELSE NULL END,
-                        ?::jsonb)
+                    "motivoDiferencia","reciboHistoricoJson")
+                VALUES (?,?,?,?,?,clock_timestamp(),?,'EFECTIVO',?,?,?,?,?,?,?::jsonb)
                 RETURNING "idCierreRecorrido", "reciboHistoricoJson"::text AS recibo
                 """,
                 idRecorrido, claveIdempotencia, versionHuella, huellaCanonica,
                 idAdmin, estadoCierreDestino,
                 importeEsperado, importeEfectivoRecibido, totalImputado,
                 importeDiferenciaFaltante, importeCustodiaNoImputada,
-                motivoDiferencia, idAdminRes, motivoResolucionAdmin,
-                idAdminRes, reciboJson);
+                motivoDiferencia, reciboJson);
         long cierreId = ((Number) Objects.requireNonNull(insertado.get("idCierreRecorrido"))).longValue();
         String reciboNormalizado = (String) Objects.requireNonNull(insertado.get("recibo"));
 
@@ -505,7 +594,8 @@ public final class GfisLabSupport {
                        JOIN "PEDIDO" p ON p."idPedido" = en."idPedido"
                        LEFT JOIN "RECORRIDO_ENTREGA" re ON re."idPedido" = en."idPedido"
                        LEFT JOIN "CIERRE_RECORRIDO_PE2" cr
-                              ON cr."idRecorrido" = re."idRecorrido" AND cr."estadoCierre" = 'CONFIRMADO'
+                              ON cr."idRecorrido" = re."idRecorrido"
+                             AND cr."estadoCierre" IN ('CONFIRMADO', 'CERRADO_CON_DIFERENCIA_RESUELTA')
                         WHERE p."idCliente" = c."idCliente"
                           AND cr."idCierreRecorrido" IS NULL
                    )
