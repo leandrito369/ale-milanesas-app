@@ -148,8 +148,9 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
     void n2T08b_C303OrdenAlineadoPedidoAsignacionConPe1SerializaYRevalidaUc43() throws Exception {
         var f = tx.execute(s -> new AsignacionRepartoFixture(jdbc, pedidos));
         assertNotNull(f);
-        asignaciones.asignarOReasignar(f.vendedor(), f.datos(f.primero, null));
+        var asig = asignaciones.asignarOReasignar(f.vendedor(), f.datos(f.primero, null));
         long recorrido = GfisLabSupport.crearRecorridoExplicito(jdbc, f.primero, "REC-T08");
+        GfisLabSupport.vincularAsignacionARecorridoEnLab(jdbc, recorrido, f.pendiente, asig.numeroAsignacion());
 
         CountDownLatch pedidoBloqueado = new CountDownLatch(1);
         CountDownLatch liberarEntrega = new CountDownLatch(1);
@@ -281,6 +282,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
 
         long ped = pedidos.cargarPedido(f.vendedor(), f.datos()).idPedido();
         long recorrido = GfisLabSupport.crearRecorridoExplicito(jdbc, idRepartidor, "REC-T09");
+        GfisLabSupport.asignarYVincularPedidoEnLab(jdbc, ped, idRepartidor, f.base, recorrido);
 
         // Cobro anticipo con reserva IMP-B de 120.00 sobre ped
         var anticipo = cobros.registrarCobro(f.sesiones.get("ADMINISTRADOR"), idCliente, null,
@@ -403,8 +405,10 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
     void n2T13_MultiClienteOrdenInvertidoABvsBASinCiclosNiDuplicacion() throws Exception {
         PedidoFixture f = tx.execute(s -> new PedidoFixture(jdbc));
         assertNotNull(f);
+        long idVendedor = f.base;
         long idAdmin = f.base + 1;
-        long idRep = f.base + 3;
+        long idRep1 = f.base + 3;
+        long idRep2 = tx.execute(s -> GfisLabSupport.crearRepartidorAdicionalEnLab(jdbc, f.base + 52));
         long clienteA = f.base;
         long clienteB = f.base + 1;
 
@@ -413,15 +417,19 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
         long pedA2 = crearPedidoParaCliente(f, clienteA);
         long pedB2 = crearPedidoParaCliente(f, clienteB);
 
-        long rec1 = GfisLabSupport.crearRecorridoExplicito(jdbc, idRep, "REC-T13-AB");
-        long rec2 = GfisLabSupport.crearRecorridoExplicito(jdbc, idRep, "REC-T13-BA");
-        GfisLabSupport.registrarEntregaPe1EnLaboratorio(jdbc, pedA1, clienteA, idRep, rec1,
+        long rec1 = GfisLabSupport.crearRecorridoExplicito(jdbc, idRep1, "REC-T13-AB");
+        long rec2 = GfisLabSupport.crearRecorridoExplicito(jdbc, idRep2, "REC-T13-BA");
+        GfisLabSupport.asignarYVincularPedidoEnLab(jdbc, pedA1, idRep1, idVendedor, rec1);
+        GfisLabSupport.asignarYVincularPedidoEnLab(jdbc, pedB1, idRep1, idVendedor, rec1);
+        GfisLabSupport.asignarYVincularPedidoEnLab(jdbc, pedA2, idRep2, idVendedor, rec2);
+        GfisLabSupport.asignarYVincularPedidoEnLab(jdbc, pedB2, idRep2, idVendedor, rec2);
+        GfisLabSupport.registrarEntregaPe1EnLaboratorio(jdbc, pedA1, clienteA, idRep1, rec1,
                 new BigDecimal("100.00"), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), new BigDecimal("100.00"), "IMP_B");
-        GfisLabSupport.registrarEntregaPe1EnLaboratorio(jdbc, pedB1, clienteB, idRep, rec1,
+        GfisLabSupport.registrarEntregaPe1EnLaboratorio(jdbc, pedB1, clienteB, idRep1, rec1,
                 new BigDecimal("150.00"), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), new BigDecimal("150.00"), "IMP_B");
-        GfisLabSupport.registrarEntregaPe1EnLaboratorio(jdbc, pedA2, clienteA, idRep, rec2,
+        GfisLabSupport.registrarEntregaPe1EnLaboratorio(jdbc, pedA2, clienteA, idRep2, rec2,
                 new BigDecimal("200.00"), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), new BigDecimal("200.00"), "IMP_B");
-        GfisLabSupport.registrarEntregaPe1EnLaboratorio(jdbc, pedB2, clienteB, idRep, rec2,
+        GfisLabSupport.registrarEntregaPe1EnLaboratorio(jdbc, pedB2, clienteB, idRep2, rec2,
                 new BigDecimal("250.00"), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), new BigDecimal("250.00"), "IMP_B");
 
         sincronizarSecuenciasB2();
@@ -429,15 +437,12 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
         CountDownLatch listos = new CountDownLatch(2);
         CountDownLatch largada = new CountDownLatch(1);
         try (ExecutorService pool = Executors.newFixedThreadPool(2)) {
-            // Cierre 1 recibe orden [A, B]; Cierre 2 recibe orden INVERTIDO [B, A].
-            // Sin lock global 2929001 (B2 puro) para probar que el orden determinista CLIENTE ASC evita ciclos!
             Future<GfisLabSupport.ResultadoCierreLab> f1 = pool.submit(() -> {
                 listos.countDown();
                 assertTrue(largada.await(5, TimeUnit.SECONDS));
-                return tx.execute(s -> GfisLabSupport.ejecutarCierreT1K2EnTx(
-                        jdbc, rec1, idAdmin, UUID.randomUUID(), "v1", "h-t13-1", "CONFIRMADO",
+                return tx.execute(s -> GfisLabSupport.ejecutarCierreLimpioT1K2EnTx(
+                        jdbc, rec1, idAdmin, UUID.randomUUID(), "v1", "h-t13-1",
                         new BigDecimal("250.00"), new BigDecimal("250.00"),
-                        BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), null, null,
                         List.of(
                                 new GfisLabSupport.AplicacionPlan(clienteA, pedA1, new BigDecimal("100.00")),
                                 new GfisLabSupport.AplicacionPlan(clienteB, pedB1, new BigDecimal("150.00"))),
@@ -446,10 +451,9 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
             Future<GfisLabSupport.ResultadoCierreLab> f2 = pool.submit(() -> {
                 listos.countDown();
                 assertTrue(largada.await(5, TimeUnit.SECONDS));
-                return tx.execute(s -> GfisLabSupport.ejecutarCierreT1K2EnTx(
-                        jdbc, rec2, idAdmin, UUID.randomUUID(), "v1", "h-t13-2", "CONFIRMADO",
+                return tx.execute(s -> GfisLabSupport.ejecutarCierreLimpioT1K2EnTx(
+                        jdbc, rec2, idAdmin, UUID.randomUUID(), "v1", "h-t13-2",
                         new BigDecimal("450.00"), new BigDecimal("450.00"),
-                        BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), null, null,
                         List.of(
                                 new GfisLabSupport.AplicacionPlan(clienteB, pedB2, new BigDecimal("250.00")),
                                 new GfisLabSupport.AplicacionPlan(clienteA, pedA2, new BigDecimal("200.00"))),
@@ -508,6 +512,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
             for (int k = 0; k < 2; k++) {
                 long p = crearPedidoParaCliente(f, c);
                 BigDecimal monto = new BigDecimal("125.00");
+                GfisLabSupport.asignarYVincularPedidoEnLab(jdbc, p, idRep, f.base, recorrido);
                 GfisLabSupport.registrarEntregaPe1EnLaboratorio(jdbc, p, c, idRep, recorrido,
                         monto, BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), monto, "IMP_B");
                 plan.add(new GfisLabSupport.AplicacionPlan(c, p, monto));
@@ -581,10 +586,9 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
         // Fase 2: reintento en NUEVA transaccion con la misma claveIdempotenciaCierre (4 Clientes / 8 Entregas)
         final BigDecimal esperadoFinal = totalEsperado;
         long inicioNs = System.nanoTime();
-        var resRetry = tx.execute(s -> GfisLabSupport.ejecutarCierreT1K2EnTx(
-                jdbc, recorrido, idAdmin, claveCierre, "v1", "h-t16-4x8", "CONFIRMADO",
+        var resRetry = tx.execute(s -> GfisLabSupport.ejecutarCierreLimpioT1K2EnTx(
+                jdbc, recorrido, idAdmin, claveCierre, "v1", "h-t16-4x8",
                 esperadoFinal, esperadoFinal,
-                BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), null, null,
                 plan, false, true));
         long latenciaMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - inicioNs);
 
@@ -660,6 +664,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
         // Senal E: pago ONLINE confirmado + Entrega pendiente de cierre
         long pedE = crearPedidoParaCliente(f, cE);
         long recE = GfisLabSupport.crearRecorridoExplicito(jdbc, idRep, "REC-RCG06-E");
+        GfisLabSupport.asignarYVincularPedidoEnLab(jdbc, pedE, idRep, f.base, recE);
         sincronizarSecuenciasB2();
         long idCobroOnline = GfisLabSupport.siguientePkCobroB2(jdbc);
         jdbc.update("""
@@ -700,6 +705,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
 
         long ped = crearPedidoParaCliente(f, cliente);
         long rec = GfisLabSupport.crearRecorridoExplicito(jdbc, idRep, "REC-T18-422");
+        GfisLabSupport.asignarYVincularPedidoEnLab(jdbc, ped, idRep, f.base, rec);
         GfisLabSupport.registrarEntregaPe1EnLaboratorio(jdbc, ped, cliente, idRep, rec,
                 new BigDecimal("100.00"), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2),
                 new BigDecimal("100.00"), "IMP_B");
@@ -711,10 +717,9 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
         // Intento de aplicar 120.00 sobre V_e^{vig}=100.00 => rechazo contractual 422
         GfisLabSupport.CoberturaNoAcreditadaException ex422 = assertThrows(
                 GfisLabSupport.CoberturaNoAcreditadaException.class,
-                () -> tx.executeWithoutResult(s -> GfisLabSupport.ejecutarCierreT1K2EnTx(
-                        jdbc, rec, idAdmin, UUID.randomUUID(), "v1", "h-t18-422", "CONFIRMADO",
+                () -> tx.executeWithoutResult(s -> GfisLabSupport.ejecutarCierreLimpioT1K2EnTx(
+                        jdbc, rec, idAdmin, UUID.randomUUID(), "v1", "h-t18-422",
                         new BigDecimal("100.00"), new BigDecimal("120.00"),
-                        BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), null, null,
                         List.of(new GfisLabSupport.AplicacionPlan(cliente, ped, new BigDecimal("120.00"))),
                         true, false)));
         assertTrue(ex422.getMessage().contains("422 COBERTURA_NO_ACREDITADA"));
@@ -745,45 +750,43 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
         PedidoFixture f = tx.execute(s -> new PedidoFixture(jdbc));
         assertNotNull(f);
         long idAdmin = f.base + 1;
-        long idRep = f.base + 3;
+        long idRep1 = f.base + 3;
+        long idRep2 = tx.execute(s -> GfisLabSupport.crearRepartidorAdicionalEnLab(jdbc, f.base + 53));
         long idVendedor = f.base;
         long cliente = f.base;
 
         long ped1 = crearPedidoParaCliente(f, cliente);
         long ped2 = crearPedidoParaCliente(f, cliente);
-        long rec1 = GfisLabSupport.crearRecorridoExplicito(jdbc, idRep, "REC-T05-1");
-        long rec2 = GfisLabSupport.crearRecorridoExplicito(jdbc, idRep, "REC-T05-2");
-        GfisLabSupport.registrarEntregaPe1EnLaboratorio(jdbc, ped1, cliente, idRep, rec1,
+        long rec1 = GfisLabSupport.crearRecorridoExplicito(jdbc, idRep1, "REC-T05-1");
+        long rec2 = GfisLabSupport.crearRecorridoExplicito(jdbc, idRep2, "REC-T05-2");
+        GfisLabSupport.asignarYVincularPedidoEnLab(jdbc, ped1, idRep1, idVendedor, rec1);
+        GfisLabSupport.asignarYVincularPedidoEnLab(jdbc, ped2, idRep2, idVendedor, rec2);
+        GfisLabSupport.registrarEntregaPe1EnLaboratorio(jdbc, ped1, cliente, idRep1, rec1,
                 new BigDecimal("100.00"), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), new BigDecimal("100.00"), "IMP_B");
-        GfisLabSupport.registrarEntregaPe1EnLaboratorio(jdbc, ped2, cliente, idRep, rec2,
+        GfisLabSupport.registrarEntregaPe1EnLaboratorio(jdbc, ped2, cliente, idRep2, rec2,
                 new BigDecimal("100.00"), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), new BigDecimal("100.00"), "IMP_B");
 
         UUID claveRec1 = UUID.randomUUID();
-        var ok = tx.execute(s -> GfisLabSupport.ejecutarCierreT1K2EnTx(
-                jdbc, rec1, idAdmin, claveRec1, "v1", "h-rec1", "CONFIRMADO",
+        var ok = tx.execute(s -> GfisLabSupport.ejecutarCierreLimpioT1K2EnTx(
+                jdbc, rec1, idAdmin, claveRec1, "v1", "h-rec1",
                 new BigDecimal("100.00"), new BigDecimal("100.00"),
-                BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), null, null,
                 List.of(new GfisLabSupport.AplicacionPlan(cliente, ped1, new BigDecimal("100.00"))),
                 true, false));
         assertNotNull(ok);
 
-        // 1) Correccion 2.3: presentar la MISMA UUID valida sobre OTRO Recorrido (rec2) => 409 ambito, sin filtrar recibo
         IllegalStateException exAmbito = assertThrows(IllegalStateException.class, () ->
-                tx.execute(s -> GfisLabSupport.ejecutarCierreT1K2EnTx(
-                        jdbc, rec2, idAdmin, claveRec1, "v1", "h-rec1", "CONFIRMADO",
+                tx.execute(s -> GfisLabSupport.ejecutarCierreLimpioT1K2EnTx(
+                        jdbc, rec2, idAdmin, claveRec1, "v1", "h-rec1",
                         new BigDecimal("100.00"), new BigDecimal("100.00"),
-                        BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), null, null,
                         List.of(new GfisLabSupport.AplicacionPlan(cliente, ped2, new BigDecimal("100.00"))),
                         true, false)));
         assertTrue(exAmbito.getMessage().contains("CONFLICTO AMBITO 409"));
 
-        // 2) Correccion 2.3: actor sin rol ADMINISTRADOR (REPARTIDOR / VENDEDOR) con UUID valida => 403, sin replay
-        for (long actorNoAdmin : List.of(idRep, idVendedor)) {
+        for (long actorNoAdmin : List.of(idRep1, idVendedor)) {
             SecurityException ex403 = assertThrows(SecurityException.class, () ->
-                    tx.execute(s -> GfisLabSupport.ejecutarCierreT1K2EnTx(
-                            jdbc, rec1, actorNoAdmin, claveRec1, "v1", "h-rec1", "CONFIRMADO",
+                    tx.execute(s -> GfisLabSupport.ejecutarCierreLimpioT1K2EnTx(
+                            jdbc, rec1, actorNoAdmin, claveRec1, "v1", "h-rec1",
                             new BigDecimal("100.00"), new BigDecimal("100.00"),
-                            BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), null, null,
                             List.of(new GfisLabSupport.AplicacionPlan(cliente, ped1, new BigDecimal("100.00"))),
                             true, false)));
             assertTrue(ex403.getMessage().contains("403"));

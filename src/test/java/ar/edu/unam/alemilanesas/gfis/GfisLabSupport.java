@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import javax.sql.DataSource;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -66,6 +67,22 @@ public final class GfisLabSupport {
         }
     }
 
+    public record AplicacionPlan(long idCliente, long idPedido, BigDecimal importeAplicado) {}
+
+    public record ResultadoCierreLab(long idCierre, String estadoCierre, boolean replay, String reciboJson) {}
+
+    public record EvidenciaEgresoCustodia(
+            String numeroReciboDevolucion,
+            String receptorIdentificacion,
+            String motivo) {}
+
+    public record ResultadoAnulacionC04Lab(
+            long idCobro,
+            long idMovimientoCuenta,
+            long idMovimientoCaja,
+            boolean replay,
+            String reciboJson) {}
+
     private GfisLabSupport() {}
 
     public static void aplicarMigracionCandidataV4EnLaboratorio(DataSource dataSource) {
@@ -111,7 +128,7 @@ public final class GfisLabSupport {
         String csv = recursoIds.stream()
                 .distinct()
                 .map(Object::toString)
-                .collect(java.util.stream.Collectors.joining(","));
+                .collect(Collectors.joining(","));
         jdbc.queryForList("""
                 SELECT pg_advisory_xact_lock(?, k)
                   FROM (
@@ -141,8 +158,71 @@ public final class GfisLabSupport {
         return Objects.requireNonNull(id);
     }
 
+    public static long crearRepartidorAdicionalEnLab(JdbcTemplate jdbc, long idUsuario) {
+        jdbc.update("""
+                INSERT INTO "USUARIO" ("idUsuario","nombreUsuario","credencialProtegida","estado",
+                    "cambioCredencialPendiente","fechaHoraAlta")
+                VALUES (?,?,'HASH_TEST','HABILITADO',false,now())
+                """, idUsuario, "rep_gfis_" + idUsuario);
+        jdbc.update("INSERT INTO \"USUARIO_ROL\" VALUES (?,'REPARTIDOR',now())", idUsuario);
+        return idUsuario;
+    }
+
+    public static long crearRecorridoExplicito(JdbcTemplate jdbc, long idRepartidor, String ref) {
+        Long id = jdbc.queryForObject("""
+                INSERT INTO "RECORRIDO_REPARTO" ("idUsuarioRepartidor","fechaHoraCreacion","estadoOperativo","referenciaOperativa")
+                VALUES (?, clock_timestamp(), 'ABIERTO', ?)
+                RETURNING "idRecorrido"
+                """, Long.class, idRepartidor, ref);
+        return Objects.requireNonNull(id);
+    }
+
+    public static int asignarYVincularPedidoEnLab(
+            JdbcTemplate jdbc, long idPedido, long idRepartidor, long idVendedor, long idRecorrido) {
+        Integer siguiente = jdbc.queryForObject(
+                "SELECT COALESCE(MAX(\"numeroAsignacion\"), 0) + 1 FROM \"ASIGNACION_REPARTO\" WHERE \"idPedido\"=?",
+                Integer.class, idPedido);
+        int num = Objects.requireNonNull(siguiente);
+        jdbc.update("""
+                INSERT INTO "ASIGNACION_REPARTO" (
+                    "idPedido","numeroAsignacion","idUsuarioRepartidor","idUsuarioVendedor",
+                    "fechaHoraInicio","fechaHoraFin","motivoReasignacion")
+                VALUES (?,?,?,?,clock_timestamp(),NULL,NULL)
+                """, idPedido, num, idRepartidor, idVendedor);
+        vincularAsignacionARecorridoEnLab(jdbc, idRecorrido, idPedido, num);
+        return num;
+    }
+
+    public static long vincularAsignacionARecorridoEnLab(
+            JdbcTemplate jdbc, long idRecorrido, long idPedido, int numeroAsignacion) {
+        Long id = jdbc.queryForObject("""
+                INSERT INTO "RECORRIDO_ASIGNACION" (
+                    "idRecorrido","idPedido","numeroAsignacion","estadoPertenencia","fechaHoraVinculacion")
+                VALUES (?,?,?,'ACTIVA',clock_timestamp())
+                RETURNING "idRecorridoAsignacion"
+                """, Long.class, idRecorrido, idPedido, numeroAsignacion);
+        return Objects.requireNonNull(id);
+    }
+
+    public static void desvincularAsignacionEnLab(
+            JdbcTemplate jdbc, long idPedido, int numeroAsignacion, String estadoDestino, String motivo) {
+        int filas = jdbc.update("""
+                UPDATE "RECORRIDO_ASIGNACION"
+                   SET "estadoPertenencia" = ?,
+                       "fechaHoraDesvinculacion" = clock_timestamp(),
+                       "motivoDesvinculacion" = ?
+                 WHERE "idPedido" = ?
+                   AND "numeroAsignacion" = ?
+                   AND "estadoPertenencia" = 'ACTIVA'
+                """, estadoDestino, motivo, idPedido, numeroAsignacion);
+        if (filas != 1) {
+            throw new IllegalStateException("No existia pertenencia ACTIVA para desvincular en Pedido=" + idPedido);
+        }
+    }
+
     /**
-     * Registra una ENTREGA + DETALLE_ENTREGA + snapshot PE-1 y la vincula a un Recorrido.
+     * Registra una ENTREGA + DETALLE_ENTREGA + snapshot PE-1 y la vincula al Recorrido.
+     * Exige pertenencia ACTIVA previa en RECORRIDO_ASIGNACION y ASIGNACION_REPARTO vigente.
      * Excluye UC-07 (solo originales).
      */
     public static void registrarEntregaPe1EnLaboratorio(
@@ -199,105 +279,7 @@ public final class GfisLabSupport {
                 """, idPedido, idRecorrido);
     }
 
-    public static long crearRecorridoExplicito(JdbcTemplate jdbc, long idRepartidor, String ref) {
-        Long id = jdbc.queryForObject("""
-                INSERT INTO "RECORRIDO_REPARTO" ("idUsuarioRepartidor","fechaHoraCreacion","estadoOperativo","referenciaOperativa")
-                VALUES (?, clock_timestamp(), 'ABIERTO', ?)
-                RETURNING "idRecorrido"
-                """, Long.class, idRepartidor, ref);
-        return Objects.requireNonNull(id);
-    }
-
-    public static long vincularAsignacionARecorridoEnLab(
-            JdbcTemplate jdbc, long idRecorrido, long idPedido, int numeroAsignacion) {
-        Long id = jdbc.queryForObject("""
-                INSERT INTO "RECORRIDO_ASIGNACION" (
-                    "idRecorrido","idPedido","numeroAsignacion","estadoPertenencia","fechaHoraVinculacion")
-                VALUES (?,?,?,'ACTIVA',clock_timestamp())
-                RETURNING "idRecorridoAsignacion"
-                """, Long.class, idRecorrido, idPedido, numeroAsignacion);
-        return Objects.requireNonNull(id);
-    }
-
-    public static void desvincularAsignacionPorReasignacionEnLab(
-            JdbcTemplate jdbc, long idPedido, int numeroAsignacion, String motivo) {
-        int filas = jdbc.update("""
-                UPDATE "RECORRIDO_ASIGNACION"
-                   SET "estadoPertenencia" = 'DESVINCULADA_POR_REASIGNACION',
-                       "fechaHoraDesvinculacion" = clock_timestamp(),
-                       "motivoDesvinculacion" = ?
-                 WHERE "idPedido" = ?
-                   AND "numeroAsignacion" = ?
-                   AND "estadoPertenencia" = 'ACTIVA'
-                """, motivo, idPedido, numeroAsignacion);
-        if (filas != 1) {
-            throw new IllegalStateException("No existia pertenencia ACTIVA para desvincular en Pedido=" + idPedido);
-        }
-    }
-
-    /**
-     * Resolucion administrativa de discrepancia (Frontera B — PROPUESTA, NO RATIFICADA):
-     * transiciona PENDIENTE_CONCILIACION -> CERRADO_CON_DIFERENCIA_RESUELTA sin extinguir
-     * V_e^{vig} ni emitir Cobro/Caja ficticios.
-     */
-    public static void resolverDiferenciaAdministrativaEnTx(
-            JdbcTemplate jdbc,
-            long idCierreRecorrido,
-            long idRecorrido,
-            long idAdminResolucion,
-            String tipoResolucionAdmin,
-            String motivoResolucionAdmin) {
-        bloquearA2(jdbc, NS_RECORRIDO, idRecorrido);
-        int filas = jdbc.update("""
-                UPDATE "CIERRE_RECORRIDO_PE2"
-                   SET "estadoCierre" = 'CERRADO_CON_DIFERENCIA_RESUELTA',
-                       "idUsuarioResolucionAdmin" = ?,
-                       "tipoResolucionAdmin" = ?,
-                       "motivoResolucionAdmin" = ?,
-                       "fechaHoraResolucion" = clock_timestamp()
-                 WHERE "idCierreRecorrido" = ?
-                   AND "idRecorrido" = ?
-                """, idAdminResolucion, tipoResolucionAdmin, motivoResolucionAdmin, idCierreRecorrido, idRecorrido);
-        if (filas != 1) {
-            throw new IllegalStateException("Cierre no encontrado para resolucion administrativa: " + idCierreRecorrido);
-        }
-        jdbc.update("""
-                UPDATE "RECORRIDO_REPARTO"
-                   SET "estadoOperativo" = 'CERRADO'
-                 WHERE "idRecorrido" = ?
-                """, idRecorrido);
-    }
-
-    public record AplicacionPlan(long idCliente, long idPedido, BigDecimal importeAplicado) {}
-
-    public record ResultadoCierreLab(long idCierre, String estadoCierre, boolean replay, String reciboJson) {}
-
-    /**
-     * Ejecuta un cierre T1 + K2 en una unica transaccion ACID (llamado dentro de TransactionTemplate),
-     * respetando el orden total candidato A2-GLOBAL:
-     *   A2(NS_RECORRIDO, idRecorrido) -> puente legacy 2929001 (si convive con MAX+1)
-     *   -> CLIENTE FOR UPDATE (ASC) -> PEDIDO FOR UPDATE (ASC) -> PE-1 FOR UPDATE (ASC).
-     */
-    public static ResultadoCierreLab ejecutarCierreT1K2EnTx(
-            JdbcTemplate jdbc,
-            long idRecorrido,
-            long idAdmin,
-            UUID claveIdempotencia,
-            String versionHuella,
-            String huellaCanonica,
-            String estadoCierreDestino,
-            BigDecimal importeEsperado,
-            BigDecimal importeEfectivoRecibido,
-            BigDecimal importeDiferenciaFaltante,
-            BigDecimal importeCustodiaNoImputada,
-            String motivoDiferencia,
-            String motivoResolucionAdmin,
-            List<AplicacionPlan> aplicaciones,
-            boolean usarPuenteLegacy2929001,
-            boolean usarSecuenciasB2) {
-
-        // 2.3 Obligatorio: una UUID valida NO sustituye autorizacion ni ambito.
-        // Validacion en BD de laboratorio (NO reemplaza futura autenticacion de sesion HTTP/servicio R09).
+    private static void exigirAdminHabilitadoEnLab(JdbcTemplate jdbc, long idAdmin) {
         Integer adminValido = jdbc.queryForObject("""
                 SELECT count(*)
                   FROM "USUARIO" u
@@ -309,39 +291,296 @@ public final class GfisLabSupport {
         if (adminValido == null || adminValido == 0) {
             throw new SecurityException("C1-a/RBAC 403: solo ADMINISTRADOR habilitado puede operar o consultar replay de cierre");
         }
+    }
 
+    /**
+     * Registra un cierre LIMPIO en estado CONFIRMADO en una unica transaccion ACID T1-C2 + K2
+     * (sin diferencias ni custodia abierta).
+     */
+    public static ResultadoCierreLab ejecutarCierreLimpioT1K2EnTx(
+            JdbcTemplate jdbc,
+            long idRecorrido,
+            long idAdmin,
+            UUID claveIdempotenciaCierre,
+            String versionHuella,
+            String huellaCanonica,
+            BigDecimal importeEsperado,
+            BigDecimal importeEfectivoRecibido,
+            List<AplicacionPlan> aplicaciones,
+            boolean usarPuenteLegacy2929001,
+            boolean usarSecuenciasB2) {
+
+        exigirAdminHabilitadoEnLab(jdbc, idAdmin);
         bloquearA2(jdbc, NS_RECORRIDO, idRecorrido);
         if (usarPuenteLegacy2929001) {
             bloquearPuenteLegacyFinanciero(jdbc);
         }
 
-        // C1-a: verificacion idempotente por claveIdempotenciaCierre (tras validar autorizacion y ambito)
-        var existentes = jdbc.queryForList("""
-                SELECT "idCierreRecorrido","idRecorrido","estadoCierre","versionHuella","huellaCanonica","reciboHistoricoJson"::text AS recibo
-                  FROM "CIERRE_RECORRIDO_PE2"
-                 WHERE "claveIdempotenciaCierre" = ?
-                """, claveIdempotencia);
-        if (!existentes.isEmpty()) {
-            var row = existentes.getFirst();
-            long recorridoPersistido = ((Number) row.get("idRecorrido")).longValue();
-            if (recorridoPersistido != idRecorrido) {
-                throw new IllegalStateException(
-                        "C1-a CONFLICTO AMBITO 409: claveIdempotenciaCierre pertenece a otro Recorrido");
-            }
-            if (!versionHuella.equals(row.get("versionHuella"))
-                    || !huellaCanonica.equals(row.get("huellaCanonica"))) {
-                throw new IllegalStateException("C1-a CONFLICTO HUELLA 409: misma claveIdempotenciaCierre con distinta huella");
-            }
-            return new ResultadoCierreLab(
-                    ((Number) row.get("idCierreRecorrido")).longValue(),
-                    (String) row.get("estadoCierre"),
-                    true,
-                    (String) row.get("recibo"));
+        ResultadoCierreLab replay = verificarReplayCierreDefinitivo(
+                jdbc, idRecorrido, claveIdempotenciaCierre, versionHuella, huellaCanonica);
+        if (replay != null) {
+            return replay;
         }
 
-        // Orden determinista en dos fases:
-        // Fase 1: A2(NS_CLIENTE, hashtext(id)) ordenado por int4 ASC (libre de ciclos incluso con colision hash)
-        // Fase 2: CLIENTE FOR UPDATE en idCliente ASC -> PEDIDO FOR UPDATE ASC -> PE-1 FOR UPDATE ASC
+        BigDecimal totalImputado = aplicaciones.stream()
+                .map(AplicacionPlan::importeAplicado)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+
+        Map<Long, BigDecimal> coberturaPorPedido = bloquearClientesPedidosYPe1(jdbc, aplicaciones);
+
+        String reciboJson = "{\"idRecorrido\":" + idRecorrido
+                + ",\"estado\":\"CONFIRMADO\""
+                + ",\"imputado\":\"" + totalImputado
+                + "\",\"custodia\":\"0.00\",\"faltante\":\"0.00\"}";
+
+        var insertado = jdbc.queryForMap("""
+                INSERT INTO "CIERRE_RECORRIDO_PE2" (
+                    "idRecorrido","claveIdempotenciaCierre","versionHuella","huellaCanonica",
+                    "idUsuarioAdministrador","fechaHoraRegistro","estadoCierre","medioPagoPermitido",
+                    "importeEsperado","importeEfectivoRecibido","importeImputadoPropuesto",
+                    "importeImputadoConfirmado","importeDiferenciaFaltante","importeCustodiaNoImputada",
+                    "reciboHistoricoJson")
+                VALUES (?,?,?,?,?,clock_timestamp(),'CONFIRMADO','EFECTIVO',?,?,?,?,0,0,?::jsonb)
+                RETURNING "idCierreRecorrido", "reciboHistoricoJson"::text AS recibo
+                """,
+                idRecorrido, claveIdempotenciaCierre, versionHuella, huellaCanonica,
+                idAdmin, importeEsperado, importeEfectivoRecibido, totalImputado, totalImputado, reciboJson);
+
+        long cierreId = ((Number) Objects.requireNonNull(insertado.get("idCierreRecorrido"))).longValue();
+        String reciboNormalizado = (String) Objects.requireNonNull(insertado.get("recibo"));
+
+        confirmarAplicacionesFinancierasK2EnTx(
+                jdbc, cierreId, idAdmin, claveIdempotenciaCierre,
+                aplicaciones, coberturaPorPedido, usarSecuenciasB2);
+
+        jdbc.update("UPDATE \"RECORRIDO_REPARTO\" SET \"estadoOperativo\"='CERRADO' WHERE \"idRecorrido\"=?",
+                idRecorrido);
+
+        return new ResultadoCierreLab(cierreId, "CONFIRMADO", false, reciboNormalizado);
+    }
+
+    /**
+     * Bloqueante 1 (G-ARQ-N2-01 s8): registra una rendicion con diferencias en
+     * PENDIENTE_CONCILIACION como pura planificacion/evidencia y custodia pendiente.
+     * NO crea ningun COBRO, MOVIMIENTO_CUENTA, MOVIMIENTO_CAJA, APLICACION_RENDICION_K2
+     * ni extingue V_e^{vig}. Tampoco emite recibo definitivo T1.
+     */
+    public static ResultadoCierreLab registrarPendienteConciliacionEnTx(
+            JdbcTemplate jdbc,
+            long idRecorrido,
+            long idAdmin,
+            UUID claveIdempotenciaPropuesta,
+            BigDecimal importeEsperado,
+            BigDecimal importeEfectivoRecibido,
+            BigDecimal importeDiferenciaFaltante,
+            BigDecimal importeCustodiaNoImputada,
+            String motivoDiferencia,
+            List<AplicacionPlan> propuestasPlanificacion) {
+
+        exigirAdminHabilitadoEnLab(jdbc, idAdmin);
+        bloquearA2(jdbc, NS_RECORRIDO, idRecorrido);
+
+        BigDecimal totalPropuesto = propuestasPlanificacion.stream()
+                .map(AplicacionPlan::importeAplicado)
+                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+
+        Long cierreId = jdbc.queryForObject("""
+                INSERT INTO "CIERRE_RECORRIDO_PE2" (
+                    "idRecorrido","claveIdempotenciaPropuesta",
+                    "idUsuarioAdministrador","fechaHoraRegistro","estadoCierre","medioPagoPermitido",
+                    "importeEsperado","importeEfectivoRecibido","importeImputadoPropuesto",
+                    "importeImputadoConfirmado","importeDiferenciaFaltante","importeCustodiaNoImputada",
+                    "motivoDiferencia")
+                VALUES (?,?,?,clock_timestamp(),'PENDIENTE_CONCILIACION','EFECTIVO',?,?,?,0,?,?,?)
+                RETURNING "idCierreRecorrido"
+                """,
+                Long.class,
+                idRecorrido, claveIdempotenciaPropuesta, idAdmin,
+                importeEsperado, importeEfectivoRecibido, totalPropuesto,
+                importeDiferenciaFaltante, importeCustodiaNoImputada, motivoDiferencia);
+        long idCierre = Objects.requireNonNull(cierreId);
+
+        for (var prop : propuestasPlanificacion) {
+            jdbc.update("""
+                    INSERT INTO "PROPUESTA_APLICACION_PENDIENTE" (
+                        "idCierreRecorrido","idCliente","idPedido","importePropuesto","fechaHoraRegistro")
+                    VALUES (?,?,?,?,clock_timestamp())
+                    """, idCierre, prop.idCliente(), prop.idPedido(), prop.importeAplicado());
+        }
+
+        if (importeDiferenciaFaltante.signum() > 0) {
+            jdbc.update("""
+                    INSERT INTO "CUSTODIA_DIFERENCIA_RENDICION" (
+                        "idCierreRecorrido","tipoEvento","importe","motivo","idUsuarioAdmin","fechaHoraRegistro")
+                    VALUES (?,'FALTANTE_EFECTIVO',?,?,?,clock_timestamp())
+                    """, idCierre, importeDiferenciaFaltante, motivoDiferencia, idAdmin);
+        }
+        if (importeCustodiaNoImputada.signum() > 0) {
+            jdbc.update("""
+                    INSERT INTO "CUSTODIA_DIFERENCIA_RENDICION" (
+                        "idCierreRecorrido","tipoEvento","importe","motivo","idUsuarioAdmin","fechaHoraRegistro")
+                    VALUES (?,'CUSTODIA_NO_IMPUTADA',?,?,?,clock_timestamp())
+                    """, idCierre, importeCustodiaNoImputada, motivoDiferencia, idAdmin);
+        }
+
+        jdbc.update("UPDATE \"RECORRIDO_REPARTO\" SET \"estadoOperativo\"='PENDIENTE_CONCILIACION' WHERE \"idRecorrido\"=?",
+                idRecorrido);
+
+        return new ResultadoCierreLab(idCierre, "PENDIENTE_CONCILIACION", false, null);
+    }
+
+    /**
+     * Bloqueante 1 + Bloqueante 4 (G-ARQ-N2-01 s8 + E-04):
+     * En UNA UNICA transaccion ACID T1-C2:
+     * 1) Registra resolucion administrativa autorizada (PENDIENTE_CONCILIACION -> CERRADO_CON_DIFERENCIA_RESUELTA)
+     * 2) Emite de manera indivisible todos los Cobros K2, Cuenta, Caja, aplicaciones y extincion parcial de V_e
+     *    correspondientes a las propuestas planificadas (conservando V_e^{vig} remanente)
+     * 3) Si hay devolucion fisica de custodia, registra EGRESO_CUSTODIA_RENDICION con recibo auditable
+     * 4) Persiste reciboHistoricoJson inmutable para replay C1-a y cierra el Recorrido.
+     */
+    public static ResultadoCierreLab confirmarResolucionT1K2EnTx(
+            JdbcTemplate jdbc,
+            long idCierreRecorrido,
+            long idRecorrido,
+            long idAdminResolucion,
+            UUID claveIdempotenciaCierre,
+            String versionHuella,
+            String huellaCanonica,
+            String tipoResolucionAdmin,
+            String motivoResolucionAdmin,
+            EvidenciaEgresoCustodia egresoCustodia,
+            boolean usarPuenteLegacy2929001,
+            boolean usarSecuenciasB2) {
+
+        exigirAdminHabilitadoEnLab(jdbc, idAdminResolucion);
+        bloquearA2(jdbc, NS_RECORRIDO, idRecorrido);
+        if (usarPuenteLegacy2929001) {
+            bloquearPuenteLegacyFinanciero(jdbc);
+        }
+
+        ResultadoCierreLab replay = verificarReplayCierreDefinitivo(
+                jdbc, idRecorrido, claveIdempotenciaCierre, versionHuella, huellaCanonica);
+        if (replay != null) {
+            return replay;
+        }
+
+        var cabecera = jdbc.queryForMap("""
+                SELECT "idRecorrido","estadoCierre","importeImputadoPropuesto",
+                       "importeDiferenciaFaltante","importeCustodiaNoImputada"
+                  FROM "CIERRE_RECORRIDO_PE2"
+                 WHERE "idCierreRecorrido" = ?
+                 FOR UPDATE
+                """, idCierreRecorrido);
+        if (((Number) cabecera.get("idRecorrido")).longValue() != idRecorrido) {
+            throw new IllegalStateException("Ambito inconsistente de cierre/recorrido");
+        }
+        BigDecimal totalPropuesto = (BigDecimal) cabecera.get("importeImputadoPropuesto");
+        BigDecimal faltante = (BigDecimal) cabecera.get("importeDiferenciaFaltante");
+        BigDecimal custodia = (BigDecimal) cabecera.get("importeCustodiaNoImputada");
+
+        List<AplicacionPlan> propuestas = jdbc.query("""
+                SELECT "idCliente","idPedido","importePropuesto"
+                  FROM "PROPUESTA_APLICACION_PENDIENTE"
+                 WHERE "idCierreRecorrido" = ?
+                 ORDER BY "idPedido" ASC
+                """,
+                (rs, n) -> new AplicacionPlan(rs.getLong(1), rs.getLong(2), rs.getBigDecimal(3)),
+                idCierreRecorrido);
+
+        Map<Long, BigDecimal> coberturaPorPedido = bloquearClientesPedidosYPe1(jdbc, propuestas);
+
+        String reciboJson = "{\"idRecorrido\":" + idRecorrido
+                + ",\"estado\":\"CERRADO_CON_DIFERENCIA_RESUELTA\""
+                + ",\"tipoResolucion\":\"" + tipoResolucionAdmin + "\""
+                + ",\"imputado\":\"" + totalPropuesto
+                + "\",\"custodia\":\"" + custodia
+                + "\",\"faltante\":\"" + faltante + "\"}";
+
+        String reciboNormalizado = jdbc.queryForObject("""
+                UPDATE "CIERRE_RECORRIDO_PE2"
+                   SET "estadoCierre" = 'CERRADO_CON_DIFERENCIA_RESUELTA',
+                       "claveIdempotenciaCierre" = ?,
+                       "versionHuella" = ?,
+                       "huellaCanonica" = ?,
+                       "importeImputadoConfirmado" = "importeImputadoPropuesto",
+                       "idUsuarioResolucionAdmin" = ?,
+                       "tipoResolucionAdmin" = ?,
+                       "motivoResolucionAdmin" = ?,
+                       "fechaHoraResolucion" = clock_timestamp(),
+                       "reciboHistoricoJson" = ?::jsonb
+                 WHERE "idCierreRecorrido" = ?
+                 RETURNING "reciboHistoricoJson"::text
+                """,
+                String.class,
+                claveIdempotenciaCierre, versionHuella, huellaCanonica,
+                idAdminResolucion, tipoResolucionAdmin, motivoResolucionAdmin,
+                reciboJson, idCierreRecorrido);
+
+        confirmarAplicacionesFinancierasK2EnTx(
+                jdbc, idCierreRecorrido, idAdminResolucion, claveIdempotenciaCierre,
+                propuestas, coberturaPorPedido, usarSecuenciasB2);
+
+        if (egresoCustodia != null && custodia.signum() > 0) {
+            Long idEventoCustodia = jdbc.queryForObject("""
+                    SELECT "idEventoCustodia"
+                      FROM "CUSTODIA_DIFERENCIA_RENDICION"
+                     WHERE "idCierreRecorrido" = ?
+                       AND "tipoEvento" = 'CUSTODIA_NO_IMPUTADA'
+                     ORDER BY "idEventoCustodia" ASC LIMIT 1
+                    """, Long.class, idCierreRecorrido);
+            jdbc.update("""
+                    INSERT INTO "EGRESO_CUSTODIA_RENDICION" (
+                        "idEventoCustodia","idCierreRecorrido","tipoEgreso","importeEgreso",
+                        "numeroReciboDevolucion","receptorIdentificacion","motivo",
+                        "idUsuarioAdmin","fechaHoraEgreso")
+                    VALUES (?,?,'DEVOLUCION_FISICA_CON_RECIBO',?,?,?,?,?,clock_timestamp())
+                    """,
+                    Objects.requireNonNull(idEventoCustodia), idCierreRecorrido, custodia,
+                    egresoCustodia.numeroReciboDevolucion(),
+                    egresoCustodia.receptorIdentificacion(),
+                    egresoCustodia.motivo(),
+                    idAdminResolucion);
+        }
+
+        jdbc.update("UPDATE \"RECORRIDO_REPARTO\" SET \"estadoOperativo\"='CERRADO' WHERE \"idRecorrido\"=?",
+                idRecorrido);
+
+        return new ResultadoCierreLab(
+                idCierreRecorrido, "CERRADO_CON_DIFERENCIA_RESUELTA", false, Objects.requireNonNull(reciboNormalizado));
+    }
+
+    private static ResultadoCierreLab verificarReplayCierreDefinitivo(
+            JdbcTemplate jdbc, long idRecorrido, UUID claveIdempotenciaCierre,
+            String versionHuella, String huellaCanonica) {
+        var existentes = jdbc.queryForList("""
+                SELECT "idCierreRecorrido","idRecorrido","estadoCierre","versionHuella",
+                       "huellaCanonica","reciboHistoricoJson"::text AS recibo
+                  FROM "CIERRE_RECORRIDO_PE2"
+                 WHERE "claveIdempotenciaCierre" = ?
+                """, claveIdempotenciaCierre);
+        if (existentes.isEmpty()) {
+            return null;
+        }
+        var row = existentes.getFirst();
+        long recorridoPersistido = ((Number) row.get("idRecorrido")).longValue();
+        if (recorridoPersistido != idRecorrido) {
+            throw new IllegalStateException(
+                    "C1-a CONFLICTO AMBITO 409: claveIdempotenciaCierre pertenece a otro Recorrido");
+        }
+        if (!versionHuella.equals(row.get("versionHuella"))
+                || !huellaCanonica.equals(row.get("huellaCanonica"))) {
+            throw new IllegalStateException(
+                    "C1-a CONFLICTO HUELLA 409: misma claveIdempotenciaCierre con distinta huella");
+        }
+        return new ResultadoCierreLab(
+                ((Number) row.get("idCierreRecorrido")).longValue(),
+                (String) row.get("estadoCierre"),
+                true,
+                (String) row.get("recibo"));
+    }
+
+    private static Map<Long, BigDecimal> bloquearClientesPedidosYPe1(
+            JdbcTemplate jdbc, List<AplicacionPlan> aplicaciones) {
         List<Long> clientesOrdenados = aplicaciones.stream()
                 .map(AplicacionPlan::idCliente).distinct().sorted().toList();
         bloquearA2LoteOrdenadoPorHash(jdbc, NS_CLIENTE, clientesOrdenados);
@@ -360,41 +599,20 @@ public final class GfisLabSupport {
                     BigDecimal.class, app.idPedido());
             coberturaPorPedido.put(app.idPedido(), vvigActual == null ? BigDecimal.ZERO : vvigActual);
         }
+        return coberturaPorPedido;
+    }
 
-        BigDecimal totalImputado = appsOrdenadas.stream()
-                .map(AplicacionPlan::importeAplicado)
-                .reduce(BigDecimal.ZERO.setScale(2), BigDecimal::add);
+    private static void confirmarAplicacionesFinancierasK2EnTx(
+            JdbcTemplate jdbc,
+            long cierreId,
+            long idAdmin,
+            UUID claveIdempotenciaCierre,
+            List<AplicacionPlan> aplicaciones,
+            Map<Long, BigDecimal> coberturaPorPedido,
+            boolean usarSecuenciasB2) {
 
-        String reciboJson = "{\"idRecorrido\":" + idRecorrido
-                + ",\"estado\":\"" + estadoCierreDestino
-                + "\",\"imputado\":\"" + totalImputado
-                + "\",\"custodia\":\"" + importeCustodiaNoImputada
-                + "\",\"faltante\":\"" + importeDiferenciaFaltante + "\"}";
-
-        // Insertar primero la cabecera de cierre para que uq_gfis_unico_cierre_terminal_recorrido
-        // dispare 23505 (futuro RECORRIDO_YA_CERRADO) antes de evaluar 422 cobertura;
-        // si 422 falla luego, la transaccion T1 hace rollback integral de esta fila.
-        // Nota Frontera B: resolucion administrativa es un acto posterior separado sobre
-        // PENDIENTE_CONCILIACION -> CERRADO_CON_DIFERENCIA_RESUELTA (sin campos de resolucion en INSERT).
-        var insertado = jdbc.queryForMap("""
-                INSERT INTO "CIERRE_RECORRIDO_PE2" (
-                    "idRecorrido","claveIdempotenciaCierre","versionHuella","huellaCanonica",
-                    "idUsuarioAdministrador","fechaHoraRegistro","estadoCierre","medioPagoPermitido",
-                    "importeEsperado","importeEfectivoRecibido","importeImputadoTotal",
-                    "importeDiferenciaFaltante","importeCustodiaNoImputada",
-                    "motivoDiferencia","reciboHistoricoJson")
-                VALUES (?,?,?,?,?,clock_timestamp(),?,'EFECTIVO',?,?,?,?,?,?,?::jsonb)
-                RETURNING "idCierreRecorrido", "reciboHistoricoJson"::text AS recibo
-                """,
-                idRecorrido, claveIdempotencia, versionHuella, huellaCanonica,
-                idAdmin, estadoCierreDestino,
-                importeEsperado, importeEfectivoRecibido, totalImputado,
-                importeDiferenciaFaltante, importeCustodiaNoImputada,
-                motivoDiferencia, reciboJson);
-        long cierreId = ((Number) Objects.requireNonNull(insertado.get("idCierreRecorrido"))).longValue();
-        String reciboNormalizado = (String) Objects.requireNonNull(insertado.get("recibo"));
-
-        // Validar cobertura disponible (422 COBERTURA_NO_ACREDITADA) antes de crear Cobro/Cuenta/Caja
+        List<AplicacionPlan> appsOrdenadas = aplicaciones.stream()
+                .sorted(Comparator.comparingLong(AplicacionPlan::idPedido)).toList();
         for (var app : appsOrdenadas) {
             BigDecimal disponible = coberturaPorPedido.getOrDefault(app.idPedido(), BigDecimal.ZERO);
             if (app.importeAplicado().compareTo(disponible) > 0) {
@@ -402,7 +620,8 @@ public final class GfisLabSupport {
             }
         }
 
-        // Agrupar aplicaciones por Cliente (K2: 1 COBRO REPARTO por Cliente y Cierre)
+        List<Long> clientesOrdenados = appsOrdenadas.stream()
+                .map(AplicacionPlan::idCliente).distinct().sorted().toList();
         Map<Long, List<AplicacionPlan>> porCliente = new LinkedHashMap<>();
         for (long idCliente : clientesOrdenados) {
             porCliente.put(idCliente, appsOrdenadas.stream().filter(a -> a.idCliente() == idCliente).toList());
@@ -428,7 +647,6 @@ public final class GfisLabSupport {
                     : Objects.requireNonNull(jdbc.queryForObject(
                             "SELECT COALESCE(MAX(\"idMovimientoCaja\"),0)+1 FROM \"MOVIMIENTO_CAJA\"", Long.class));
 
-            // Ordinal de negocio por Cliente bajo lock de CLIENTE (B2-HIBRIDO)
             long seqCliente = Objects.requireNonNull(jdbc.queryForObject(
                     "SELECT COALESCE(MAX(\"numeroSecuenciaCliente\"),0)+1 FROM \"MOVIMIENTO_CUENTA\" WHERE \"idCliente\"=?",
                     Long.class, idCliente));
@@ -438,9 +656,8 @@ public final class GfisLabSupport {
                     idCliente);
             BigDecimal saldoFinal = saldoPrevio.subtract(importeCobroCliente);
 
-            // Clave idempotencia distinta por Cliente/Cierre (S04 / L10)
             UUID claveCobroCliente = UUID.nameUUIDFromBytes(
-                    ("K2:" + claveIdempotencia + ":" + idCliente).getBytes(StandardCharsets.UTF_8));
+                    ("K2:" + claveIdempotenciaCierre + ":" + idCliente).getBytes(StandardCharsets.UTF_8));
 
             jdbc.update("""
                     INSERT INTO "COBRO" (
@@ -495,42 +712,79 @@ public final class GfisLabSupport {
                         """, app.importeAplicado(), app.idPedido());
             }
         }
-
-        if (importeDiferenciaFaltante.signum() > 0) {
-            jdbc.update("""
-                    INSERT INTO "CUSTODIA_DIFERENCIA_RENDICION" (
-                        "idCierreRecorrido","tipoEvento","importe","motivo","idUsuarioAdmin","fechaHoraRegistro")
-                    VALUES (?,'FALTANTE_EFECTIVO',?,?,?,clock_timestamp())
-                    """, cierreId, importeDiferenciaFaltante, motivoDiferencia, idAdmin);
-        }
-        if (importeCustodiaNoImputada.signum() > 0) {
-            jdbc.update("""
-                    INSERT INTO "CUSTODIA_DIFERENCIA_RENDICION" (
-                        "idCierreRecorrido","tipoEvento","importe","motivo","idUsuarioAdmin","fechaHoraRegistro")
-                    VALUES (?,'CUSTODIA_NO_IMPUTADA',?,?,?,clock_timestamp())
-                    """, cierreId, importeCustodiaNoImputada, motivoDiferencia, idAdmin);
-        }
-
-        String nuevoEstadoRecorrido = "CONFIRMADO".equals(estadoCierreDestino)
-                ? "CERRADO" : "PENDIENTE_CONCILIACION";
-        jdbc.update("UPDATE \"RECORRIDO_REPARTO\" SET \"estadoOperativo\"=? WHERE \"idRecorrido\"=?",
-                nuevoEstadoRecorrido, idRecorrido);
-
-        return new ResultadoCierreLab(cierreId, estadoCierreDestino, false, reciboNormalizado);
     }
 
-    public static boolean estaBloqueadoPorPid(DataSource ds, int pidEsperando, int pidBloqueador) {
-        try (Connection c = ds.getConnection();
-             PreparedStatement ps = c.prepareStatement(
-                     "SELECT ? = ANY(pg_blocking_pids(?))")) {
-            ps.setInt(1, pidBloqueador);
-            ps.setInt(2, pidEsperando);
-            try (ResultSet rs = ps.executeQuery()) {
-                return rs.next() && rs.getBoolean(1);
-            }
-        } catch (SQLException ex) {
-            throw new IllegalStateException(ex);
+    /**
+     * Bloqueante 5 (C-04 / ART-GCON-D1): ejecuta anulacion manual idempotente usando
+     * fn_mr3_anular_cobro_manual (L02 64-bit) y ANULACION_COBRO_IDEMPOTENCIA.
+     */
+    public static ResultadoAnulacionC04Lab ejecutarAnulacionIdempotenteC04EnTx(
+            JdbcTemplate jdbc,
+            long idCobro,
+            long idAdmin,
+            UUID claveIdempotenciaAnulacion,
+            String motivoRaw) {
+
+        exigirAdminHabilitadoEnLab(jdbc, idAdmin);
+        if (motivoRaw == null || motivoRaw.isBlank()) {
+            throw new IllegalArgumentException("Motivo de anulacion obligatorio");
         }
+        String motivoNormalizado = motivoRaw.trim().replaceAll("\\s+", " ");
+        String huella = "C04:v1:" + idCobro + ":" + motivoNormalizado;
+
+        var previas = jdbc.queryForList("""
+                SELECT "idCobro","huellaCanonica","idMovimientoCuentaContraasiento",
+                       "idMovimientoCajaContraasiento","reciboHistoricoJson"::text AS recibo
+                  FROM "ANULACION_COBRO_IDEMPOTENCIA"
+                 WHERE "claveIdempotenciaAnulacion" = ?
+                """, claveIdempotenciaAnulacion);
+        if (!previas.isEmpty()) {
+            var row = previas.getFirst();
+            if (((Number) row.get("idCobro")).longValue() != idCobro
+                    || !huella.equals(row.get("huellaCanonica"))) {
+                throw new IllegalStateException(
+                        "C04 CONFLICTO 409: claveIdempotenciaAnulacion reutilizada con distinto payload");
+            }
+            return new ResultadoAnulacionC04Lab(
+                    idCobro,
+                    ((Number) row.get("idMovimientoCuentaContraasiento")).longValue(),
+                    ((Number) row.get("idMovimientoCajaContraasiento")).longValue(),
+                    true,
+                    (String) row.get("recibo"));
+        }
+
+        Long idCliente = jdbc.queryForObject(
+                "SELECT \"idCliente\" FROM \"COBRO\" WHERE \"idCobro\"=?", Long.class, idCobro);
+        if (idCliente == null) {
+            throw new IllegalArgumentException("Cobro inexistente: " + idCobro);
+        }
+
+        long idMovCuenta = siguientePkMovCuentaB2(jdbc);
+        long idMovCaja = siguientePkMovCajaB2(jdbc);
+
+        jdbc.queryForList("SELECT \"fn_mr3_anular_cobro_manual\"(?,?,?,?,?)",
+                idCobro, idAdmin, idMovCuenta, idMovCaja, motivoNormalizado);
+
+        String reciboJson = "{\"idCobro\":" + idCobro
+                + ",\"idMovimientoCuenta\":" + idMovCuenta
+                + ",\"idMovimientoCaja\":" + idMovCaja
+                + ",\"motivo\":\"" + motivoNormalizado + "\"}";
+
+        String reciboNormalizado = jdbc.queryForObject("""
+                INSERT INTO "ANULACION_COBRO_IDEMPOTENCIA" (
+                    "claveIdempotenciaAnulacion","idCobro","idCliente","idUsuarioAdministrador",
+                    "versionHuella","huellaCanonica","motivoNormalizado",
+                    "idMovimientoCuentaContraasiento","idMovimientoCajaContraasiento",
+                    "fechaHoraAnulacion","reciboHistoricoJson")
+                VALUES (?,?,?,?,'v1',?,?,?,?,clock_timestamp(),?::jsonb)
+                RETURNING "reciboHistoricoJson"::text
+                """,
+                String.class,
+                claveIdempotenciaAnulacion, idCobro, idCliente, idAdmin,
+                huella, motivoNormalizado, idMovCuenta, idMovCaja, reciboJson);
+
+        return new ResultadoAnulacionC04Lab(
+                idCobro, idMovCuenta, idMovCaja, false, Objects.requireNonNull(reciboNormalizado));
     }
 
     /**

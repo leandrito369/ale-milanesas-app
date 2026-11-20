@@ -194,6 +194,7 @@ class GfisL02AnulacionCandidataLabIntegrationTest {
                 new BigDecimal("60.00"), "EFECTIVO", UUID.randomUUID());
         long pedK2 = pedidos.cargarPedido(f.vendedor(), f.datos()).idPedido();
         long rec = GfisLabSupport.crearRecorridoExplicito(jdbc, rep, "REC-L02-CONV");
+        GfisLabSupport.asignarYVincularPedidoEnLab(jdbc, pedK2, rep, f.base, rec);
         GfisLabSupport.registrarEntregaPe1EnLaboratorio(jdbc, pedK2, cliente, rep, rec,
                 new BigDecimal("200.00"), BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2),
                 new BigDecimal("200.00"), "IMP_B");
@@ -230,10 +231,9 @@ class GfisL02AnulacionCandidataLabIntegrationTest {
                 listos.countDown();
                 try {
                     assertTrue(largada.await(5, TimeUnit.SECONDS));
-                    return tx.execute(s -> GfisLabSupport.ejecutarCierreT1K2EnTx(
-                            jdbc, rec, admin, UUID.randomUUID(), "v1", "h-l02-t1", "CONFIRMADO",
+                    return tx.execute(s -> GfisLabSupport.ejecutarCierreLimpioT1K2EnTx(
+                            jdbc, rec, admin, UUID.randomUUID(), "v1", "h-l02-t1",
                             new BigDecimal("200.00"), new BigDecimal("200.00"),
-                            BigDecimal.ZERO.setScale(2), BigDecimal.ZERO.setScale(2), null, null,
                             List.of(new GfisLabSupport.AplicacionPlan(cliente, pedK2, new BigDecimal("200.00"))),
                             false, true));
                 } catch (Exception t) {
@@ -317,6 +317,102 @@ class GfisL02AnulacionCandidataLabIntegrationTest {
         // 3) Tambien probar GfisLabSupport.bloquearA2 directamente con BIGINT > Integer.MAX_VALUE
         assertDoesNotThrow(() -> tx.executeWithoutResult(s ->
                 GfisLabSupport.bloquearA2(jdbc, GfisLabSupport.NS_CLIENTE, idClienteBig)));
+    }
+
+    /**
+     * Bloqueante 5 (C-04 / ART-GCON-D1): verifica que el modelo fisico (ANULACION_COBRO_IDEMPOTENCIA
+     * + L02 64-bit) permite satisfacer idempotencia de anulacion con clave propia, ambito RBAC,
+     * recibo historico inmutable y contraasientos verificables sin doble anulacion.
+     */
+    @Test
+    @Order(4)
+    void n2T10d_ModeloFisicoC04IdempotenciaAnulacionReplayConflictoYNuevaClave() {
+        PedidoFixture f = tx.execute(s -> new PedidoFixture(jdbc));
+        assertNotNull(f);
+        long idVendedor = f.base;
+        long idAdmin = f.base + 1;
+        long idCliente = f.base;
+
+        jdbc.execute("""
+                SELECT setval('"seq_gfis_mov_cuenta_id"', GREATEST((SELECT COALESCE(MAX("idMovimientoCuenta"),0) FROM "MOVIMIENTO_CUENTA"), 1), true);
+                SELECT setval('"seq_gfis_mov_caja_id"', GREATEST((SELECT COALESCE(MAX("idMovimientoCaja"),0) FROM "MOVIMIENTO_CAJA"), 1), true);
+                """);
+
+        var cobro1 = cobros.registrarCobro(f.sesiones.get("ADMINISTRADOR"), idCliente, null,
+                new BigDecimal("120.00"), "EFECTIVO", UUID.randomUUID());
+        var cobro2 = cobros.registrarCobro(f.sesiones.get("ADMINISTRADOR"), idCliente, null,
+                new BigDecimal("90.00"), "EFECTIVO", UUID.randomUUID());
+
+        // 1) Anulacion idempotente valida C-04
+        UUID claveAnul1 = UUID.randomUUID();
+        var res1 = tx.execute(s -> GfisLabSupport.ejecutarAnulacionIdempotenteC04EnTx(
+                jdbc, cobro1.idCobro(), idAdmin, claveAnul1, "  Error   de carga manual  "));
+        assertNotNull(res1);
+        assertFalse(res1.replay());
+        assertTrue(res1.idMovimientoCuenta() > 0 && res1.idMovimientoCaja() > 0);
+        int cajaTrasAnul = jdbc.queryForObject("SELECT count(*) FROM \"MOVIMIENTO_CAJA\"", Integer.class);
+        int cuentaTrasAnul = jdbc.queryForObject("SELECT count(*) FROM \"MOVIMIENTO_CUENTA\"", Integer.class);
+
+        // 2) Replay con misma clave y mismo payload normalizado => mismo recibo historico, 0 nuevos contraasientos
+        var replay = tx.execute(s -> GfisLabSupport.ejecutarAnulacionIdempotenteC04EnTx(
+                jdbc, cobro1.idCobro(), idAdmin, claveAnul1, "Error de carga manual"));
+        assertNotNull(replay);
+        assertTrue(replay.replay());
+        assertEquals(res1.idMovimientoCuenta(), replay.idMovimientoCuenta());
+        assertEquals(res1.idMovimientoCaja(), replay.idMovimientoCaja());
+        assertEquals(res1.reciboJson(), replay.reciboJson());
+        assertEquals(cajaTrasAnul, jdbc.queryForObject("SELECT count(*) FROM \"MOVIMIENTO_CAJA\"", Integer.class));
+        assertEquals(cuentaTrasAnul, jdbc.queryForObject("SELECT count(*) FROM \"MOVIMIENTO_CUENTA\"", Integer.class));
+
+        // 3) Replay por actor no-ADMIN (VENDEDOR) => 403 sin filtrar recibo
+        assertThrows(SecurityException.class, () -> tx.execute(s ->
+                GfisLabSupport.ejecutarAnulacionIdempotenteC04EnTx(
+                        jdbc, cobro1.idCobro(), idVendedor, claveAnul1, "Error de carga manual")));
+
+        // 4) Misma clave con payload distinto (otro motivo u otro Cobro) => 409 conflicto
+        IllegalStateException exOtroMotivo = assertThrows(IllegalStateException.class, () -> tx.execute(s ->
+                GfisLabSupport.ejecutarAnulacionIdempotenteC04EnTx(
+                        jdbc, cobro1.idCobro(), idAdmin, claveAnul1, "Motivo diferente")));
+        assertTrue(exOtroMotivo.getMessage().contains("409"));
+        IllegalStateException exOtroCobro = assertThrows(IllegalStateException.class, () -> tx.execute(s ->
+                GfisLabSupport.ejecutarAnulacionIdempotenteC04EnTx(
+                        jdbc, cobro2.idCobro(), idAdmin, claveAnul1, "Error de carga manual")));
+        assertTrue(exOtroCobro.getMessage().contains("409"));
+
+        // 5) Nueva clave contra Cobro ya ANULADO => rechazo A1 (no segunda anulacion, no filtra recibo previo)
+        assertThrows(DataAccessException.class, () -> tx.execute(s ->
+                GfisLabSupport.ejecutarAnulacionIdempotenteC04EnTx(
+                        jdbc, cobro1.idCobro(), idAdmin, UUID.randomUUID(), "Error de carga manual")));
+
+        // 6) Fallo previo a COMMIT (DC05-07-A reserva activa) NO consume la clave; tras liberar SI aplica
+        long pedRes = pedidos.cargarPedido(f.vendedor(), f.datos()).idPedido();
+        jdbc.update("""
+                INSERT INTO "EVENTO_IMPUTACION_FINANCIERA" (
+                    "idCliente","idCobro","idPedido","tipoEvento","importe","idUsuarioOperador","fechaHoraEvento")
+                VALUES (?,?,?,'RESERVA_ANTICIPO',50.00,?,clock_timestamp())
+                """, idCliente, cobro2.idCobro(), pedRes, idAdmin);
+        UUID claveAnul2 = UUID.randomUUID();
+        DataAccessException exBloq = assertThrows(DataAccessException.class, () -> tx.execute(s ->
+                GfisLabSupport.ejecutarAnulacionIdempotenteC04EnTx(
+                        jdbc, cobro2.idCobro(), idAdmin, claveAnul2, "Anulacion bloqueada")));
+        assertTrue(exBloq.getMessage().contains("DC05-07-A"));
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT count(*) FROM \"ANULACION_COBRO_IDEMPOTENCIA\" WHERE \"claveIdempotenciaAnulacion\"=?",
+                Integer.class, claveAnul2));
+
+        jdbc.update("""
+                INSERT INTO "EVENTO_IMPUTACION_FINANCIERA" (
+                    "idCliente","idCobro","idPedido","tipoEvento","importe","idUsuarioOperador","fechaHoraEvento")
+                VALUES (?,?,?,'LIBERACION_ANTICIPO',50.00,?,clock_timestamp())
+                """, idCliente, cobro2.idCobro(), pedRes, idAdmin);
+        var res2 = tx.execute(s -> GfisLabSupport.ejecutarAnulacionIdempotenteC04EnTx(
+                jdbc, cobro2.idCobro(), idAdmin, claveAnul2, "Anulacion tras liberar reserva"));
+        assertNotNull(res2);
+        assertFalse(res2.replay());
+
+        // 7) Inmutabilidad del recibo historico C-04
+        assertThrows(DataAccessException.class, () -> jdbc.update(
+                "DELETE FROM \"ANULACION_COBRO_IDEMPOTENCIA\" WHERE \"claveIdempotenciaAnulacion\"=?", claveAnul1));
     }
 
     private static String extraerSqlState(Throwable t) {
