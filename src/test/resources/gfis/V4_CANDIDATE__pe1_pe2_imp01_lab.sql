@@ -1205,6 +1205,7 @@ DECLARE
     v_suma_cobros NUMERIC(18,2);
     v_suma_propuestas NUMERIC(18,2);
     v_suma_egresos_custodia NUMERIC(18,2);
+    v_cierre_actual record;
 BEGIN
     IF TG_TABLE_NAME = 'COBRO_RENDICION_K2' THEN
         SELECT "importe" INTO v_importe_cobro FROM "COBRO" WHERE "idCobro" = NEW."idCobro";
@@ -1246,28 +1247,36 @@ BEGIN
                 NEW."idPedido", v_suma_apps, v_vvig, v_v0;
         END IF;
     ELSIF TG_TABLE_NAME = 'CIERRE_RECORRIDO_PE2' THEN
+        -- Releer la fila vigente al COMMIT (evita evaluar snapshots intermedios de INSERT+UPDATE en la misma Tx)
+        SELECT * INTO v_cierre_actual
+          FROM "CIERRE_RECORRIDO_PE2"
+         WHERE "idCierreRecorrido" = NEW."idCierreRecorrido";
+        IF NOT FOUND THEN
+            RETURN NEW;
+        END IF;
+
         SELECT COALESCE(SUM(c."importe"), 0) INTO v_suma_cobros
           FROM "COBRO_RENDICION_K2" ck
           JOIN "COBRO" c ON c."idCobro" = ck."idCobro"
-         WHERE ck."idCierreRecorrido" = NEW."idCierreRecorrido";
-        IF v_suma_cobros <> NEW."importeImputadoConfirmado" THEN
+         WHERE ck."idCierreRecorrido" = v_cierre_actual."idCierreRecorrido";
+        IF v_suma_cobros <> v_cierre_actual."importeImputadoConfirmado" THEN
             RAISE EXCEPTION 'T1-CIERRE: importeImputadoConfirmado (%) != suma Cobros K2 (%)',
-                NEW."importeImputadoConfirmado", v_suma_cobros;
+                v_cierre_actual."importeImputadoConfirmado", v_suma_cobros;
         END IF;
 
-        IF NEW."estadoCierre" = 'PENDIENTE_CONCILIACION' THEN
-            IF NEW."idRevisionVigente" IS NOT NULL THEN
+        IF v_cierre_actual."estadoCierre" = 'PENDIENTE_CONCILIACION' THEN
+            IF v_cierre_actual."idRevisionVigente" IS NOT NULL THEN
                 SELECT COALESCE(SUM("importePropuesto"), 0) INTO v_suma_propuestas
                   FROM "PROPUESTA_APLICACION_PENDIENTE"
-                 WHERE "idRevisionConciliacion" = NEW."idRevisionVigente";
-                IF v_suma_propuestas <> NEW."importeImputadoPropuesto" THEN
+                 WHERE "idRevisionConciliacion" = v_cierre_actual."idRevisionVigente";
+                IF v_suma_propuestas <> v_cierre_actual."importeImputadoPropuesto" THEN
                     RAISE EXCEPTION 'T1-PENDIENTE: importeImputadoPropuesto (%) != suma de propuestas de la revision vigente (%)',
-                        NEW."importeImputadoPropuesto", v_suma_propuestas;
+                        v_cierre_actual."importeImputadoPropuesto", v_suma_propuestas;
                 END IF;
             ELSE
                 IF NOT EXISTS (
                     SELECT 1 FROM "REVISION_CONCILIACION_PE2"
-                     WHERE "idCierreRecorrido" = NEW."idCierreRecorrido"
+                     WHERE "idCierreRecorrido" = v_cierre_actual."idCierreRecorrido"
                        AND "estadoRevision" = 'INVALIDADA'
                 ) THEN
                     RAISE EXCEPTION 'T1-PENDIENTE/REV: cierre en PENDIENTE_CONCILIACION requiere revision VIGENTE o evidencia de revision INVALIDADA';
@@ -1275,26 +1284,26 @@ BEGIN
             END IF;
         END IF;
 
-        IF NEW."estadoCierre" = 'CERRADO_CON_DIFERENCIA_RESUELTA' THEN
+        IF v_cierre_actual."estadoCierre" = 'CERRADO_CON_DIFERENCIA_RESUELTA' THEN
             IF NOT EXISTS (
                 SELECT 1 FROM "REVISION_CONCILIACION_PE2"
-                 WHERE "idRevisionConciliacion" = NEW."idRevisionVigente"
-                   AND "idCierreRecorrido" = NEW."idCierreRecorrido"
+                 WHERE "idRevisionConciliacion" = v_cierre_actual."idRevisionVigente"
+                   AND "idCierreRecorrido" = v_cierre_actual."idCierreRecorrido"
                    AND "estadoRevision" = 'CONFIRMADA_T1'
             ) THEN
                 RAISE EXCEPTION 'T1-C2/REV: cierre resuelto debe referenciar una revision en estado CONFIRMADA_T1';
             END IF;
 
-            IF NEW."tipoResolucionAdmin" IN ('CUSTODIA_DEVUELTA_FISICAMENTE', 'MIXTA_FALTANTE_Y_CUSTODIA') THEN
+            IF v_cierre_actual."tipoResolucionAdmin" IN ('CUSTODIA_DEVUELTA_FISICAMENTE', 'MIXTA_FALTANTE_Y_CUSTODIA') THEN
                 SELECT COALESCE(SUM(eg."importeEgreso"), 0) INTO v_suma_egresos_custodia
                   FROM "EGRESO_CUSTODIA_RENDICION" eg
                   JOIN "CUSTODIA_DIFERENCIA_RENDICION" cu ON cu."idEventoCustodia" = eg."idEventoCustodia"
-                 WHERE eg."idCierreRecorrido" = NEW."idCierreRecorrido"
+                 WHERE eg."idCierreRecorrido" = v_cierre_actual."idCierreRecorrido"
                    AND eg."tipoEgreso" = 'DEVOLUCION_FISICA_CON_RECIBO'
-                   AND (cu."idRevisionConciliacion" IS NULL OR cu."idRevisionConciliacion" = NEW."idRevisionVigente");
-                IF v_suma_egresos_custodia <> NEW."importeCustodiaNoImputada" THEN
+                   AND (cu."idRevisionConciliacion" IS NULL OR cu."idRevisionConciliacion" = v_cierre_actual."idRevisionVigente");
+                IF v_suma_egresos_custodia <> v_cierre_actual."importeCustodiaNoImputada" THEN
                     RAISE EXCEPTION 'E04-CUSTODIA: devolucion fisica exige EGRESO_CUSTODIA_RENDICION con recibo por importe exacto % de la revision confirmada (registrado: %)',
-                        NEW."importeCustodiaNoImputada", v_suma_egresos_custodia;
+                        v_cierre_actual."importeCustodiaNoImputada", v_suma_egresos_custodia;
                 END IF;
             END IF;
         END IF;

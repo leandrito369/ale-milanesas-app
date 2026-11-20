@@ -691,9 +691,16 @@ public final class GfisLabSupport {
                 .map(a -> a.idCliente() + ":" + a.idPedido() + ":" + a.importeAplicado().toPlainString())
                 .collect(Collectors.joining(";"));
         String motivoNorm = motivo == null ? "" : motivo.trim().replaceAll("\\s+", " ");
-        return "REV:v1:" + idCierre + "|" + esperado.toPlainString() + "|" + recibido.toPlainString()
+        String payloadCanonico = "REV:v1:" + idCierre + "|" + esperado.toPlainString() + "|" + recibido.toPlainString()
                 + "|" + propuesto.toPlainString() + "|" + faltante.toPlainString()
                 + "|" + custodia.toPlainString() + "|" + motivoNorm + "|" + appsCanon;
+        try {
+            byte[] digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(payloadCanonico.getBytes(StandardCharsets.UTF_8));
+            return java.util.HexFormat.of().formatHex(digest);
+        } catch (java.security.NoSuchAlgorithmException ex) {
+            throw new IllegalStateException("SHA-256 no disponible", ex);
+        }
     }
 
     /**
