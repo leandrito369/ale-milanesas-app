@@ -45,7 +45,7 @@ Esto dejaba al `ADMINISTRADOR` atrapado ante errores materiales en los escenario
 | **Compatibilidad con las 12 tablas** | **100 % aditiva** (+1 tabla `REVISION_CONCILIACION_PE2` → `13` tablas candidatas; `0` rupturas en las 28 pruebas previas). | Altera unicidad central de `CIERRE_RECORRIDO_PE2` y obliga a rediseñar controles del Bloqueante 3. |
 | **Riesgos y necesidad de RD/CR** | **No requiere nueva operación G0.** Requiere incorporar `REVISION_CONCILIACION_PE2` en `CR-B0-F04-001` / ratificación de `B1`, más definir explícitamente 2 bordes comerciales: (1) si una rectificación con `faltante=0 ∧ custodia=0` puede cerrar como `CONFIRMADO`, y (2) alcance operativo tras `INVALIDADA`. | Mismos requisitos comerciales más mayor riesgo técnico de concurrencia/auditoría. |
 
-**Recomendación fundamentada:** **Alternativa A (`REVISION_CONCILIACION_PE2`, CANDIDATA NO RATIFICADA)**, porque preserva incondicionalmente `UNIQUE("idRecorrido")` del Bloqueante 3, elimina toda posibilidad de reescritura silenciosa de cabecera, resuelve los 8 escenarios **A–H** con `0` efectos financieros anticipados y mantiene un único `COMMIT` `T1-C2`.
+**Recomendación fundamentada (corte histórico 20/11/2026):** **Alternativa A (`REVISION_CONCILIACION_PE2`)**, porque preserva incondicionalmente `UNIQUE("idRecorrido")` del Bloqueante 3, elimina toda posibilidad de reescritura silenciosa de cabecera, resuelve los 8 escenarios **A–H** con `0` efectos financieros anticipados y mantiene un único `COMMIT` `T1-C2`. *(Actualización normativa 21/11/2026: ratificada expresamente junto con `B1-R1` y `B1-R2` en [comentario 7064807213](https://github.com/leandrito369/ale-milanesas-app/pull/101#issuecomment-7064807213); formalización en Gobierno PR DRAFT `#76`, aún sin merge.)*
 
 ---
 
@@ -102,20 +102,20 @@ El 21/11/2026 el responsable ratificó expresamente `A1`, `FA-1`, `FA-2`, `B1`, 
 - **`PENDIENTE_CONCILIACION` (0 efectos financieros):** garantizado por `CHECK (importeImputadoConfirmado = 0)` + triggers en `COBRO_RENDICION_K2` y `APLICACION_RENDICION_K2` + `PROPUESTA_APLICACION_PENDIENTE` no financiera, incluso tras múltiples rectificaciones o invalidaciones.
 - **`T1-C2` + `K2` + conservación `A_e + V_e^{vig} = V_e^0`:** único `COMMIT` atómico sobre la revisión `VIGENTE → CONFIRMADA_T1`; máximo 1 `COBRO REPARTO` positivo por Cliente/cierre; conservación diferida al `COMMIT` (`ct_gfis_pe1_conservacion`, `ct_gfis_k2_cobro_suma`).
 - **Unicidad incondicional del cierre:** `CONSTRAINT uq_gfis_unico_cierre_por_recorrido UNIQUE ("idRecorrido")` permanece 100 % intacta.
-- **Recorrido explícito y pertenencia (`FA-1` / `FA-2`):** `fn_gfis_validar_recorrido_entrega` exige `RECORRIDO_ASIGNACION(ACTIVA)` y `ASIGNACION_REPARTO` vigente; `FA-1` y `FA-2` probadas como propuestas no ratificadas; `UC-43` estrictamente `VENDEDOR`.
+- **Recorrido explícito y pertenencia (`A1` / `FA-1` / `FA-2`):** `fn_gfis_validar_recorrido_entrega` exige `RECORRIDO_ASIGNACION(ACTIVA)` y `ASIGNACION_REPARTO` vigente; `A1`, `FA-1` y `FA-2` (probadas como propuestas en el corte histórico 20/11 y **ratificadas por el responsable el 21/11/2026**, con `RD-GFIS-AB-001` en PR DRAFT `#76`) preservan `UC-43` estrictamente en `VENDEDOR`.
 - **Custodia y `E-04`:** segregada de `MOVIMIENTO_CAJA`; devolución física exige `EGRESO_CUSTODIA_RENDICION` con recibo único y receptor sobre el evento de la **revisión confirmada** (rechaza eventos de revisiones superadas o invalidadas).
 - **`C1-a`, `C-04`, `D7-A`, `DC05-07-A`, `IMP-B/A/C`, `RCG-06`, `A2/B2` 64-bit:** 100 % preservados y verificados en regresión; `S10 = NO ACREDITADO`.
 
 ---
 
-## E-AG-08 / E-AG-09 / E-AG-10 — Dictamen de salida y separación `G-FIS` vs `G-DEV`
+## E-AG-08 / E-AG-09 / E-AG-10 — Dictamen de salida conciliado (corte C0 del 21/11/2026) y separación `G-FIS` vs `G-DEV`
 
-- **PR `#101`:** permanece **`OPEN / DRAFT / NO MERGE / NO DESPLEGAR`**, con **`9` archivos** exclusivamente en `src/test/**` y `docs/implementation/**` (`0` en `src/main/**`).
-- **Dictamen técnico de laboratorio para `R08.6 / G-FIS`:** **APTO TÉCNICAMENTE EN LABORATORIO (`GO CONDICIONADO` a decisiones humanas; `NO-GO` automático mientras no se ratifiquen las fronteras pendientes).**
-- **Decisiones comerciales / normativas humanas requeridas antes de autorizar `G-FIS` Fase C (promoción de `V4`):**
-  1. Ratificar **`A1` + `FA-1` + `FA-2`** (Recorrido explícito, 1 `ABIERTO` por Repartidor, 0 `PENDIENTE` activos antes del cierre, conservando `UC-43` exclusivo `VENDEDOR`).
-  2. Ratificar **`B1` corregida bajo `T1-C2` + Alternativa A (`REVISION_CONCILIACION_PE2`)**, definiendo explícitamente los 2 bordes comerciales:
-     - **B1-R1:** si una rectificación que corrige un error material y reduce las diferencias a `0` (`faltante = 0 ∧ custodia = 0`) puede confirmarse como `CONFIRMADO` (conservando el historial de revisiones) o exige permanecer bajo `CERRADO_CON_DIFERENCIA_RESUELTA`.
-     - **B1-R2:** si tras `INVALIDADA` (escenario H) el cierre permanece en `PENDIENTE_CONCILIACION` esperando una nueva revisión sucesora (modelo actual de Alternativa A) o si se habilita reabrir el estado operativo del Recorrido.
-  3. Autorizar expresamente **`G-FIS` Fase C** (promoción de `V4` a `src/main/resources/db/migration/` con las `13` tablas aditivas, vista `IMP-A`, reemplazo `L02` 64-bit y soporte `C-04`, sin tocar `V1–V3`).
-- **Puerta `G-DEV / R09.1`:** estrictamente **separada y posterior** a `G-FIS` (cutover atómico `A2/B2` en `CobroManualService`/`RegistrarMovimientoCajaService`, implementación `C-04` e `IMP-B`, y reconciliación `UC-15`/`UC-03`). Demo intacta; `Issue #28` pausada.
+- **PR `#101`:** permanece **`OPEN / DRAFT / NO MERGE / NO DESPLEGAR`**, exclusivamente en `src/test/**` y `docs/implementation/**` (**`0` cambios en `src/main/**`**).
+- **Conciliación de estado histórico (19–20/11/2026) vs estado normativo vigente (21/11/2026):**
+  - **Ya RATIFICADAS el 21/11/2026 (NO se vuelve a pedir votación):** `A1`, `FA-1`, `FA-2`, `B1`, `Alternativa A`, `B1-R1` y `B1-R2` ([comentario 7064807213](https://github.com/leandrito369/ale-milanesas-app/pull/101#issuecomment-7064807213)). Su formalización documental cursa en Gobierno [PR DRAFT #76](https://github.com/leandrito369/ale-milanesas/pull/76) (`RD-GFIS-AB-001`, HEAD `1630c4773a6019ee25b1f803230a0e788d7cb2e7`, aún **no integrada en Gobierno `main`**).
+  - **Acreditación técnica en laboratorio (`26d78880`):** `40/40` pruebas G-FIS (incluyendo `B1-R1`) y `756/756` pruebas totales en `B1`/`B2` `SUCCESS` + SonarCloud `Quality Gate passed`.
+  - **Evaluación de elegibilidad técnica previa a solicitar `G-FIS Fase C`:** desarrollada íntegramente en el expediente complementario [`GFIS_FASE_C0_EXPEDIENTE_ELEGIBILIDAD_PREPROMOCION_V4_2026-11-21.md`](./GFIS_FASE_C0_EXPEDIENTE_ELEGIBILIDAD_PREPROMOCION_V4_2026-11-21.md) (inventario exhaustivo de `V4_CANDIDATE`, adaptaciones previas a Flyway, seguridad, cutover `A2/B2`, preflight reproducible, riesgos y dictamen `GO/NO-GO`).
+- **Actos de gobierno estrictamente pendientes (bajo gates independientes):**
+  1. Revisión editorial e integración en Gobierno `main` de PR `#76` (`RD-GFIS-AB-001`).
+  2. Resolución de las adaptaciones físicas bloqueantes catalogadas en el expediente C0 (`ADAPT-01..07`) y **autorización expresa posterior del responsable para `G-FIS Fase C`** (promoción de `V4` a `src/main/resources/db/migration/`).
+- **Puerta `G-DEV / R09.1`:** estrictamente **separada y posterior** a `G-FIS Fase C` (cutover atómico `A2/B2` en `CobroManualService`/`RegistrarMovimientoCajaService`/`ProtocoloIdentificadoresFinancieros`, implementación `C-04` e `IMP-B` y reconciliación `UC-15`/`UC-03`). `UC-07` físico (Gobierno PR `#75`, `PROPUESTO`), Demo e `Issue #28` (en pausa de despliegue) permanecen intactos; `S10 = NO ACREDITADO`.
