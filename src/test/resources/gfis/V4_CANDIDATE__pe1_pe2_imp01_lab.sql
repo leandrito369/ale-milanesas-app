@@ -699,6 +699,128 @@ CREATE TRIGGER "tg_gfis_validar_revision_conciliacion"
     BEFORE INSERT OR UPDATE OR DELETE ON "REVISION_CONCILIACION_PE2"
     FOR EACH ROW EXECUTE FUNCTION "fn_gfis_validar_revision_conciliacion"();
 
+-- Constraint trigger diferido al COMMIT sobre REVISION_CONCILIACION_PE2:
+-- Relee siempre los estados efectivos al COMMIT (sin depender de snapshots intermedios NEW.*)
+-- e impide transiciones aisladas a CONFIRMADA_T1, SUPERADA, INVALIDADA o VIGENTE huerfana.
+CREATE OR REPLACE FUNCTION "fn_gfis_verificar_coherencia_revision_commit"()
+RETURNS trigger LANGUAGE plpgsql AS $rev_commit$
+DECLARE
+    v_rev record;
+    v_cierre record;
+    v_est_recorrido VARCHAR(25);
+    v_suma_propuestas NUMERIC(18,2);
+    v_suma_cobros NUMERIC(18,2);
+BEGIN
+    SELECT * INTO v_rev
+      FROM "REVISION_CONCILIACION_PE2"
+     WHERE "idRevisionConciliacion" = NEW."idRevisionConciliacion";
+    IF NOT FOUND THEN
+        RETURN NEW;
+    END IF;
+
+    SELECT * INTO v_cierre
+      FROM "CIERRE_RECORRIDO_PE2"
+     WHERE "idCierreRecorrido" = v_rev."idCierreRecorrido";
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'T1-C2/REV-COMMIT: cabecera CIERRE_RECORRIDO_PE2 inexistente para revision %',
+            v_rev."idRevisionConciliacion";
+    END IF;
+
+    IF v_rev."estadoRevision" = 'VIGENTE' THEN
+        IF v_cierre."estadoCierre" <> 'PENDIENTE_CONCILIACION'
+           OR v_cierre."idRevisionVigente" IS DISTINCT FROM v_rev."idRevisionConciliacion" THEN
+            RAISE EXCEPTION 'T1-C2/REV-COMMIT: revision VIGENTE (%) incoherente con cabecera (estado=%, idRevisionVigente=%)',
+                v_rev."idRevisionConciliacion", v_cierre."estadoCierre", v_cierre."idRevisionVigente";
+        END IF;
+
+        IF ROW(v_cierre."importeEsperado", v_cierre."importeEfectivoRecibido",
+               v_cierre."importeImputadoPropuesto", v_cierre."importeDiferenciaFaltante",
+               v_cierre."importeCustodiaNoImputada", v_cierre."motivoDiferencia")
+           IS DISTINCT FROM
+           ROW(v_rev."importeEsperado", v_rev."importeEfectivoRecibido",
+               v_rev."importeImputadoPropuesto", v_rev."importeDiferenciaFaltante",
+               v_rev."importeCustodiaNoImputada", v_rev."motivoRevision") THEN
+            RAISE EXCEPTION 'T1-C2/REV-COMMIT: montos o motivo de cabecera difieren de su revision VIGENTE (%)',
+                v_rev."idRevisionConciliacion";
+        END IF;
+
+        SELECT COALESCE(SUM("importePropuesto"), 0) INTO v_suma_propuestas
+          FROM "PROPUESTA_APLICACION_PENDIENTE"
+         WHERE "idRevisionConciliacion" = v_rev."idRevisionConciliacion";
+        IF v_suma_propuestas <> v_rev."importeImputadoPropuesto" THEN
+            RAISE EXCEPTION 'T1-C2/REV-COMMIT: suma de propuestas (%) != importeImputadoPropuesto (%) en revision VIGENTE (%)',
+                v_suma_propuestas, v_rev."importeImputadoPropuesto", v_rev."idRevisionConciliacion";
+        END IF;
+
+    ELSIF v_rev."estadoRevision" = 'CONFIRMADA_T1' THEN
+        IF v_cierre."estadoCierre" <> 'CERRADO_CON_DIFERENCIA_RESUELTA'
+           OR v_cierre."idRevisionVigente" IS DISTINCT FROM v_rev."idRevisionConciliacion"
+           OR v_cierre."claveIdempotenciaCierre" IS NULL
+           OR v_cierre."reciboHistoricoJson" IS NULL THEN
+            RAISE EXCEPTION 'T1-C2/REV-COMMIT: revision CONFIRMADA_T1 (%) exige confirmacion coherente de cabecera en la misma transaccion (estado=%, idRevisionVigente=%)',
+                v_rev."idRevisionConciliacion", v_cierre."estadoCierre", v_cierre."idRevisionVigente";
+        END IF;
+
+        SELECT COALESCE(SUM(c."importe"), 0) INTO v_suma_cobros
+          FROM "COBRO_RENDICION_K2" ck
+          JOIN "COBRO" c ON c."idCobro" = ck."idCobro"
+         WHERE ck."idCierreRecorrido" = v_cierre."idCierreRecorrido";
+        IF v_suma_cobros <> v_rev."importeImputadoPropuesto"
+           OR v_cierre."importeImputadoConfirmado" <> v_rev."importeImputadoPropuesto" THEN
+            RAISE EXCEPTION 'T1-C2/REV-COMMIT: revision CONFIRMADA_T1 (%) sin efectos financieros definitivos equivalentes (propuesto=%, confirmado=%, cobrosK2=%)',
+                v_rev."idRevisionConciliacion", v_rev."importeImputadoPropuesto",
+                v_cierre."importeImputadoConfirmado", v_suma_cobros;
+        END IF;
+
+        SELECT "estadoOperativo" INTO v_est_recorrido
+          FROM "RECORRIDO_REPARTO"
+         WHERE "idRecorrido" = v_cierre."idRecorrido";
+        IF v_est_recorrido <> 'CERRADO' THEN
+            RAISE EXCEPTION 'T1-C2/REV-COMMIT: revision CONFIRMADA_T1 (%) exige RECORRIDO_REPARTO en estado CERRADO (actual=%)',
+                v_rev."idRevisionConciliacion", v_est_recorrido;
+        END IF;
+
+    ELSIF v_rev."estadoRevision" = 'SUPERADA' THEN
+        IF NOT EXISTS (
+            SELECT 1
+              FROM "REVISION_CONCILIACION_PE2" suc
+             WHERE suc."idCierreRecorrido" = v_rev."idCierreRecorrido"
+               AND suc."idRevisionAnterior" = v_rev."idRevisionConciliacion"
+               AND suc."numeroRevision" = v_rev."numeroRevision" + 1
+        ) THEN
+            RAISE EXCEPTION 'T1-C2/REV-COMMIT: revision SUPERADA (%) exige una revision sucesora valida (numeroRevision=%) en la misma transaccion',
+                v_rev."idRevisionConciliacion", v_rev."numeroRevision" + 1;
+        END IF;
+        IF v_cierre."idRevisionVigente" = v_rev."idRevisionConciliacion" THEN
+            RAISE EXCEPTION 'T1-C2/REV-COMMIT: revision SUPERADA (%) no puede permanecer como idRevisionVigente en cabecera',
+                v_rev."idRevisionConciliacion";
+        END IF;
+
+    ELSIF v_rev."estadoRevision" = 'INVALIDADA' THEN
+        IF v_cierre."idRevisionVigente" = v_rev."idRevisionConciliacion" THEN
+            RAISE EXCEPTION 'T1-C2/REV-COMMIT: revision INVALIDADA (%) exige resolver el enlace idRevisionVigente en cabecera',
+                v_rev."idRevisionConciliacion";
+        END IF;
+        IF NOT EXISTS (
+            SELECT 1
+              FROM "REVISION_CONCILIACION_PE2" suc
+             WHERE suc."idCierreRecorrido" = v_rev."idCierreRecorrido"
+               AND suc."idRevisionAnterior" = v_rev."idRevisionConciliacion"
+               AND suc."numeroRevision" = v_rev."numeroRevision" + 1
+        ) AND (v_cierre."estadoCierre" <> 'PENDIENTE_CONCILIACION' OR v_cierre."idRevisionVigente" IS NOT NULL) THEN
+            RAISE EXCEPTION 'T1-C2/REV-COMMIT: tras INVALIDADA sin sucesora, la cabecera debe quedar PENDIENTE_CONCILIACION con idRevisionVigente=NULL';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END
+$rev_commit$;
+
+CREATE CONSTRAINT TRIGGER "ct_gfis_revision_coherencia_commit"
+    AFTER INSERT OR UPDATE OF "estadoRevision" ON "REVISION_CONCILIACION_PE2"
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION "fn_gfis_verificar_coherencia_revision_commit"();
+
 CREATE OR REPLACE FUNCTION "fn_gfis_validar_admin_y_cierre"()
 RETURNS trigger LANGUAGE plpgsql AS $cierre$
 DECLARE

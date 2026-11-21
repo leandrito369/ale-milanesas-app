@@ -515,6 +515,209 @@ class GfisRectificacionPendienteLabIntegrationTest {
                 Integer.class, pend.idCierre()));
     }
 
+    /**
+     * Control final de integridad SQL (ct_gfis_revision_coherencia_commit):
+     * Pruebas NEGATIVAS que demuestran que ninguna transicion aislada de REVISION_CONCILIACION_PE2
+     * (CONFIRMADA_T1 sin cabecera/Cobros K2, SUPERADA sin sucesora, INVALIDADA sin desvincular cabecera,
+     * CONFIRMADA_T1 + cabecera sin Cobros K2, ni nueva VIGENTE sin actualizar cabecera) puede cometerse.
+     */
+    @Test
+    void integridadCommitRechazaTransicionesAisladasDeRevisionConRollbackYSqlstateP0001() {
+        EscenarioBase e = crearEscenarioBase("REC-REV-NEG-COMMIT");
+        var pend = tx.execute(s -> GfisLabSupport.registrarPendienteConciliacionEnTx(
+                jdbc, e.recorrido(), e.idAdmin(), UUID.randomUUID(),
+                new BigDecimal("180.00"), new BigDecimal("170.00"),
+                new BigDecimal("10.00"), BigDecimal.ZERO.setScale(2),
+                "Pendiente para pruebas negativas de COMMIT",
+                List.of(
+                        new GfisLabSupport.AplicacionPlan(e.clienteA(), e.pedA1(), new BigDecimal("70.00")),
+                        new GfisLabSupport.AplicacionPlan(e.clienteA(), e.pedA2(), new BigDecimal("40.00")),
+                        new GfisLabSupport.AplicacionPlan(e.clienteB(), e.pedB1(), new BigDecimal("60.00")))));
+        assertNotNull(pend);
+        Long idRev1 = jdbc.queryForObject(
+                "SELECT \"idRevisionVigente\" FROM \"CIERRE_RECORRIDO_PE2\" WHERE \"idCierreRecorrido\"=?",
+                Long.class, pend.idCierre());
+        assertNotNull(idRev1);
+
+        // 1) Transicion aislada VIGENTE -> CONFIRMADA_T1 sin confirmar cabecera ni emitir Cobros K2
+        RuntimeException exConfAislada = assertThrows(RuntimeException.class, () -> tx.executeWithoutResult(s ->
+                jdbc.update("""
+                        UPDATE "REVISION_CONCILIACION_PE2"
+                           SET "estadoRevision" = 'CONFIRMADA_T1'
+                         WHERE "idRevisionConciliacion" = ?
+                        """, idRev1)));
+        assertEquals("P0001", extraerSqlState(exConfAislada));
+        assertTrue(extraerDetalle(exConfAislada).contains("T1-C2/REV-COMMIT"));
+
+        // 2) Transicion aislada VIGENTE -> SUPERADA sin insertar revision sucesora ni actualizar cabecera
+        RuntimeException exSupAislada = assertThrows(RuntimeException.class, () -> tx.executeWithoutResult(s ->
+                jdbc.update("""
+                        UPDATE "REVISION_CONCILIACION_PE2"
+                           SET "estadoRevision" = 'SUPERADA'
+                         WHERE "idRevisionConciliacion" = ?
+                        """, idRev1)));
+        assertEquals("P0001", extraerSqlState(exSupAislada));
+        assertTrue(extraerDetalle(exSupAislada).contains("T1-C2/REV-COMMIT"));
+
+        // 3) Transicion aislada VIGENTE -> INVALIDADA sin resolver enlace idRevisionVigente en cabecera
+        RuntimeException exInvAislada = assertThrows(RuntimeException.class, () -> tx.executeWithoutResult(s ->
+                jdbc.update("""
+                        UPDATE "REVISION_CONCILIACION_PE2"
+                           SET "estadoRevision" = 'INVALIDADA',
+                               "idUsuarioInvalidacion" = ?,
+                               "motivoInvalidacion" = 'Invalidacion aislada sin actualizar cabecera',
+                               "fechaHoraInvalidacion" = clock_timestamp()
+                         WHERE "idRevisionConciliacion" = ?
+                        """, e.idAdmin(), idRev1)));
+        assertEquals("P0001", extraerSqlState(exInvAislada));
+        assertTrue(extraerDetalle(exInvAislada).contains("T1-C2/REV-COMMIT"));
+
+        // 4) Confirmacion ficticia: REVISION=CONFIRMADA_T1 + CABECERA=CERRADO_CON_DIFERENCIA_RESUELTA
+        //    SIN emitir Cobros K2 por 170.00 => rechazada al COMMIT (imposibilidad de cierre sin efectos)
+        UUID claveFicticia = UUID.randomUUID();
+        RuntimeException exSinCobros = assertThrows(RuntimeException.class, () -> tx.executeWithoutResult(s -> {
+            jdbc.update("""
+                    UPDATE "REVISION_CONCILIACION_PE2"
+                       SET "estadoRevision" = 'CONFIRMADA_T1'
+                     WHERE "idRevisionConciliacion" = ?
+                    """, idRev1);
+            jdbc.update("""
+                    UPDATE "CIERRE_RECORRIDO_PE2"
+                       SET "estadoCierre" = 'CERRADO_CON_DIFERENCIA_RESUELTA',
+                           "claveIdempotenciaCierre" = ?,
+                           "versionHuella" = 'v1',
+                           "huellaCanonica" = 'h-ficticia',
+                           "importeImputadoConfirmado" = "importeImputadoPropuesto",
+                           "idUsuarioResolucionAdmin" = ?,
+                           "tipoResolucionAdmin" = 'FALTANTE_ASENTADO_SIN_RECUPERO_AUTOMATICO',
+                           "motivoResolucionAdmin" = 'Intento sin Cobros K2',
+                           "fechaHoraResolucion" = clock_timestamp(),
+                           "reciboHistoricoJson" = '{}'::jsonb
+                     WHERE "idCierreRecorrido" = ?
+                    """, claveFicticia, e.idAdmin(), pend.idCierre());
+            jdbc.update("UPDATE \"RECORRIDO_REPARTO\" SET \"estadoOperativo\"='CERRADO' WHERE \"idRecorrido\"=?",
+                    e.recorrido());
+        }));
+        assertEquals("P0001", extraerSqlState(exSinCobros));
+
+        // 5) Revision 2 huerfana: SUPERADA rev 1 + INSERT rev 2 VIGENTE sin enlazar CIERRE_RECORRIDO_PE2.idRevisionVigente
+        UUID claveHuerfana = UUID.randomUUID();
+        RuntimeException exHuerfana = assertThrows(RuntimeException.class, () -> tx.executeWithoutResult(s -> {
+            jdbc.update("""
+                    UPDATE "REVISION_CONCILIACION_PE2"
+                       SET "estadoRevision" = 'SUPERADA'
+                     WHERE "idRevisionConciliacion" = ?
+                    """, idRev1);
+            jdbc.update("""
+                    INSERT INTO "REVISION_CONCILIACION_PE2" (
+                        "idCierreRecorrido","numeroRevision","idRevisionAnterior","estadoRevision",
+                        "claveIdempotenciaRevision","versionHuella","huellaCanonica",
+                        "idUsuarioAdmin","fechaHoraRevision",
+                        "importeEsperado","importeEfectivoRecibido","importeImputadoPropuesto",
+                        "importeDiferenciaFaltante","importeCustodiaNoImputada","motivoRevision")
+                    VALUES (?,2,?,'VIGENTE',?,'v1','h-huerfana',?,clock_timestamp(),180,170,170,10,0,'Sin enlace cabecera')
+                    """, pend.idCierre(), idRev1, claveHuerfana, e.idAdmin());
+        }));
+        assertEquals("P0001", extraerSqlState(exHuerfana));
+        assertTrue(extraerDetalle(exHuerfana).contains("T1-C2/REV-COMMIT"));
+
+        // Verificar rollback completo tras los 5 intentos negativos: estado intacto en Rev 1 VIGENTE y 0 Cobros
+        assertEquals("VIGENTE", jdbc.queryForObject(
+                "SELECT \"estadoRevision\" FROM \"REVISION_CONCILIACION_PE2\" WHERE \"idRevisionConciliacion\"=?",
+                String.class, idRev1));
+        assertEquals("PENDIENTE_CONCILIACION", jdbc.queryForObject(
+                "SELECT \"estadoCierre\" FROM \"CIERRE_RECORRIDO_PE2\" WHERE \"idCierreRecorrido\"=?",
+                String.class, pend.idCierre()));
+        assertEquals(idRev1, jdbc.queryForObject(
+                "SELECT \"idRevisionVigente\" FROM \"CIERRE_RECORRIDO_PE2\" WHERE \"idCierreRecorrido\"=?",
+                Long.class, pend.idCierre()));
+        assertEquals(0, jdbc.queryForObject(
+                "SELECT count(*) FROM \"COBRO_RENDICION_K2\" WHERE \"idCierreRecorrido\"=?",
+                Integer.class, pend.idCierre()));
+    }
+
+    /**
+     * Prueba POSITIVA completa de coherencia al COMMIT:
+     * Rev 1 (PENDIENTE) -> Rectificacion Rev 2 (SUPERADA->VIGENTE) -> Invalidacion H
+     * (INVALIDADA + idRevisionVigente=NULL) -> Sucesora Rev 3 -> Confirmacion T1-C2 con E-04.
+     */
+    @Test
+    void integridadCommitValidaCadenaCompletaRectificacionInvalidacionSucesoraYConfirmacionT1C2() {
+        EscenarioBase e = crearEscenarioBase("REC-REV-POS-CADENA");
+        var pend = tx.execute(s -> GfisLabSupport.registrarPendienteConciliacionEnTx(
+                jdbc, e.recorrido(), e.idAdmin(), UUID.randomUUID(),
+                new BigDecimal("180.00"), new BigDecimal("180.00"),
+                new BigDecimal("15.00"), new BigDecimal("15.00"),
+                "Rev 1 inicial con error de custodia",
+                List.of(
+                        new GfisLabSupport.AplicacionPlan(e.clienteA(), e.pedA1(), new BigDecimal("70.00")),
+                        new GfisLabSupport.AplicacionPlan(e.clienteA(), e.pedA2(), new BigDecimal("45.00")),
+                        new GfisLabSupport.AplicacionPlan(e.clienteB(), e.pedB1(), new BigDecimal("50.00")))));
+        assertNotNull(pend);
+
+        var rev2 = tx.execute(s -> GfisLabSupport.rectificarPendienteConciliacionEnTx(
+                jdbc, pend.idCierre(), e.recorrido(), e.idAdmin(), UUID.randomUUID(),
+                new BigDecimal("180.00"), new BigDecimal("180.00"),
+                new BigDecimal("12.00"), new BigDecimal("12.00"),
+                "Rev 2 rectificacion parcial",
+                List.of(
+                        new GfisLabSupport.AplicacionPlan(e.clienteA(), e.pedA1(), new BigDecimal("70.00")),
+                        new GfisLabSupport.AplicacionPlan(e.clienteA(), e.pedA2(), new BigDecimal("42.00")),
+                        new GfisLabSupport.AplicacionPlan(e.clienteB(), e.pedB1(), new BigDecimal("56.00")))));
+        assertNotNull(rev2);
+        assertEquals(2, rev2.numeroRevision());
+
+        tx.executeWithoutResult(s -> GfisLabSupport.invalidarRevisionPendienteEnTx(
+                jdbc, pend.idCierre(), e.recorrido(), e.idAdmin(),
+                "Rev 2 invalidada para recuento completo"));
+
+        var rev3 = tx.execute(s -> GfisLabSupport.rectificarPendienteConciliacionEnTx(
+                jdbc, pend.idCierre(), e.recorrido(), e.idAdmin(), UUID.randomUUID(),
+                new BigDecimal("180.00"), new BigDecimal("180.00"),
+                new BigDecimal("10.00"), new BigDecimal("10.00"),
+                "Rev 3 definitiva verificada tras recuento",
+                List.of(
+                        new GfisLabSupport.AplicacionPlan(e.clienteA(), e.pedA1(), new BigDecimal("70.00")),
+                        new GfisLabSupport.AplicacionPlan(e.clienteA(), e.pedA2(), new BigDecimal("40.00")),
+                        new GfisLabSupport.AplicacionPlan(e.clienteB(), e.pedB1(), new BigDecimal("60.00")))));
+        assertNotNull(rev3);
+        assertEquals(3, rev3.numeroRevision());
+
+        var cierre = tx.execute(s -> GfisLabSupport.confirmarResolucionT1K2EnTx(
+                jdbc, pend.idCierre(), e.recorrido(), e.idAdmin(), 3,
+                UUID.randomUUID(), "v1", "h-pos-cadena-rev3",
+                "MIXTA_FALTANTE_Y_CUSTODIA",
+                "Confirmacion T1-C2 definitiva sobre rev 3",
+                new GfisLabSupport.EvidenciaEgresoCustodia(
+                        "REC-POS-CAD-" + e.f().base, "Repartidor #" + e.idRepartidor(), "Devolucion 10.00"),
+                true, false));
+        assertNotNull(cierre);
+        assertEquals("CERRADO_CON_DIFERENCIA_RESUELTA", cierre.estadoCierre());
+
+        assertEquals(List.of("SUPERADA", "INVALIDADA", "CONFIRMADA_T1"), jdbc.queryForList("""
+                SELECT "estadoRevision" FROM "REVISION_CONCILIACION_PE2"
+                 WHERE "idCierreRecorrido" = ?
+                 ORDER BY "numeroRevision" ASC
+                """, String.class, pend.idCierre()));
+        assertEquals("CERRADO", jdbc.queryForObject(
+                "SELECT \"estadoOperativo\" FROM \"RECORRIDO_REPARTO\" WHERE \"idRecorrido\"=?",
+                String.class, e.recorrido()));
+        assertEquals(2, jdbc.queryForObject(
+                "SELECT count(*) FROM \"COBRO_RENDICION_K2\" WHERE \"idCierreRecorrido\"=?",
+                Integer.class, pend.idCierre()));
+    }
+
+    private static String extraerSqlState(Throwable t) {
+        Throwable cur = t;
+        while (cur != null) {
+            if (cur instanceof SQLException sqlEx && sqlEx.getSQLState() != null) {
+                return sqlEx.getSQLState();
+            }
+            cur = cur.getCause();
+        }
+        return t.getClass().getSimpleName();
+    }
+
     private static String extraerDetalle(Throwable t) {
         Throwable cur = t;
         while (cur != null) {
@@ -529,3 +732,4 @@ class GfisRectificacionPendienteLabIntegrationTest {
         return t.getClass().getSimpleName() + ":" + t.getMessage();
     }
 }
+
