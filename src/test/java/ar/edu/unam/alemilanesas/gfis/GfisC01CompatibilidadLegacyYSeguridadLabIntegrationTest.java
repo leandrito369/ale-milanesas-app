@@ -95,8 +95,8 @@ class GfisC01CompatibilidadLegacyYSeguridadLabIntegrationTest {
         tx.executeWithoutResult(s -> jdbc.update("""
                 INSERT INTO "SESION_USUARIO" (
                     "idSesionUsuario","idUsuario","tokenProtegido","fechaHoraInicio","fechaHoraExpiracion")
-                VALUES (?,?,decode('c01a01','hex'),now() - interval '1 minute',now() + interval '2 hours')
-                """, sesionAdmin, idAdmin));
+                VALUES (?,?,decode(replace(?::text, '-', ''), 'hex'),now() - interval '1 minute',now() + interval '2 hours')
+                """, sesionAdmin, idAdmin, sesionAdmin));
         return new ContextoFinanzas(f, idAdmin, idVendedor, idRepartidor, idCliente, sesionAdmin, f.vendedor());
     }
 
@@ -171,31 +171,34 @@ class GfisC01CompatibilidadLegacyYSeguridadLabIntegrationTest {
         assertNotNull(idCobroReparto);
 
         // Rechazo en capa Java (CobroManualService) y en capa SQL (L02 + tg_gfis_guard_d7a_y_reservas_cobro)
+        UUID sesionAdmin = ctx.sesionAdmin();
+        long idAdmin = ctx.idAdmin();
         assertThrows(IllegalArgumentException.class,
-                () -> anularViaServicio(ctx.sesionAdmin(), idCobroReparto, "Intento ilegal REPARTO"));
+                () -> anularViaServicio(sesionAdmin, idCobroReparto, "Intento ilegal REPARTO"));
         DataAccessException exD7aSql = assertThrows(DataAccessException.class,
-                () -> anularDirectoSqlL02(idCobroReparto, ctx.idAdmin()));
+                () -> anularDirectoSqlL02(idCobroReparto, idAdmin));
         assertTrue(exD7aSql.getMessage().contains("D7-A"));
 
-        // 2) Cobro manual con reserva activa en IMP-B => CobroManualService falla por DC05-07-A y revierte todo
+        // 2) Cobro manual con reserva activa en IMP-B => CobroManualService falla por DC05-07-A y revierte integramente
         long pedRes = cargarPedidoService.cargarPedido(ctx.sesionVendedor(), ctx.fixture().datos()).idPedido();
         var cobroConReserva = cobroManualService.registrarCobro(
                 ctx.sesionVendedor(), ctx.idCliente(), pedRes, new BigDecimal("80.00"), "EFECTIVO", UUID.randomUUID());
+        long idCobroConReserva = cobroConReserva.idCobro();
         tx.executeWithoutResult(s -> jdbc.update("""
                 INSERT INTO "EVENTO_IMPUTACION_FINANCIERA" (
                     "idCliente","idCobro","idPedido","idCierreRecorrido","tipoEvento",
                     "importe","idUsuarioOperador","fechaHoraEvento","observacion")
                 VALUES (?,?,?,NULL,'RESERVA_ANTICIPO',80.00,?,clock_timestamp(),'Reserva activa C0.1')
-                """, ctx.idCliente(), cobroConReserva.idCobro(), pedRes, ctx.idVendedor()));
+                """, ctx.idCliente(), idCobroConReserva, pedRes, ctx.idVendedor()));
 
         int movCuentaAntes = jdbc.queryForObject("SELECT count(*) FROM \"MOVIMIENTO_CUENTA\"", Integer.class);
         int movCajaAntes = jdbc.queryForObject("SELECT count(*) FROM \"MOVIMIENTO_CAJA\"", Integer.class);
 
         DataAccessException exReserva = assertThrows(DataAccessException.class,
-                () -> anularViaServicio(ctx.sesionAdmin(), cobroConReserva.idCobro(), "Intento con reserva activa"));
+                () -> anularViaServicio(sesionAdmin, idCobroConReserva, "Intento con reserva activa"));
         assertTrue(exReserva.getMessage().contains("DC05-07-A"));
         assertEquals("CONFIRMADO", jdbc.queryForObject(
-                "SELECT \"estadoCobro\" FROM \"COBRO\" WHERE \"idCobro\"=?", String.class, cobroConReserva.idCobro()));
+                "SELECT \"estadoCobro\" FROM \"COBRO\" WHERE \"idCobro\"=?", String.class, idCobroConReserva));
         assertEquals(movCuentaAntes, jdbc.queryForObject("SELECT count(*) FROM \"MOVIMIENTO_CUENTA\"", Integer.class));
         assertEquals(movCajaAntes, jdbc.queryForObject("SELECT count(*) FROM \"MOVIMIENTO_CAJA\"", Integer.class));
     }
