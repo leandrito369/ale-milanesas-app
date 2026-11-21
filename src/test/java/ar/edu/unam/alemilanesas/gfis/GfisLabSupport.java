@@ -801,6 +801,17 @@ public final class GfisLabSupport {
         BigDecimal faltante = (BigDecimal) cabecera.get("importeDiferenciaFaltante");
         BigDecimal custodia = (BigDecimal) cabecera.get("importeCustodiaNoImputada");
 
+        boolean esB1R1Cero = faltante.signum() == 0 && custodia.signum() == 0;
+        String estadoDestino = esB1R1Cero ? "CONFIRMADO" : "CERRADO_CON_DIFERENCIA_RESUELTA";
+        if (esB1R1Cero && !"RECTIFICACION_ACREDITADA_SIN_DIFERENCIA".equals(tipoResolucionAdmin)) {
+            throw new IllegalArgumentException(
+                    "B1-R1: rectificacion acreditada a cero exige tipoResolucionAdmin=RECTIFICACION_ACREDITADA_SIN_DIFERENCIA");
+        }
+        if (esB1R1Cero && egresoCustodia != null) {
+            throw new IllegalArgumentException(
+                    "B1-R1: no corresponde EGRESO_CUSTODIA_RENDICION cuando custodia=0");
+        }
+
         List<AplicacionPlan> propuestas = jdbc.query("""
                 SELECT "idCliente","idPedido","importePropuesto"
                   FROM "PROPUESTA_APLICACION_PENDIENTE"
@@ -819,7 +830,8 @@ public final class GfisLabSupport {
                 """, idRevVigente);
 
         String reciboJson = "{\"idRecorrido\":" + idRecorrido
-                + ",\"estado\":\"CERRADO_CON_DIFERENCIA_RESUELTA\""
+                + ",\"estado\":\"" + estadoDestino + "\""
+                + ",\"viaB1R1\":" + esB1R1Cero
                 + ",\"numeroRevisionConfirmada\":" + numRevActual
                 + ",\"tipoResolucion\":\"" + tipoResolucionAdmin + "\""
                 + ",\"imputado\":\"" + totalPropuesto
@@ -828,7 +840,7 @@ public final class GfisLabSupport {
 
         String reciboNormalizado = jdbc.queryForObject("""
                 UPDATE "CIERRE_RECORRIDO_PE2"
-                   SET "estadoCierre" = 'CERRADO_CON_DIFERENCIA_RESUELTA',
+                   SET "estadoCierre" = ?,
                        "claveIdempotenciaCierre" = ?,
                        "versionHuella" = ?,
                        "huellaCanonica" = ?,
@@ -842,7 +854,7 @@ public final class GfisLabSupport {
                  RETURNING "reciboHistoricoJson"::text
                 """,
                 String.class,
-                claveIdempotenciaCierre, versionHuella, huellaCanonica,
+                estadoDestino, claveIdempotenciaCierre, versionHuella, huellaCanonica,
                 idAdminResolucion, tipoResolucionAdmin, motivoResolucionAdmin,
                 reciboJson, idCierreRecorrido);
 
@@ -877,7 +889,7 @@ public final class GfisLabSupport {
                 idRecorrido);
 
         return new ResultadoCierreLab(
-                idCierreRecorrido, "CERRADO_CON_DIFERENCIA_RESUELTA", false, Objects.requireNonNull(reciboNormalizado));
+                idCierreRecorrido, estadoDestino, false, Objects.requireNonNull(reciboNormalizado));
     }
 
     private static ResultadoCierreLab verificarReplayCierreDefinitivo(

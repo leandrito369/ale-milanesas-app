@@ -458,7 +458,8 @@ CREATE TABLE "CIERRE_RECORRIDO_PE2" (
         OR "tipoResolucionAdmin" IN (
             'FALTANTE_ASENTADO_SIN_RECUPERO_AUTOMATICO',
             'CUSTODIA_DEVUELTA_FISICAMENTE',
-            'MIXTA_FALTANTE_Y_CUSTODIA'
+            'MIXTA_FALTANTE_Y_CUSTODIA',
+            'RECTIFICACION_ACREDITADA_SIN_DIFERENCIA'
         )
     ),
     CONSTRAINT "ck_gfis_cierre_d1_solo_efectivo" CHECK (
@@ -473,13 +474,18 @@ CREATE TABLE "CIERRE_RECORRIDO_PE2" (
         AND "importeCustodiaNoImputada" >= 0
         AND "importeImputadoPropuesto" + "importeCustodiaNoImputada" = "importeEfectivoRecibido"
     ),
-    -- Bloqueante 1 (T1-C2) + Bloqueante 4 + Alternativa A (revisiones versionadas):
-    -- En PENDIENTE_CONCILIACION: importeImputadoConfirmado=0, sin clave/huella/recibo definitivo T1.
-    -- En CERRADO_CON_DIFERENCIA_RESUELTA: requiere idRevisionVigente (confirmada en T1-C2).
+    -- Bloqueante 1 (T1-C2) + Bloqueante 4 + Alternativa A + B1-R1 (ratificada 21/11/2026):
+    -- 1) CONFIRMADO directo (sin conciliacion previa): idRevisionVigente IS NULL, diff=0/0.
+    -- 2) CONFIRMADO via B1-R1 (tras rectificacion acreditada a cero): idRevisionVigente IS NOT NULL,
+    --    diff=0/0, tipoResolucionAdmin='RECTIFICACION_ACREDITADA_SIN_DIFERENCIA', historial preservado.
+    -- 3) PENDIENTE_CONCILIACION: importeImputadoConfirmado=0, sin recibo definitivo T1;
+    --    admite 0/0 solo cuando existe idRevisionVigente (rectificacion N>1 validada por trigger).
+    -- 4) CERRADO_CON_DIFERENCIA_RESUELTA: exige idRevisionVigente y diferencia positiva (>0).
     CONSTRAINT "ck_gfis_cierre_coherencia_estado_y_diferencias" CHECK (
         (
             "estadoCierre" = 'CONFIRMADO'
             AND "idRevisionVigente" IS NULL
+            AND "claveIdempotenciaPropuesta" IS NULL
             AND "claveIdempotenciaCierre" IS NOT NULL
             AND "versionHuella" IS NOT NULL
             AND "huellaCanonica" IS NOT NULL
@@ -493,6 +499,24 @@ CREATE TABLE "CIERRE_RECORRIDO_PE2" (
             AND "fechaHoraResolucion" IS NULL
         )
         OR (
+            "estadoCierre" = 'CONFIRMADO'
+            AND "idRevisionVigente" IS NOT NULL
+            AND "claveIdempotenciaPropuesta" IS NOT NULL
+            AND "claveIdempotenciaCierre" IS NOT NULL
+            AND "versionHuella" IS NOT NULL
+            AND "huellaCanonica" IS NOT NULL
+            AND "reciboHistoricoJson" IS NOT NULL
+            AND "importeImputadoConfirmado" = "importeImputadoPropuesto"
+            AND "importeImputadoPropuesto" = "importeEsperado"
+            AND "importeDiferenciaFaltante" = 0
+            AND "importeCustodiaNoImputada" = 0
+            AND length(btrim(coalesce("motivoDiferencia", ''))) > 0
+            AND "idUsuarioResolucionAdmin" IS NOT NULL
+            AND "tipoResolucionAdmin" = 'RECTIFICACION_ACREDITADA_SIN_DIFERENCIA'
+            AND length(btrim(coalesce("motivoResolucionAdmin", ''))) > 0
+            AND "fechaHoraResolucion" IS NOT NULL
+        )
+        OR (
             "estadoCierre" = 'PENDIENTE_CONCILIACION'
             AND "claveIdempotenciaPropuesta" IS NOT NULL
             AND "claveIdempotenciaCierre" IS NULL
@@ -500,7 +524,12 @@ CREATE TABLE "CIERRE_RECORRIDO_PE2" (
             AND "huellaCanonica" IS NULL
             AND "reciboHistoricoJson" IS NULL
             AND "importeImputadoConfirmado" = 0
-            AND ("importeDiferenciaFaltante" > 0 OR "importeCustodiaNoImputada" > 0)
+            AND (
+                ("importeDiferenciaFaltante" > 0 OR "importeCustodiaNoImputada" > 0)
+                OR ("importeDiferenciaFaltante" = 0
+                    AND "importeCustodiaNoImputada" = 0
+                    AND "importeImputadoPropuesto" = "importeEsperado")
+            )
             AND length(btrim(coalesce("motivoDiferencia", ''))) > 0
             AND "idUsuarioResolucionAdmin" IS NULL
             AND "tipoResolucionAdmin" IS NULL
@@ -584,7 +613,15 @@ CREATE TABLE "REVISION_CONCILIACION_PE2" (
         AND "importeDiferenciaFaltante" >= 0
         AND "importeCustodiaNoImputada" >= 0
         AND "importeImputadoPropuesto" + "importeCustodiaNoImputada" = "importeEfectivoRecibido"
-        AND ("importeDiferenciaFaltante" > 0 OR "importeCustodiaNoImputada" > 0)
+        AND (
+            ("numeroRevision" = 1 AND ("importeDiferenciaFaltante" > 0 OR "importeCustodiaNoImputada" > 0))
+            OR ("numeroRevision" > 1 AND (
+                ("importeDiferenciaFaltante" > 0 OR "importeCustodiaNoImputada" > 0)
+                OR ("importeDiferenciaFaltante" = 0
+                    AND "importeCustodiaNoImputada" = 0
+                    AND "importeImputadoPropuesto" = "importeEsperado")
+            ))
+        )
     ),
     CONSTRAINT "ck_gfis_rev_motivo" CHECK (length(btrim("motivoRevision")) > 0),
     CONSTRAINT "ck_gfis_rev_huella" CHECK (length(btrim("huellaCanonica")) > 0),
@@ -753,12 +790,36 @@ BEGIN
         END IF;
 
     ELSIF v_rev."estadoRevision" = 'CONFIRMADA_T1' THEN
-        IF v_cierre."estadoCierre" <> 'CERRADO_CON_DIFERENCIA_RESUELTA'
-           OR v_cierre."idRevisionVigente" IS DISTINCT FROM v_rev."idRevisionConciliacion"
-           OR v_cierre."claveIdempotenciaCierre" IS NULL
-           OR v_cierre."reciboHistoricoJson" IS NULL THEN
-            RAISE EXCEPTION 'T1-C2/REV-COMMIT: revision CONFIRMADA_T1 (%) exige confirmacion coherente de cabecera en la misma transaccion (estado=%, idRevisionVigente=%)',
-                v_rev."idRevisionConciliacion", v_cierre."estadoCierre", v_cierre."idRevisionVigente";
+        IF v_rev."importeDiferenciaFaltante" = 0 AND v_rev."importeCustodiaNoImputada" = 0 THEN
+            -- B1-R1 (ratificada 21/11/2026): rectificacion acreditada a cero -> estado CONFIRMADO
+            -- con historial previo (numeroRevision = 1 SUPERADA o INVALIDADA) preservado.
+            IF v_rev."numeroRevision" <= 1
+               OR v_cierre."estadoCierre" <> 'CONFIRMADO'
+               OR v_cierre."tipoResolucionAdmin" IS DISTINCT FROM 'RECTIFICACION_ACREDITADA_SIN_DIFERENCIA'
+               OR v_cierre."idRevisionVigente" IS DISTINCT FROM v_rev."idRevisionConciliacion"
+               OR v_cierre."claveIdempotenciaCierre" IS NULL
+               OR v_cierre."reciboHistoricoJson" IS NULL THEN
+                RAISE EXCEPTION 'T1-C2/B1-R1/REV-COMMIT: revision B1-R1 CONFIRMADA_T1 (%) exige numeroRevision>1, cierre CONFIRMADO y tipo RECTIFICACION_ACREDITADA_SIN_DIFERENCIA (estado=%, idRevisionVigente=%)',
+                    v_rev."idRevisionConciliacion", v_cierre."estadoCierre", v_cierre."idRevisionVigente";
+            END IF;
+            IF NOT EXISTS (
+                SELECT 1
+                  FROM "REVISION_CONCILIACION_PE2" h
+                 WHERE h."idCierreRecorrido" = v_cierre."idCierreRecorrido"
+                   AND h."numeroRevision" = 1
+                   AND h."estadoRevision" IN ('SUPERADA', 'INVALIDADA')
+            ) THEN
+                RAISE EXCEPTION 'T1-C2/B1-R1/REV-COMMIT: cierre CONFIRMADO via B1-R1 (%) exige preservacion intacta de revision historica 1',
+                    v_rev."idRevisionConciliacion";
+            END IF;
+        ELSE
+            IF v_cierre."estadoCierre" <> 'CERRADO_CON_DIFERENCIA_RESUELTA'
+               OR v_cierre."idRevisionVigente" IS DISTINCT FROM v_rev."idRevisionConciliacion"
+               OR v_cierre."claveIdempotenciaCierre" IS NULL
+               OR v_cierre."reciboHistoricoJson" IS NULL THEN
+                RAISE EXCEPTION 'T1-C2/REV-COMMIT: revision CONFIRMADA_T1 (%) exige confirmacion coherente de cabecera en la misma transaccion (estado=%, idRevisionVigente=%)',
+                    v_rev."idRevisionConciliacion", v_cierre."estadoCierre", v_cierre."idRevisionVigente";
+            END IF;
         END IF;
 
         SELECT COALESCE(SUM(c."importe"), 0) INTO v_suma_cobros
@@ -867,6 +928,11 @@ BEGIN
         IF NEW."estadoCierre" = 'CERRADO_CON_DIFERENCIA_RESUELTA' THEN
             RAISE EXCEPTION 'PE-2/T1-C2: cierre con diferencia debe registrarse primero en PENDIENTE_CONCILIACION antes de la confirmacion T1 autorizada';
         END IF;
+        IF NEW."estadoCierre" = 'PENDIENTE_CONCILIACION'
+           AND NEW."importeDiferenciaFaltante" = 0
+           AND NEW."importeCustodiaNoImputada" = 0 THEN
+            RAISE EXCEPTION 'PE-2/B1-R1: PENDIENTE_CONCILIACION inicial exige diferencia positiva (faltante > 0 o custodia > 0)';
+        END IF;
         RETURN NEW;
     END IF;
 
@@ -875,9 +941,28 @@ BEGIN
         RAISE EXCEPTION 'PE-2/C1-a: cierre terminal (%) y su recibo historico son inmutables', OLD."estadoCierre";
     END IF;
 
-    -- Desde PENDIENTE_CONCILIACION: prohibido pasar a CONFIRMADO sin decision comercial expresa
+    -- Desde PENDIENTE_CONCILIACION hacia CONFIRMADO: prohibido blanquear;
+    -- permitido UNICAMENTE bajo B1-R1 cuando una revision acreditada (numeroRevision > 1)
+    -- dejo faltante=0 y custodia=0 y se confirma sin mutar montos de la revision vigente.
     IF OLD."estadoCierre" = 'PENDIENTE_CONCILIACION' AND NEW."estadoCierre" = 'CONFIRMADO' THEN
-        RAISE EXCEPTION 'PE-2/T1-C2: prohibido blanquear PENDIENTE_CONCILIACION hacia CONFIRMADO';
+        IF OLD."idRevisionVigente" IS NULL
+           OR NEW."idRevisionVigente" IS DISTINCT FROM OLD."idRevisionVigente"
+           OR OLD."importeDiferenciaFaltante" <> 0
+           OR OLD."importeCustodiaNoImputada" <> 0
+           OR NEW."importeDiferenciaFaltante" <> 0
+           OR NEW."importeCustodiaNoImputada" <> 0
+           OR NEW."tipoResolucionAdmin" IS DISTINCT FROM 'RECTIFICACION_ACREDITADA_SIN_DIFERENCIA' THEN
+            RAISE EXCEPTION 'PE-2/T1-C2/B1-R1: prohibido blanquear PENDIENTE_CONCILIACION hacia CONFIRMADO sin rectificacion acreditada a cero';
+        END IF;
+        SELECT * INTO v_rev
+          FROM "REVISION_CONCILIACION_PE2"
+         WHERE "idRevisionConciliacion" = OLD."idRevisionVigente";
+        IF NOT FOUND
+           OR v_rev."numeroRevision" <= 1
+           OR v_rev."importeDiferenciaFaltante" <> 0
+           OR v_rev."importeCustodiaNoImputada" <> 0 THEN
+            RAISE EXCEPTION 'PE-2/T1-C2/B1-R1: cierre CONFIRMADO desde conciliacion exige revision acreditada (numeroRevision > 1) con faltante=0 y custodia=0';
+        END IF;
     END IF;
 
     -- Identidad y origen de la cabecera jamas se alteran
@@ -1403,6 +1488,20 @@ BEGIN
                 ) THEN
                     RAISE EXCEPTION 'T1-PENDIENTE/REV: cierre en PENDIENTE_CONCILIACION requiere revision VIGENTE o evidencia de revision INVALIDADA';
                 END IF;
+            END IF;
+        END IF;
+
+        IF v_cierre_actual."estadoCierre" = 'CONFIRMADO' AND v_cierre_actual."idRevisionVigente" IS NOT NULL THEN
+            IF NOT EXISTS (
+                SELECT 1 FROM "REVISION_CONCILIACION_PE2"
+                 WHERE "idRevisionConciliacion" = v_cierre_actual."idRevisionVigente"
+                   AND "idCierreRecorrido" = v_cierre_actual."idCierreRecorrido"
+                   AND "numeroRevision" > 1
+                   AND "estadoRevision" = 'CONFIRMADA_T1'
+                   AND "importeDiferenciaFaltante" = 0
+                   AND "importeCustodiaNoImputada" = 0
+            ) THEN
+                RAISE EXCEPTION 'T1-C2/B1-R1: cierre CONFIRMADO post-conciliacion exige revision (numeroRevision>1) en CONFIRMADA_T1 con faltante=0 y custodia=0';
             END IF;
         END IF;
 
