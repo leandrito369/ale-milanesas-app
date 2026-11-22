@@ -305,7 +305,7 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
                         jdbc, pend.idCierre(), recorrido, idAdmin, UUID.randomUUID(), "v1", "h-sin-egreso",
                         "MIXTA_FALTANTE_Y_CUSTODIA",
                         "Solo texto sin recibo ni egreso de custodia",
-                        null, true, false)));
+                        null, true, true)));
         assertTrue(mensajeRaiz(exSinEgreso).contains("E04-CUSTODIA"),
                 "E-04 debe rechazar devolucion fisica sin EGRESO_CUSTODIA_RENDICION: " + mensajeRaiz(exSinEgreso));
         // Rollback integro verificado: sigue PENDIENTE_CONCILIACION y 0 Cobros
@@ -347,7 +347,7 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
                 "Faltante 10 asentado sin recupero automatico; custodia 10 devuelta fisicamente con recibo",
                 new GfisLabSupport.EvidenciaEgresoCustodia(
                         numeroReciboDev, "Repartidor #" + idRepartidor, "Devolucion fisica en efectivo verificada"),
-                true, false));
+                true, true));
         assertNotNull(confirmado);
         assertEquals("CERRADO_CON_DIFERENCIA_RESUELTA", confirmado.estadoCierre());
         assertFalse(confirmado.replay());
@@ -392,7 +392,7 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
         var replay = tx.execute(s -> GfisLabSupport.confirmarResolucionT1K2EnTx(
                 jdbc, pend.idCierre(), recorrido, idAdmin, claveCierreDef, "v1", "h-t1c2-ok",
                 "MIXTA_FALTANTE_Y_CUSTODIA",
-                "Reintento idempotente", null, true, false));
+                "Reintento idempotente", null, true, true));
         assertNotNull(replay);
         assertTrue(replay.replay());
         assertEquals(confirmado.reciboJson(), replay.reciboJson());
@@ -408,7 +408,7 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
                         jdbc, recorrido, idAdmin, UUID.randomUUID(), "v1", "h-segundo",
                         new BigDecimal("10.00"), new BigDecimal("10.00"),
                         List.of(new GfisLabSupport.AplicacionPlan(clienteA, pedA2, new BigDecimal("10.00"))),
-                        true, false)));
+                        true, true)));
         assertEquals("23505", extraerSqlState(exSegundo), "Segundo cierre debe fallar por uq_gfis_unico_cierre_por_recorrido");
 
         // Verificar D7-A sobre el Cobro REPARTO del Cliente A
@@ -444,7 +444,7 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
                         jdbc, recorrido, idAdmin, UUID.randomUUID(), "v1", "h-fail",
                         new BigDecimal("100.00"), new BigDecimal("105.00"),
                         List.of(new GfisLabSupport.AplicacionPlan(clienteA, ped, new BigDecimal("105.00"))),
-                        true, false)));
+                        true, true)));
         assertEquals(cobrosAntes, jdbc.queryForObject("SELECT count(*) FROM \"COBRO\"", Integer.class));
         assertEquals(cajaAntes, jdbc.queryForObject("SELECT count(*) FROM \"MOVIMIENTO_CAJA\"", Integer.class));
         assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM \"CIERRE_RECORRIDO_PE2\" WHERE \"idRecorrido\"=?",
@@ -510,7 +510,7 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
                 jdbc, resPend.idCierre(), recorrido, idAdmin, claveResCero, "v1", "h-cero-res",
                 "FALTANTE_ASENTADO_SIN_RECUPERO_AUTOMATICO",
                 "Faltante total 200 asentado administrativamente sin recupero automatico ni extincion financiera",
-                null, true, false));
+                null, true, true));
         assertNotNull(resCerrado);
         assertEquals("CERRADO_CON_DIFERENCIA_RESUELTA", resCerrado.estadoCierre());
         assertEquals(0, jdbc.queryForObject(
@@ -727,7 +727,7 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
                         jdbc, recRep2, idAdmin, UUID.randomUUID(), "v1", "h-fa2-bloqueo",
                         new BigDecimal("200.00"), new BigDecimal("200.00"),
                         List.of(new GfisLabSupport.AplicacionPlan(f.origen.base, f.pendiente, new BigDecimal("200.00"))),
-                        true, false)));
+                        true, true)));
         assertTrue(exFa2.getMessage().contains("FA-2"),
                 "FA-2 debe impedir cerrar Recorrido mientras existan Pedidos PENDIENTE activos: " + exFa2.getMessage());
 
@@ -738,7 +738,7 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
                 jdbc, recRep2, idAdmin, UUID.randomUUID(), "v1", "h-fa2-ok",
                 new BigDecimal("200.00"), new BigDecimal("200.00"),
                 List.of(new GfisLabSupport.AplicacionPlan(f.origen.base, f.pendiente, new BigDecimal("200.00"))),
-                true, false));
+                true, true));
         assertNotNull(cierreOk);
         assertEquals("CONFIRMADO", cierreOk.estadoCierre());
 

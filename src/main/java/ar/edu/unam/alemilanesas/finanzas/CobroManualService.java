@@ -1,7 +1,6 @@
 package ar.edu.unam.alemilanesas.finanzas;
 
 import java.math.BigDecimal;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -55,10 +54,11 @@ public class CobroManualService {
         auth.exigirRoles(sesion, REGISTRADORES);
         validarAlta(idCliente, idPedido, importe, medio, claveOperacion);
         bloquearIdentificadores();
+        idsFinancieros.bloquearClienteA2(idCliente);
         auth.exigirRoles(sesion, REGISTRADORES);
         long registrador = idUsuario(sesion);
 
-        // Orden estable: cliente -> historico cuenta, para serializar numeroSecuencia.
+        // Orden estable: A1 puente -> A2(3202, hashtext(idCliente)) -> CLIENTE U -> historico cuenta.
         var clientes = sql.queryForList("""
                 SELECT "idCliente" FROM "CLIENTE" WHERE "idCliente"=:id FOR UPDATE
                 """, Map.of("id", idCliente));
@@ -92,9 +92,9 @@ public class CobroManualService {
                 throw new IllegalArgumentException("Pedido no elegible para Cobro");
             }
         }
-        long cobro = siguienteIdCobro();
-        long cuenta = siguienteIdMovimientoCuenta();
-        long caja = siguienteIdMovimientoCaja();
+        long cobro = idsFinancieros.siguienteCobro();
+        long cuenta = idsFinancieros.siguienteMovimientoCuenta();
+        long caja = idsFinancieros.siguienteMovimientoCaja();
         long secuencia = siguienteSecuencia(idCliente);
         BigDecimal saldoFinal = saldo(idCliente).subtract(importe);
         sql.update("""
@@ -131,8 +131,9 @@ public class CobroManualService {
     }
 
     /**
-     * Segunda operación independiente: solo Administrador. Ejecuta funcion
-     * canonica MR5/F01, que aplica contraasientos y transicion atomica.
+     * Segunda operación independiente: solo Administrador. Ejecuta función
+     * canonica L02 en V4 con precedencia A2(3202) -> CLIENTE FOR UPDATE -> COBRO FOR UPDATE,
+     * guardas D7-A / DC05-07-A, contraasientos y transición atómica.
      */
     @Transactional
     public Resultado anularCobroManual(UUID sesionAdmin, long idCobro, String motivo) {
@@ -140,29 +141,45 @@ public class CobroManualService {
         if (idCobro<=0 || motivo==null || motivo.isBlank()) {
             throw new IllegalArgumentException("Cobro y motivo de anulacion obligatorios");
         }
-        bloquearIdentificadores();
-        auth.exigirRoles(sesionAdmin, ADMIN);
-        long actor = idUsuario(sesionAdmin);
-        var rows = sql.queryForList("""
-                SELECT "idCliente","estadoCobro","origen","medioPago"
-                  FROM "COBRO" WHERE "idCobro"=:id FOR UPDATE
-                """, Map.of("id",idCobro));
-        if (rows.size()!=1 || !"CONFIRMADO".equals(rows.getFirst().get("estadoCobro"))
-                || !"ADMINISTRACION".equals(rows.getFirst().get("origen"))
-                || "MERCADOPAGO".equals(rows.getFirst().get("medioPago"))) {
+        // 1. Identificar idCliente mediante lectura sin lock exclusivo para evitar ciclo COBRO -> CLIENTE.
+        var clientesCobro = sql.queryForList("""
+                SELECT "idCliente" FROM "COBRO" WHERE "idCobro"=:id
+                """, Map.of("id", idCobro), Long.class);
+        if (clientesCobro.size() != 1) {
             throw new IllegalArgumentException("Cobro manual confirmado requerido");
         }
-        long cliente = ((Number)rows.getFirst().get("idCliente")).longValue();
-        // Mismo protocolo que registrarCobro y precondicion de UC15:
-        // impedir reevaluar categoria sobre una cuenta modificada por otro escritor.
+        long cliente = clientesCobro.getFirst();
+
+        // 2. Puente global A1(2929001) + advisory A2(3202, hashtext(idCliente)) y revalidacion de rol.
+        bloquearIdentificadores();
+        idsFinancieros.bloquearClienteA2(cliente);
+        auth.exigirRoles(sesionAdmin, ADMIN);
+        long actor = idUsuario(sesionAdmin);
+
+        // 3. Bloquear CLIENTE FOR UPDATE antes de COBRO FOR UPDATE.
         var clientesBloqueados = sql.queryForList("""
                 SELECT "idCliente" FROM "CLIENTE" WHERE "idCliente"=:id FOR UPDATE
                 """, Map.of("id", cliente));
         if (clientesBloqueados.size() != 1) {
             throw new IllegalStateException("Cliente del Cobro inexistente");
         }
-        long movCuenta = siguienteIdMovimientoCuenta();
-        long movCaja = siguienteIdMovimientoCaja();
+
+        // 4. Bloquear COBRO FOR UPDATE y 5. Revalidar estado, origen, medio y pertenencia tras espera.
+        var rows = sql.queryForList("""
+                SELECT "idCliente","estadoCobro","origen","medioPago"
+                  FROM "COBRO" WHERE "idCobro"=:id FOR UPDATE
+                """, Map.of("id",idCobro));
+        if (rows.size()!=1
+                || ((Number)rows.getFirst().get("idCliente")).longValue() != cliente
+                || !"CONFIRMADO".equals(rows.getFirst().get("estadoCobro"))
+                || !"ADMINISTRACION".equals(rows.getFirst().get("origen"))
+                || "MERCADOPAGO".equals(rows.getFirst().get("medioPago"))) {
+            throw new IllegalArgumentException("Cobro manual confirmado requerido");
+        }
+
+        // 6. Generadores centralizados V4 y ejecucion de L02 (D7-A / DC05-07-A / contraasientos).
+        long movCuenta = idsFinancieros.siguienteMovimientoCuenta();
+        long movCaja = idsFinancieros.siguienteMovimientoCaja();
         jdbc.queryForList("SELECT \"fn_mr3_anular_cobro_manual\"(?,?,?,?,?)",
                 idCobro,actor,movCuenta,movCaja,motivo.strip());
         String categoriaFinal = categoria.reevaluar(cliente);
@@ -196,34 +213,6 @@ public class CobroManualService {
                 """, Map.of("sesion",sesion), Long.class);
         if (id==null) throw new SecurityException("Sesion no autorizada");
         return id;
-    }
-
-    /**
-     * Literales SQL estáticos sobre MR5. No hay interpolación de identificadores,
-     * aun cuando el método sea invocado solo desde parámetros internos.
-     */
-    private long siguienteIdCobro() {
-        return validarSiguiente(jdbc.queryForObject("""
-                SELECT COALESCE(MAX("idCobro"),0)+1 FROM "COBRO"
-                """,Long.class));
-    }
-
-    private long siguienteIdMovimientoCuenta() {
-        return validarSiguiente(jdbc.queryForObject("""
-                SELECT COALESCE(MAX("idMovimientoCuenta"),0)+1
-                  FROM "MOVIMIENTO_CUENTA"
-                """,Long.class));
-    }
-
-    private long siguienteIdMovimientoCaja() {
-        return idsFinancieros.siguienteMovimientoCaja();
-    }
-
-    private static long validarSiguiente(Long siguiente) {
-        if (siguiente == null || siguiente <= 0) {
-            throw new IllegalStateException("Sin ID financiero");
-        }
-        return siguiente;
     }
 
     private long siguienteSecuencia(long idCliente) {
