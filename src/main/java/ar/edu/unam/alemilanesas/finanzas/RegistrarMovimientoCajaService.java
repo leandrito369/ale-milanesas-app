@@ -12,7 +12,11 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-/** UC-22: asiento exclusivamente manual, sin efectos en Cobro, Cuenta o Reembolso. */
+/**
+ * UC-22: asiento exclusivamente manual, sin efectos en Cobro, Cuenta o Reembolso.
+ * Usa seq_gfis_mov_caja_id (V4) vía ProtocoloIdentificadoresFinancieros y conserva el lock
+ * puente A1(2929001) para serializar la idempotencia sobre MOVIMIENTO_CAJA.referencia.
+ */
 @Service
 public class RegistrarMovimientoCajaService {
     private static final Set<String> ADMIN = Set.of("ADMINISTRADOR");

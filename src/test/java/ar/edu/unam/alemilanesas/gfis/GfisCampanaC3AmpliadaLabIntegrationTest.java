@@ -709,7 +709,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
                         jdbc, rec, idAdmin, UUID.randomUUID(), "v1", "h-t18-422",
                         new BigDecimal("100.00"), new BigDecimal("120.00"),
                         List.of(new GfisLabSupport.AplicacionPlan(cliente, ped, new BigDecimal("120.00"))),
-                        true, false)));
+                        true, true)));
         assertTrue(ex422.getMessage().contains("422 COBERTURA_NO_ACREDITADA"));
         assertEquals(ped, ex422.idPedido);
 
@@ -759,7 +759,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
                 jdbc, rec1, idAdmin, claveRec1, "v1", "h-rec1",
                 new BigDecimal("100.00"), new BigDecimal("100.00"),
                 List.of(new GfisLabSupport.AplicacionPlan(cliente, ped1, new BigDecimal("100.00"))),
-                true, false));
+                true, true));
         assertNotNull(ok);
 
         IllegalStateException exAmbito = assertThrows(IllegalStateException.class, () ->
@@ -767,7 +767,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
                         jdbc, rec2, idAdmin, claveRec1, "v1", "h-rec1",
                         new BigDecimal("100.00"), new BigDecimal("100.00"),
                         List.of(new GfisLabSupport.AplicacionPlan(cliente, ped2, new BigDecimal("100.00"))),
-                        true, false)));
+                        true, true)));
         assertTrue(exAmbito.getMessage().contains("CONFLICTO AMBITO 409"));
 
         for (long actorNoAdmin : List.of(idRep1, idVendedor)) {
@@ -776,7 +776,7 @@ class GfisCampanaC3AmpliadaLabIntegrationTest {
                             jdbc, rec1, actorNoAdmin, claveRec1, "v1", "h-rec1",
                             new BigDecimal("100.00"), new BigDecimal("100.00"),
                             List.of(new GfisLabSupport.AplicacionPlan(cliente, ped1, new BigDecimal("100.00"))),
-                            true, false)));
+                            true, true)));
             assertTrue(ex403.getMessage().contains("403"));
         }
 

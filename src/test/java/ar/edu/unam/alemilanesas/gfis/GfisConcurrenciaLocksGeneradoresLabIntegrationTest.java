@@ -103,7 +103,7 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
                             jdbc, recorrido, admin1, UUID.randomUUID(), "v1", "h-adm1",
                             new BigDecimal("300.00"), new BigDecimal("300.00"),
                             List.of(new GfisLabSupport.AplicacionPlan(cliente, pedido, new BigDecimal("300.00"))),
-                            true, false));
+                            true, true));
                     return "OK:" + r.idCierre();
                 } catch (Exception ex) {
                     return "ERR:" + extraerSqlState(ex);
@@ -117,7 +117,7 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
                             jdbc, recorrido, admin2, UUID.randomUUID(), "v1", "h-adm2",
                             new BigDecimal("300.00"), new BigDecimal("300.00"),
                             List.of(new GfisLabSupport.AplicacionPlan(cliente, pedido, new BigDecimal("300.00"))),
-                            true, false));
+                            true, true));
                     return "OK:" + r.idCierre();
                 } catch (Exception ex) {
                     return "ERR:" + extraerSqlState(ex);
@@ -182,7 +182,7 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
                             jdbc, recConc, admin, UUID.randomUUID(), "v1", "h-race-conf",
                             new BigDecimal("200.00"), new BigDecimal("200.00"),
                             List.of(new GfisLabSupport.AplicacionPlan(cliente, pedConc, new BigDecimal("200.00"))),
-                            true, false));
+                            true, true));
                     return "OK:CONFIRMADO";
                 } catch (Exception ex) {
                     return "ERR:" + extraerSqlState(ex);
@@ -233,7 +233,7 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
                         jdbc, recSeq1, admin, UUID.randomUUID(), "v1", "h-conf-tras-pend",
                         new BigDecimal("100.00"), new BigDecimal("100.00"),
                         List.of(new GfisLabSupport.AplicacionPlan(cliente, pedSeq1, new BigDecimal("100.00"))),
-                        true, false)));
+                        true, true)));
         assertEquals("23505", extraerSqlState(exConfTrasPend));
 
         // Escenario C: Orden secuencial 2 (CONFIRMADO primero -> intento PENDIENTE rechazado con 23505)
@@ -247,7 +247,7 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
                 jdbc, recSeq2, admin, UUID.randomUUID(), "v1", "h-conf-primero",
                 new BigDecimal("100.00"), new BigDecimal("100.00"),
                 List.of(new GfisLabSupport.AplicacionPlan(cliente, pedSeq2, new BigDecimal("100.00"))),
-                true, false));
+                true, true));
         DataAccessException exPendTrasConf = assertThrows(DataAccessException.class, () -> tx.executeWithoutResult(s ->
                 GfisLabSupport.registrarPendienteConciliacionEnTx(
                         jdbc, recSeq2, admin, UUID.randomUUID(),
@@ -278,7 +278,7 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
                 jdbc, recorrido, admin, clave, "v1", "sha256-payload-A",
                 new BigDecimal("180.00"), new BigDecimal("180.00"),
                 List.of(new GfisLabSupport.AplicacionPlan(cliente, pedido, new BigDecimal("180.00"))),
-                true, false));
+                true, true));
         assertNotNull(primero);
         assertFalse(primero.replay());
 
@@ -286,7 +286,7 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
                 jdbc, recorrido, admin, clave, "v1", "sha256-payload-A",
                 new BigDecimal("180.00"), new BigDecimal("180.00"),
                 List.of(new GfisLabSupport.AplicacionPlan(cliente, pedido, new BigDecimal("180.00"))),
-                true, false));
+                true, true));
         assertNotNull(replay);
         assertTrue(replay.replay());
         assertEquals(primero.idCierre(), replay.idCierre());
@@ -300,7 +300,7 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
                         jdbc, recorrido, admin, clave, "v1", "sha256-payload-DISTINTO",
                         new BigDecimal("180.00"), new BigDecimal("180.00"),
                         List.of(new GfisLabSupport.AplicacionPlan(cliente, pedido, new BigDecimal("180.00"))),
-                        true, false)));
+                        true, true)));
         assertTrue(exConflicto.getMessage().contains("409"));
     }
 
@@ -445,11 +445,13 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
 
             Future<?> futT1 = pool.submit(() -> {
                 try {
+                    // Post-R09.1a: CobroManualService y RegistrarMovimientoCajaService usan seq_gfis_*,
+                    // por lo que la convivencia concurrente con T1/K2 usa usarSecuenciasB2 = true.
                     tx.executeWithoutResult(s -> GfisLabSupport.ejecutarCierreLimpioT1K2EnTx(
                             jdbc, recorrido, admin, UUID.randomUUID(), "v1", "h-conv",
                             new BigDecimal("250.00"), new BigDecimal("250.00"),
                             List.of(new GfisLabSupport.AplicacionPlan(cliente, pedEntrega, new BigDecimal("250.00"))),
-                            true, false));
+                            true, true));
                 } catch (Exception t) {
                     clasificarError(t, deadlocks, duplicados, errores);
                 }
@@ -541,34 +543,57 @@ class GfisConcurrenciaLocksGeneradoresLabIntegrationTest {
                 SELECT setval('"seq_gfis_mov_caja_id"', GREATEST((SELECT COALESCE(MAX("idMovimientoCaja"),0) FROM "MOVIMIENTO_CAJA"), 1),
                               (SELECT EXISTS (SELECT 1 FROM "MOVIMIENTO_CAJA")));
                 """);
-        var legacyCaja = cajaManual.registrarMovimientoCaja(
+        // R09.1a: RegistrarMovimientoCajaService ya consume seq_gfis_mov_caja_id, sin colision con B2.
+        var cajaSecuencia = cajaManual.registrarMovimientoCaja(
                 f.sesiones.get("ADMINISTRADOR"), "INGRESO",
-                new BigDecimal("10.00"), "Escritor legacy MAX+1 (#91)", "Prueba riesgo mezcla",
+                new BigDecimal("10.00"), "Servicio R09.1a con seq_gfis_mov_caja_id", "Post-cutover directo",
                 UUID.randomUUID());
-
-        long idColisionB2 = GfisLabSupport.siguientePkMovCajaB2(jdbc);
-        assertEquals(legacyCaja.idMovimientoCaja(), idColisionB2);
-        Exception exColision = assertThrows(Exception.class, () -> jdbc.update("""
-                INSERT INTO "MOVIMIENTO_CAJA" (
-                    "idMovimientoCaja","tipoMovimiento","importe","fechaHoraMovimiento",
-                    "origen","concepto","idUsuarioRegistro")
-                VALUES (?,'INGRESO',10.00,clock_timestamp(),'MANUAL','Colision mezcla',?)
-                """, idColisionB2, admin));
-        assertEquals("23505", extraerSqlState(exColision));
-
-        jdbc.execute("""
-                SELECT setval('"seq_gfis_mov_caja_id"', GREATEST((SELECT COALESCE(MAX("idMovimientoCaja"),0) FROM "MOVIMIENTO_CAJA"), 1), true);
-                """);
-        long idPostCutover1 = GfisLabSupport.siguientePkMovCajaB2(jdbc);
-        long idPostCutover2 = GfisLabSupport.siguientePkMovCajaB2(jdbc);
-        assertTrue(idPostCutover1 > legacyCaja.idMovimientoCaja());
-        assertEquals(idPostCutover1 + 1L, idPostCutover2);
+        long idSiguienteB2 = GfisLabSupport.siguientePkMovCajaB2(jdbc);
+        assertEquals(cajaSecuencia.idMovimientoCaja() + 1L, idSiguienteB2);
         jdbc.update("""
                 INSERT INTO "MOVIMIENTO_CAJA" (
                     "idMovimientoCaja","tipoMovimiento","importe","fechaHoraMovimiento",
                     "origen","concepto","idUsuarioRegistro")
-                VALUES (?,'INGRESO',15.00,clock_timestamp(),'MANUAL','Post cutover B2 #1',?)
-                """, idPostCutover1, admin);
+                VALUES (?,'INGRESO',10.00,clock_timestamp(),'MANUAL','Secuencia B2 sin colision',?)
+                """, idSiguienteB2, admin);
+
+        // Simular un escritor externo MAX+1 previo al cutover sin re-seed para comprobar 23505 y su mitigacion.
+        Long idSimuladoMaxMasUno = jdbc.queryForObject(
+                "SELECT COALESCE(MAX(\"idMovimientoCaja\"),0)+1 FROM \"MOVIMIENTO_CAJA\"", Long.class);
+        assertNotNull(idSimuladoMaxMasUno);
+        jdbc.update("""
+                INSERT INTO "MOVIMIENTO_CAJA" (
+                    "idMovimientoCaja","tipoMovimiento","importe","fechaHoraMovimiento",
+                    "origen","concepto","idUsuarioRegistro")
+                VALUES (?,'INGRESO',11.00,clock_timestamp(),'MANUAL','Escritor legacy MAX+1 simulado',?)
+                """, idSimuladoMaxMasUno, admin);
+
+        long idColisionB2 = GfisLabSupport.siguientePkMovCajaB2(jdbc);
+        assertEquals(idSimuladoMaxMasUno, idColisionB2);
+        Exception exColision = assertThrows(Exception.class, () -> jdbc.update("""
+                INSERT INTO "MOVIMIENTO_CAJA" (
+                    "idMovimientoCaja","tipoMovimiento","importe","fechaHoraMovimiento",
+                    "origen","concepto","idUsuarioRegistro")
+                VALUES (?,'INGRESO',12.00,clock_timestamp(),'MANUAL','Colision mezcla',?)
+                """, idColisionB2, admin));
+        assertEquals("23505", extraerSqlState(exColision));
+
+        tx.executeWithoutResult(s -> {
+            jdbc.execute("SELECT pg_catalog.pg_advisory_xact_lock(2929001)");
+            jdbc.execute("LOCK TABLE ale_gestion.\"COBRO\", ale_gestion.\"MOVIMIENTO_CUENTA\", ale_gestion.\"MOVIMIENTO_CAJA\" IN SHARE MODE");
+            jdbc.execute("""
+                    SELECT pg_catalog.setval(
+                        'ale_gestion."seq_gfis_mov_caja_id"'::regclass,
+                        GREATEST((SELECT COALESCE(MAX("idMovimientoCaja"),0) FROM ale_gestion."MOVIMIENTO_CAJA"), 1),
+                        true)
+                    """);
+        });
+        var postCutoverCaja = cajaManual.registrarMovimientoCaja(
+                f.sesiones.get("ADMINISTRADOR"), "INGRESO",
+                new BigDecimal("15.00"), "Post cutover R09.1a #1", null, UUID.randomUUID());
+        long idPostCutover2 = GfisLabSupport.siguientePkMovCajaB2(jdbc);
+        assertTrue(postCutoverCaja.idMovimientoCaja() > idSimuladoMaxMasUno);
+        assertEquals(postCutoverCaja.idMovimientoCaja() + 1L, idPostCutover2);
         jdbc.update("""
                 INSERT INTO "MOVIMIENTO_CAJA" (
                     "idMovimientoCaja","tipoMovimiento","importe","fechaHoraMovimiento",
