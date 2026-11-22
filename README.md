@@ -185,3 +185,27 @@ partidas automáticas D4 u override, apertura implícita y evaluación PRA-01.
 UC-34 admite ahora Producción contextual, sin costos/ajustes en su proyección.
 [Decisiones, matriz de trazabilidad, pruebas y limitación de idempotencia](docs/implementation/I3_01c_UC28_PREPARACION_B4_HTTP_2026-11-08.md).
 Issue #28 abierta; sin despliegue.
+
+## R09.1b / R09.2 — UC05: primer vertical de Entrega (solo originales) sobre Flyway V4
+
+- **Endpoint y seguridad:** `POST /api/v1/pedidos/{idPedido}/entrega` (`RegistrarEntregaHttpController`),
+  exclusivo `REPARTIDOR` (sobre asignación vigente y `RECORRIDO_ASIGNACION` en estado `'ACTIVA'`),
+  bajo triple gate no-prod (`@Profile("!prod")`, `ale.http.writes.entregas-uc05-enabled=false`,
+  veto explícito en `PrecondicionesDespliegue`). Proyección BC-07 sin exposición de costos históricos,
+  márgenes ni deuda previa del Cliente.
+- **Matriz CU → servicio → DB → API → test:**
+  - `Recorrido` (`A1`, `FA-1`, `FA-2`, `C1-EXPLICITO`): `GestionarRecorridoRepartoService` + sobrecarga explícita
+    `asignarYVincularRecorrido` (preservando `UC-43` `asignarOReasignar`) → `seq_gfis_recorrido`,
+    `seq_gfis_recorrido_asignacion`, `RECORRIDO_REPARTO`, `RECORRIDO_ASIGNACION`.
+  - Cobertura `IMP-B` / contención `IMP-C`: `ImputacionFinancieraService` → `seq_gfis_evento_imp`,
+    `EVENTO_IMPUTACION_FINANCIERA`, `VW_IMP_A_DISPONIBILIDAD_COBRO`, `REEMBOLSO`, `MOVIMIENTO_CUENTA`
+    (sin usar `COBRO.idPedido` como prueba de reserva ni fabricar backfill).
+  - Entrega atómica (`UC-05` originales + `UC-15`): `RegistrarEntregaService` → `ENTREGA`,
+    `DETALLE_ENTREGA`, `EXCEDENTE`, `PRODUCTO.stockActualReventa`, `MOVIMIENTO_STOCK_REVENTA`,
+    `MOVIMIENTO_CUENTA(CARGO_POR_VENTA)`, `ORIGEN_MOVIMIENTO_CUENTA`, `RECONOCIMIENTO_ENTREGA_PE1`,
+    `RECORRIDO_ENTREGA`, `PEDIDO`, `EvaluadorCategoriaComercialInterno` (0 `COBRO`, 0 `PAGO`, 0 `MOVIMIENTO_CAJA`).
+  - Pruebas reproducibles en PostgreSQL 17.11: `RegistrarEntregaServiceIntegrationTest`,
+    `RegistrarEntregaHttpExternoTest`, `Uc05ConcurrenciaIntegrationTest` (concurrencia contra `UC-28`, `UC-43` y `UC-29` alta/anulación L02),
+    `PrecondicionesDespliegueTest`, `PrecondicionesDespliegueContextTest`.
+- **Pendiente fuera de este corte:** rendición administrativa `PE-2` (`T1-C2`), adicionales `UC-07`
+  (`SOLO_ORIGINALES` fail-closed activo), sincronización offline (`PE-3`), `H3` y `H5`.

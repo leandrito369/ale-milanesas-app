@@ -52,3 +52,4 @@ ale:
       compras-uc08-reventa-enabled: false
       compras-uc42-enabled: false
       finanzas-uc22-enabled: false
+      entregas-uc05-enabled: false

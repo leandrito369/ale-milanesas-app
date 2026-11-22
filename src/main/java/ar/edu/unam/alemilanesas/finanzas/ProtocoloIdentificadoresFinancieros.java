@@ -13,6 +13,8 @@ import org.springframework.stereotype.Component;
 public class ProtocoloIdentificadoresFinancieros {
     static final long LOCK_IDS_FINANCIEROS = 2_929_001L;
     static final int NS_CLIENTE = 3202;
+    public static final int NS_RECORRIDO = 4100;
+    public static final int NS_REPARTIDOR = 4101;
     private final JdbcTemplate jdbc;
 
     public ProtocoloIdentificadoresFinancieros(JdbcTemplate jdbc) {
@@ -34,6 +36,28 @@ public class ProtocoloIdentificadoresFinancieros {
                 Long.toString(idCliente));
     }
 
+    public void bloquearRecorridoA2(long idRecorrido) {
+        if (idRecorrido <= 0) {
+            throw new IllegalArgumentException("Recorrido invalido para lock A2");
+        }
+        jdbc.queryForObject(
+                "SELECT pg_catalog.pg_advisory_xact_lock(?, pg_catalog.hashtext(?::text))",
+                Object.class,
+                NS_RECORRIDO,
+                Long.toString(idRecorrido));
+    }
+
+    public void bloquearRepartidorA2(long idUsuarioRepartidor) {
+        if (idUsuarioRepartidor <= 0) {
+            throw new IllegalArgumentException("Repartidor invalido para lock A2");
+        }
+        jdbc.queryForObject(
+                "SELECT pg_catalog.pg_advisory_xact_lock(?, pg_catalog.hashtext(?::text))",
+                Object.class,
+                NS_REPARTIDOR,
+                Long.toString(idUsuarioRepartidor));
+    }
+
     public long siguienteCobro() {
         return validarSiguiente(jdbc.queryForObject(
                 "SELECT pg_catalog.nextval('ale_gestion.\"seq_gfis_cobro_id\"'::regclass)",
@@ -50,6 +74,24 @@ public class ProtocoloIdentificadoresFinancieros {
         return validarSiguiente(jdbc.queryForObject(
                 "SELECT pg_catalog.nextval('ale_gestion.\"seq_gfis_mov_caja_id\"'::regclass)",
                 Long.class), "Sin ID de Movimiento de Caja");
+    }
+
+    public long siguienteRecorrido() {
+        return validarSiguiente(jdbc.queryForObject(
+                "SELECT pg_catalog.nextval('ale_gestion.\"seq_gfis_recorrido\"'::regclass)",
+                Long.class), "Sin ID de Recorrido");
+    }
+
+    public long siguienteRecorridoAsignacion() {
+        return validarSiguiente(jdbc.queryForObject(
+                "SELECT pg_catalog.nextval('ale_gestion.\"seq_gfis_recorrido_asignacion\"'::regclass)",
+                Long.class), "Sin ID de RecorridoAsignacion");
+    }
+
+    public long siguienteEventoImp() {
+        return validarSiguiente(jdbc.queryForObject(
+                "SELECT pg_catalog.nextval('ale_gestion.\"seq_gfis_evento_imp\"'::regclass)",
+                Long.class), "Sin ID de EventoImputacion");
     }
 
     private static long validarSiguiente(Long siguiente, String mensajeError) {

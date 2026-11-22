@@ -41,6 +41,7 @@ public class SeguridadHttpInterna {
     private static final String ROL_ADMINISTRADOR = "ADMINISTRADOR";
     private static final String ROL_VENDEDOR = "VENDEDOR";
     private static final String ROL_PRODUCCION = "RESPONSABLE_PRODUCCION";
+    private static final String ROL_REPARTIDOR = "REPARTIDOR";
 
     @Bean
     @Order(1)
@@ -69,7 +70,8 @@ public class SeguridadHttpInterna {
             @Value("${ale.http.writes.usuarios-uc17-enabled:false}") boolean habilitarAltaUsuario,
             @Value("${ale.http.writes.usuarios-uc18-enabled:false}") boolean habilitarGestionRoles,
             @Value("${ale.http.writes.usuarios-uc55-enabled:false}") boolean habilitarEstadoUsuario,
-            @Value("${ale.http.writes.finanzas-uc22-enabled:false}") boolean habilitarCajaManualUc22) {
+            @Value("${ale.http.writes.finanzas-uc22-enabled:false}") boolean habilitarCajaManualUc22,
+            @Value("${ale.http.writes.entregas-uc05-enabled:false}") boolean habilitarEntregasUc05) {
         http.securityMatcher("/api/v1/**");
         // La API no autentica cookies. El sitio web (otra cadena) conserva CSRF.
         http.csrf(csrf -> csrf.ignoringRequestMatchers("/api/v1/**"));
@@ -239,6 +241,10 @@ public class SeguridadHttpInterna {
                 .requestMatchers(HttpMethod.POST, "/api/v1/finanzas/movimientos-caja")
                     .access((auth, context) -> new org.springframework.security.authorization.AuthorizationDecision(
                             administradorAutenticado(habilitarCajaManualUc22, auth)))
+                // R09.2 UC05: Entrega online solo REPARTIDOR y gate independiente.
+                .requestMatchers(HttpMethod.POST, "/api/v1/pedidos/*/entrega")
+                    .access((auth, context) -> new org.springframework.security.authorization.AuthorizationDecision(
+                            repartidorAutenticado(habilitarEntregasUc05, auth)))
                 .anyRequest().denyAll());
         http.exceptionHandling(e->e
                 .authenticationEntryPoint((req,res,ex)->rechazar(res))
@@ -267,6 +273,13 @@ public class SeguridadHttpInterna {
         Authentication autenticacion = credenciales.get();
         return autenticacion.isAuthenticated() && autenticacion.getAuthorities().stream()
                 .anyMatch(rol -> ROL_VENDEDOR.equals(rol.getAuthority()));
+    }
+
+    private static boolean repartidorAutenticado(boolean habilitado, Supplier<? extends Authentication> credenciales) {
+        if (!habilitado) return false;
+        Authentication autenticacion = credenciales.get();
+        return autenticacion.isAuthenticated() && autenticacion.getAuthorities().stream()
+                .anyMatch(rol -> ROL_REPARTIDOR.equals(rol.getAuthority()));
     }
 
     static void rechazar(HttpServletResponse res) throws IOException {
