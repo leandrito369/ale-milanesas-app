@@ -443,15 +443,19 @@ class RegistrarEntregaServiceIntegrationTest {
         assertEquals("FA2_PEDIDOS_PENDIENTES_ACTIVOS", assertThrows(IllegalStateException.class, () ->
                 recorridos.cerrarRecorridoSinPendientes(f.actores.vendedor(), rec1.idRecorrido())).getMessage());
 
-        // Reasignar a R2 desvincula R1 y habilita cierre limpio de R1
+        // Reasignar a R2 desvincula R1; sin contrato ratificado de cierre sin PE-2, R1 permanece ABIERTO y FA-1 sigue vigente
         recorridos.asignarYVincularRecorrido(f.actores.vendedor(),
                 new AsignarRepartoService.DatosAsignacion(f.pedido, rep2, "Cambio de ruta"), rec2.idRecorrido());
         assertEquals("DESVINCULADA_POR_REASIGNACION", jdbc.queryForObject(
                 "SELECT \"estadoPertenencia\" FROM \"RECORRIDO_ASIGNACION\" WHERE \"idPedido\"=? AND \"numeroAsignacion\"=1",
                 String.class, f.pedido));
-        recorridos.cerrarRecorridoSinPendientes(f.actores.vendedor(), rec1.idRecorrido());
-        var rec1Nuevo = recorridos.abrirRecorrido(f.actores.vendedor(), rep1, "R1-NUEVO");
-        assertTrue(rec1Nuevo.idRecorrido() > rec1.idRecorrido());
+        assertEquals("CIERRE_SIN_PE2_NO_AUTORIZADO", assertThrows(IllegalStateException.class, () ->
+                recorridos.cerrarRecorridoSinPendientes(f.actores.vendedor(), rec1.idRecorrido())).getMessage());
+        assertEquals("ABIERTO", jdbc.queryForObject(
+                "SELECT \"estadoOperativo\" FROM \"RECORRIDO_REPARTO\" WHERE \"idRecorrido\"=?",
+                String.class, rec1.idRecorrido()));
+        assertEquals("RECORRIDO_ABIERTO_EXISTENTE", assertThrows(IllegalStateException.class, () ->
+                recorridos.abrirRecorrido(f.actores.vendedor(), rep1, "R1-NUEVO")).getMessage());
     }
 
     @Test
@@ -491,6 +495,13 @@ class RegistrarEntregaServiceIntegrationTest {
 
         EntregaRegistrada primera = entregas.registrarEntrega(f.actores.sesiones.get("REPARTIDOR"), cmd);
         assertTrue(primera.creado());
+
+        // Cierre sin PE-2 tras Entrega confirmada debe fallar cerrado sin alterar RECORRIDO_REPARTO ni PE-1
+        assertEquals("RENDICION_PE2_PENDIENTE", assertThrows(IllegalStateException.class, () ->
+                recorridos.cerrarRecorridoSinPendientes(f.actores.vendedor(), rec.idRecorrido())).getMessage());
+        assertEquals("ABIERTO", jdbc.queryForObject(
+                "SELECT \"estadoOperativo\" FROM \"RECORRIDO_REPARTO\" WHERE \"idRecorrido\"=?",
+                String.class, rec.idRecorrido()));
 
         EntregaRegistrada replay = entregas.registrarEntrega(f.actores.sesiones.get("REPARTIDOR"), cmd);
         assertFalse(replay.creado());

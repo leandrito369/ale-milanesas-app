@@ -120,7 +120,7 @@ class RecorridoEntregaCircuitoHttpExternoTest {
         String tokRep1 = loginHttp("uc03_" + rep1, claveComun);
         String tokRep2 = loginHttp("uc03_" + rep2, claveComun);
 
-        // 1) Seguridad de apertura Recorrido: 401 sin token y 403 para roles distintos de VENDEDOR
+        // 1) Seguridad HTTP de Recorrido: 401 sin token y 403 para ADMIN, PRODUCCION y REPARTIDOR
         assertEquals(401, post("/api/v1/recorridos", null,
                 "{\"idUsuarioRepartidor\":" + rep1 + "}").statusCode());
         for (String otro : List.of(tokAdmin, tokProd, tokRep1)) {
@@ -134,6 +134,15 @@ class RecorridoEntregaCircuitoHttpExternoTest {
         assertEquals(201, rAbrir1.statusCode(), rAbrir1.body());
         assertTrue(rAbrir1.headers().firstValue("Cache-Control").orElse("").contains("no-store"));
         long idRec1 = JSON.readTree(rAbrir1.body()).path("idRecorrido").asLong();
+
+        // Ausencia de acceso ADMIN / PRODUCCION / REPARTIDOR sobre asignaciones, vinculaciones y cierre de Recorrido
+        for (String otro : List.of(tokAdmin, tokProd, tokRep1)) {
+            assertEquals(403, post("/api/v1/recorridos/" + idRec1 + "/asignaciones", otro,
+                    "{\"idPedido\":" + f.pedido + ",\"idUsuarioRepartidor\":" + rep1 + "}").statusCode());
+            assertEquals(403, post("/api/v1/recorridos/" + idRec1 + "/vinculaciones", otro,
+                    "{\"idPedido\":" + f.pedido + "}").statusCode());
+            assertEquals(403, post("/api/v1/recorridos/" + idRec1 + "/cierre", otro, "{}").statusCode());
+        }
 
         // FA-1 por HTTP: segundo Recorrido ABIERTO para rep1 rechazado 409
         assertEquals(409, post("/api/v1/recorridos", tokVendedor,
@@ -168,13 +177,21 @@ class RecorridoEntregaCircuitoHttpExternoTest {
                 "SELECT \"estadoPertenencia\" FROM \"RECORRIDO_ASIGNACION\" WHERE \"idPedido\"=? AND \"numeroAsignacion\"=1",
                 String.class, f.pedido));
 
-        // Cerrar R1 (ya sin pendientes por reasignacion) por HTTP y comprobar que R1 cerrado rechaza nuevas asignaciones con 0 escrituras
-        assertEquals(200, post("/api/v1/recorridos/" + idRec1 + "/cierre", tokVendedor, "{}").statusCode());
+        // H3: Recorrido R1 ya desvinculado y sin Entregas falla cerrado por falta de contrato ratificado para cierre sin PE-2
+        HttpResponse<String> rCerrarR1 = post("/api/v1/recorridos/" + idRec1 + "/cierre", tokVendedor, "{}");
+        assertEquals(409, rCerrarR1.statusCode(), rCerrarR1.body());
+        assertEquals("CIERRE_SIN_PE2_NO_AUTORIZADO", JSON.readTree(rCerrarR1.body()).path("codigo").asString());
+        assertEquals("ABIERTO", jdbc.queryForObject(
+                "SELECT \"estadoOperativo\" FROM \"RECORRIDO_REPARTO\" WHERE \"idRecorrido\"=?",
+                String.class, idRec1));
+        assertEquals(409, post("/api/v1/recorridos", tokVendedor,
+                "{\"idUsuarioRepartidor\":" + rep1 + "}").statusCode());
+
         HttpResponse<String> rPedExtra = post("/api/v1/pedidos", tokVendedor,
                 JSON.writeValueAsString(f.actores.body()));
         assertEquals(201, rPedExtra.statusCode(), rPedExtra.body());
         long pedExtra = JSON.readTree(rPedExtra.body()).path("idPedido").asLong();
-        assertEquals(409, post("/api/v1/recorridos/" + idRec1 + "/asignaciones", tokVendedor,
+        assertEquals(404, post("/api/v1/recorridos/999999999/asignaciones", tokVendedor,
                 "{\"idPedido\":" + pedExtra + ",\"idUsuarioRepartidor\":" + rep1 + "}").statusCode());
         assertEquals(0, jdbc.queryForObject(
                 "SELECT count(*) FROM \"ASIGNACION_REPARTO\" WHERE \"idPedido\"=?", Integer.class, pedExtra));
@@ -194,7 +211,9 @@ class RecorridoEntregaCircuitoHttpExternoTest {
                 "SELECT count(*) FROM \"ENTREGA\" WHERE \"idPedido\"=?", Integer.class, f.pedido));
 
         // 7) FA-2 impide cerrar R2 mientras Pedido este PENDIENTE
-        assertEquals(409, post("/api/v1/recorridos/" + idRec2 + "/cierre", tokVendedor, "{}").statusCode());
+        HttpResponse<String> rFa2R2 = post("/api/v1/recorridos/" + idRec2 + "/cierre", tokVendedor, "{}");
+        assertEquals(409, rFa2R2.statusCode(), rFa2R2.body());
+        assertEquals("FA2_PEDIDOS_PENDIENTES_ACTIVOS", JSON.readTree(rFa2R2.body()).path("codigo").asString());
 
         // 8) REPARTIDOR 2 (asignado vigente) entrega UC-05 por HTTP => 201 Created + replay idempotente 200 OK
         HttpResponse<String> rEntrega = post("/api/v1/pedidos/" + f.pedido + "/entrega", tokRep2, bodyEntrega);
@@ -215,13 +234,38 @@ class RecorridoEntregaCircuitoHttpExternoTest {
                 {"detallesEntrega":[{"idProducto":%d,"cantidadEntregada":2}],"efectivoDeclaradoRecibido":120.00,"claveIdempotencia":"%s"}
                 """.formatted(f.producto, clave)).statusCode());
 
-        // 9) Tras entregar, VENDEDOR cierra R2 por HTTP y habilita siguiente Recorrido para rep2
-        assertEquals(200, post("/api/v1/recorridos/" + idRec2 + "/cierre", tokVendedor, "{}").statusCode());
-        HttpResponse<String> rAbrir2Sig = post("/api/v1/recorridos", tokVendedor,
-                "{\"idUsuarioRepartidor\":" + rep2 + ",\"referenciaOperativa\":\"CIRCUITO-R2-SIG\"}");
-        assertEquals(201, rAbrir2Sig.statusCode(), rAbrir2Sig.body());
+        // 9) H3: tras Entrega confirmada con PE-1, el intento de cierre sin PE-2 por VENDEDOR debe rechazarse
+        //    preservando R2 ABIERTO, PE-1, V_vig, Cuenta, 0 Cobros/Caja/CIERRE_RECORRIDO_PE2 y FA-1
+        int cobrosAntes = jdbc.queryForObject("SELECT count(*) FROM \"COBRO\"", Integer.class);
+        int cuentaAntes = jdbc.queryForObject("SELECT count(*) FROM \"MOVIMIENTO_CUENTA\"", Integer.class);
+        int cajaAntes = jdbc.queryForObject("SELECT count(*) FROM \"MOVIMIENTO_CAJA\"", Integer.class);
+        int cierresPe2Antes = jdbc.queryForObject("SELECT count(*) FROM \"CIERRE_RECORRIDO_PE2\"", Integer.class);
+        BigDecimal vVigAntes = jdbc.queryForObject(
+                "SELECT \"reconocimientoVigenteVvig\" FROM \"RECONOCIMIENTO_ENTREGA_PE1\" WHERE \"idPedido\"=?",
+                BigDecimal.class, f.pedido);
 
-        // 10) Tambien compatibilidad UC-43 clasico -> vinculacion explicita -> fallo en asignacion UC-43 posterior sobre cerrado
+        HttpResponse<String> rCerrarSinPe2 = post("/api/v1/recorridos/" + idRec2 + "/cierre", tokVendedor, "{}");
+        assertEquals(409, rCerrarSinPe2.statusCode(), rCerrarSinPe2.body());
+        assertEquals("RENDICION_PE2_PENDIENTE", JSON.readTree(rCerrarSinPe2.body()).path("codigo").asString());
+        assertEquals(403, post("/api/v1/recorridos/" + idRec2 + "/cierre", tokAdmin, "{}").statusCode());
+        assertEquals(403, post("/api/v1/recorridos/" + idRec2 + "/cierre", tokRep2, "{}").statusCode());
+
+        assertEquals("ABIERTO", jdbc.queryForObject(
+                "SELECT \"estadoOperativo\" FROM \"RECORRIDO_REPARTO\" WHERE \"idRecorrido\"=?",
+                String.class, idRec2));
+        assertEquals(0, vVigAntes.compareTo(jdbc.queryForObject(
+                "SELECT \"reconocimientoVigenteVvig\" FROM \"RECONOCIMIENTO_ENTREGA_PE1\" WHERE \"idPedido\"=?",
+                BigDecimal.class, f.pedido)));
+        assertEquals(cobrosAntes, jdbc.queryForObject("SELECT count(*) FROM \"COBRO\"", Integer.class));
+        assertEquals(cuentaAntes, jdbc.queryForObject("SELECT count(*) FROM \"MOVIMIENTO_CUENTA\"", Integer.class));
+        assertEquals(cajaAntes, jdbc.queryForObject("SELECT count(*) FROM \"MOVIMIENTO_CAJA\"", Integer.class));
+        assertEquals(cierresPe2Antes, jdbc.queryForObject("SELECT count(*) FROM \"CIERRE_RECORRIDO_PE2\"", Integer.class));
+
+        // FA-1 preservado: Repartidor 2 sigue con R2 ABIERTO hasta rendicion PE-2 y no puede abrir otro
+        assertEquals(409, post("/api/v1/recorridos", tokVendedor,
+                "{\"idUsuarioRepartidor\":" + rep2 + ",\"referenciaOperativa\":\"CIRCUITO-R2-SIG\"}").statusCode());
+
+        // 10) Compatibilidad UC-43 clasico -> vinculacion explicita -> FA-2 sobre R3 mientras pedExtra esta PENDIENTE
         long idRec3 = JSON.readTree(post("/api/v1/recorridos", tokVendedor,
                 "{\"idUsuarioRepartidor\":" + rep3 + "}").body()).path("idRecorrido").asLong();
         assertEquals(201, post("/api/v1/pedidos/" + pedExtra + "/asignacion-reparto", tokVendedor,
@@ -231,5 +275,8 @@ class RecorridoEntregaCircuitoHttpExternoTest {
         assertEquals("ACTIVA", jdbc.queryForObject(
                 "SELECT \"estadoPertenencia\" FROM \"RECORRIDO_ASIGNACION\" WHERE \"idPedido\"=?",
                 String.class, pedExtra));
+        HttpResponse<String> rFa2R3 = post("/api/v1/recorridos/" + idRec3 + "/cierre", tokVendedor, "{}");
+        assertEquals(409, rFa2R3.statusCode(), rFa2R3.body());
+        assertEquals("FA2_PEDIDOS_PENDIENTES_ACTIVOS", JSON.readTree(rFa2R3.body()).path("codigo").asString());
     }
 }

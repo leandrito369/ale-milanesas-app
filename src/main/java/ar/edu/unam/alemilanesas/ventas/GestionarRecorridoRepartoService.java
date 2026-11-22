@@ -148,7 +148,11 @@ public class GestionarRecorridoRepartoService {
     }
 
     /**
-     * Cierre operativo sin rendicion para recorridos ya sin Pedidos PENDIENTE activos (control FA-2).
+     * Guard fail-closed de cierre operativo sin PE-2 (RD-GFIS-AB-001 §B1-R1 / FA-2):
+     * - Si existen Pedidos PENDIENTE activos -> FA-2 (FA2_PEDIDOS_PENDIENTES_ACTIVOS).
+     * - Si existen RECORRIDO_ENTREGA o PE-1 sin CIERRE_RECORRIDO_PE2 terminal -> RENDICION_PE2_PENDIENTE.
+     * - Recorridos vacios/desvinculados sin Entregas tampoco cierran sin PE-2 por ausencia de
+     *   contrato ratificado para cierre con cero aplicaciones (CIERRE_SIN_PE2_NO_AUTORIZADO).
      */
     @Transactional
     public void cerrarRecorridoSinPendientes(UUID sesion, long idRecorrido) {
@@ -181,11 +185,34 @@ public class GestionarRecorridoRepartoService {
             throw new IllegalStateException("FA2_PEDIDOS_PENDIENTES_ACTIVOS");
         }
 
-        sql.update("""
-                UPDATE "RECORRIDO_REPARTO"
-                   SET "estadoOperativo" = 'CERRADO'
-                 WHERE "idRecorrido" = :rec
-                """, Map.of("rec", idRecorrido));
+        Boolean requiereRendicionPe2 = sql.queryForObject("""
+                SELECT (
+                    EXISTS (
+                        SELECT 1
+                          FROM "RECORRIDO_ENTREGA" re
+                         WHERE re."idRecorrido" = :rec
+                    )
+                    OR EXISTS (
+                        SELECT 1
+                          FROM "RECORRIDO_ASIGNACION" ra
+                          JOIN "RECONOCIMIENTO_ENTREGA_PE1" pe1
+                            ON pe1."idPedido" = ra."idPedido"
+                         WHERE ra."idRecorrido" = :rec
+                           AND ra."estadoPertenencia" IN ('ACTIVA', 'ENTREGADA')
+                    )
+                )
+                AND NOT EXISTS (
+                    SELECT 1
+                      FROM "CIERRE_RECORRIDO_PE2" cr
+                     WHERE cr."idRecorrido" = :rec
+                       AND cr."estadoCierre" IN ('CONFIRMADO', 'CERRADO_CON_DIFERENCIA_RESUELTA')
+                )
+                """, Map.of("rec", idRecorrido), Boolean.class);
+        if (Boolean.TRUE.equals(requiereRendicionPe2)) {
+            throw new IllegalStateException("RENDICION_PE2_PENDIENTE");
+        }
+
+        throw new IllegalStateException("CIERRE_SIN_PE2_NO_AUTORIZADO");
     }
 
     private VinculacionRecorrido vincularPedidoInterno(long idRecorrido, long idPedido) {

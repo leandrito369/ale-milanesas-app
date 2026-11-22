@@ -172,7 +172,8 @@ class ErroresRecorridoRepartoHttp extends ErroresHttpGlobales {
         return switch (codigo) {
             case "RECORRIDO_ABIERTO_EXISTENTE", "RECORRIDO_NO_ABIERTO", "PEDIDO_NO_PENDIENTE",
                  "ASIGNACION_VIGENTE_REQUERIDA", "PERTENENCIA_ACTIVA_DUPLICADA",
-                 "FA2_PEDIDOS_PENDIENTES_ACTIVOS" -> respuesta(HttpStatus.CONFLICT, codigo);
+                 "FA2_PEDIDOS_PENDIENTES_ACTIVOS", "RENDICION_PE2_PENDIENTE",
+                 "CIERRE_SIN_PE2_NO_AUTORIZADO" -> respuesta(HttpStatus.CONFLICT, codigo);
             default -> respuesta(HttpStatus.CONFLICT, "CONFLICTO_RECORRIDO");
         };
     }

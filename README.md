@@ -201,8 +201,10 @@ Issue #28 abierta; sin despliegue.
     márgenes ni deuda previa del Cliente.
 - **Matriz CU → servicio → DB → API → test:**
   - `Recorrido` (`A1`, `FA-1`, `FA-2`, `C1-EXPLICITO`): `GestionarRecorridoRepartoService` + `RecorridoRepartoHttpController`
-    (preservando `UC-43` `asignarOReasignar`) → `seq_gfis_recorrido`,
-    `seq_gfis_recorrido_asignacion`, `RECORRIDO_REPARTO`, `RECORRIDO_ASIGNACION`.
+    (preservando `UC-43` `asignarOReasignar` y bloqueando todo cierre terminal sin `PE-2`: `FA2_PEDIDOS_PENDIENTES_ACTIVOS`,
+    `RENDICION_PE2_PENDIENTE` con Entregas/`PE-1`, y `CIERRE_SIN_PE2_NO_AUTORIZADO` en recorridos vacíos/desvinculados sin contrato
+    ratificado de cierre con cero aplicaciones) → `seq_gfis_recorrido`, `seq_gfis_recorrido_asignacion`, `RECORRIDO_REPARTO`,
+    `RECORRIDO_ASIGNACION`.
   - Cobertura `IMP-B` / contención `IMP-C` + `UC-15`: `ImputacionFinancieraService` +
     `EvaluadorCategoriaComercialInterno` (primero aplicaciones explícitas `CONSOLIDACION_ANTICIPO` /
     `APLICACION_FIFO_LIBRE` / `APLICACION_RENDICION_K2` sobre cargos existentes y luego FIFO solo del remanente
@@ -215,5 +217,6 @@ Issue #28 abierta; sin despliegue.
   - Pruebas reproducibles en PostgreSQL 17.11: `RegistrarEntregaServiceIntegrationTest`,
     `RegistrarEntregaHttpExternoTest`, `RecorridoEntregaCircuitoHttpExternoTest`, `Uc05ConcurrenciaIntegrationTest`,
     `EvaluadorCategoriaImpBIntegrationTest`, `PrecondicionesDespliegueTest`, `PrecondicionesDespliegueContextTest`.
-- **Pendiente fuera de este corte:** rendición administrativa `PE-2` (`T1-C2`), adicionales `UC-07`
-  (`SOLO_ORIGINALES` fail-closed activo), sincronización offline (`PE-3`), `H3` y `H5`.
+- **Pendiente fuera de este corte:** rendición administrativa `PE-2` (`T1-C2`), definición contractual de cierre de
+  Recorrido vacío/desvinculado sin entregas (`G_ARQ_N2_01 §3.2`), adicionales `UC-07`
+  (`SOLO_ORIGINALES` fail-closed activo), sincronización offline (`PE-3`) y `H5`.
