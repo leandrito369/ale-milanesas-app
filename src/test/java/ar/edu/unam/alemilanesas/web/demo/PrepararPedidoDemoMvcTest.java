@@ -59,16 +59,29 @@ class PrepararPedidoDemoMvcTest {
     }
 
     @Test
+    void getConConfirmadaInventadoNoMuestraExito() throws Exception {
+        var servicio = servi(); var pedidos = pedidos(); contexto(pedidos);
+        var m = mvc(new PrepararPedidoDemoController(servicio, pedidos));
+        m.perform(get("/web/demo/pedidos/12/preparar").principal(produccion).param("confirmada", "999"))
+                .andExpect(status().isOk())
+                .andExpect(model().attributeDoesNotExist("mensajeExito", "confirmada"));
+        verifyNoInteractions(servicio);
+    }
+
+    @Test
     void postAutorizadoUsaServicioIntegradoYConfirmaIdReal() throws Exception {
         var servicio = servi(); var pedidos = pedidos(); contexto(pedidos);
         when(servicio.registrarPreparacionPedido(eq(sesion), any())).thenReturn(
                 new PreparacionRegistrada(77L, 12L, 5L, 1, new BigDecimal("2.000"),
                         OffsetDateTime.parse("2026-11-22T10:00:00Z"), 2));
         var m = mvc(new PrepararPedidoDemoController(servicio, pedidos));
-        m.perform(post("/web/demo/pedidos/12/preparar").principal(produccion)
+        var resultado = m.perform(post("/web/demo/pedidos/12/preparar").principal(produccion)
                         .param("idProducto", "5").param("cantidadPreparada", "2.000"))
                 .andExpect(status().isSeeOther())
-                .andExpect(header().string("Location", "/web/demo/pedidos/12/preparar?confirmada=77"));
+                .andExpect(redirectedUrl("/web/demo/pedidos/12/preparar"))
+                .andReturn();
+        assertEquals(1, resultado.getFlashMap().size());
+        assertTrue(resultado.getFlashMap().get("mensajeExito").toString().contains("77"));
         var captor = ArgumentCaptor.forClass(DatosPreparacion.class);
         verify(servicio).registrarPreparacionPedido(eq(sesion), captor.capture());
         assertEquals(12L, captor.getValue().idPedido());

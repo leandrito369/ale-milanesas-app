@@ -67,8 +67,14 @@ class PrepararPedidoDemoIntegrationTest {
     }
 
     HttpResponse<String> get(String ruta, String rol) throws Exception {
+        return get(ruta, rol, null);
+    }
+
+    HttpResponse<String> get(String ruta, String rol, String jsession) throws Exception {
+        String cookie = "__Host-ale_session=" + f.actores.tokens.get(rol)
+                + (jsession == null ? "" : "; " + jsession);
         return http.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + port + ruta))
-                .header("Cookie", "__Host-ale_session=" + f.actores.tokens.get(rol))
+                .header("Cookie", cookie)
                 .timeout(Duration.ofSeconds(20)).GET().build(), HttpResponse.BodyHandlers.ofString());
     }
 
@@ -95,18 +101,32 @@ class PrepararPedidoDemoIntegrationTest {
     }
 
     @Test
-    void postAutorizadoPersisteYConfirmaIdReal() throws Exception {
+    void postAutorizadoPersisteYConfirmaIdRealConMensajeDeUnSoloUso() throws Exception {
         String ruta = "/web/demo/pedidos/" + f.pedido + "/preparar";
-        var respuesta = post(ruta, "1.000", csrf(), "RESPONSABLE_PRODUCCION");
+        var csrf = csrf();
+        var respuesta = post(ruta, "1.000", csrf, "RESPONSABLE_PRODUCCION");
         assertEquals(303, respuesta.statusCode(), respuesta.body());
         String location = respuesta.headers().firstValue("Location").orElseThrow();
-        assertTrue(location.contains("confirmada="), location);
-        long id = Long.parseLong(location.substring(location.indexOf("confirmada=") + 11));
+        assertEquals(ruta, location);
+        long id = jdbc.queryForObject("SELECT MAX(\"idPreparacion\") FROM \"PREPARACION\"", Long.class);
         assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM \"PREPARACION\" WHERE \"idPreparacion\"=?", Integer.class, id));
         assertEquals(1, f.preparaciones());
-        var confirmacion = get(location, "RESPONSABLE_PRODUCCION");
+        var confirmacion = get(location, "RESPONSABLE_PRODUCCION", csrf.cookie());
         assertEquals(200, confirmacion.statusCode());
+        assertTrue(confirmacion.body().contains("Preparación registrada con identificador real"));
         assertTrue(confirmacion.body().contains(Long.toString(id)));
+        var reconsulta = get(location, "RESPONSABLE_PRODUCCION", csrf.cookie());
+        assertFalse(reconsulta.body().contains("Preparación registrada con identificador real"));
+    }
+
+    @Test
+    void getConConfirmadaInventadoNoMuestraExito() throws Exception {
+        String ruta = "/web/demo/pedidos/" + f.pedido + "/preparar?confirmada=999";
+        var respuesta = get(ruta, "RESPONSABLE_PRODUCCION");
+        assertEquals(200, respuesta.statusCode(), respuesta.body());
+        assertFalse(respuesta.body().contains("Preparación registrada con identificador real"));
+        assertFalse(respuesta.body().contains(">999<"));
+        assertEquals(0, jdbc.queryForObject("SELECT count(*) FROM \"PREPARACION\" WHERE \"idPreparacion\"=999", Integer.class));
     }
 
     @Test
@@ -132,7 +152,7 @@ class PrepararPedidoDemoIntegrationTest {
         jdbc.update("UPDATE \"PARTIDA_INSUMO\" SET \"cantidadDisponible\"=0 WHERE \"idInsumo\" IN (?,?)", f.insumo, f.insumo + 1);
         var respuesta = post("/web/demo/pedidos/" + f.pedido + "/preparar", "1.000", csrf(), "RESPONSABLE_PRODUCCION");
         assertEquals(409, respuesta.statusCode(), respuesta.body());
-        assertTrue(respuesta.body().contains("STOCK_UTILIZABLE_INSUFICIENTE"));
+        assertTrue(respuesta.body().contains("No hay stock utilizable suficiente en las partidas."), respuesta.body());
         assertEquals(0, f.preparaciones());
     }
 
@@ -144,8 +164,10 @@ class PrepararPedidoDemoIntegrationTest {
         var segundo = post(ruta, "1.000", csrf(), "RESPONSABLE_PRODUCCION");
         assertEquals(303, segundo.statusCode());
         assertEquals(2, f.preparaciones());
-        var firstId = primero.headers().firstValue("Location").orElseThrow();
-        var secondId = segundo.headers().firstValue("Location").orElseThrow();
-        assertNotEquals(firstId, secondId);
+        assertEquals(ruta, primero.headers().firstValue("Location").orElseThrow());
+        assertEquals(ruta, segundo.headers().firstValue("Location").orElseThrow());
+        var ids = jdbc.queryForList("SELECT \"idPreparacion\" FROM \"PREPARACION\" WHERE \"idPedido\"=?", Long.class, f.pedido);
+        assertEquals(2, ids.size());
+        assertNotEquals(ids.getFirst(), ids.getLast());
     }
 }

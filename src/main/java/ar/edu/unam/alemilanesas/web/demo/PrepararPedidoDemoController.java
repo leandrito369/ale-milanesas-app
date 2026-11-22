@@ -6,14 +6,12 @@ import ar.edu.unam.alemilanesas.ventas.BuscarPedidoService;
 import ar.edu.unam.alemilanesas.ventas.BuscarPedidoService.CriterioBusquedaPedido;
 import jakarta.servlet.http.HttpServletResponse;
 import java.math.BigDecimal;
-import java.net.URI;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -22,6 +20,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.servlet.ModelAndView;
+import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import org.springframework.web.servlet.view.RedirectView;
 
 /**
  * Vertical G1 de UC-28. Reutiliza los servicios B3 integrados: no hay repositorio
@@ -45,22 +46,17 @@ public class PrepararPedidoDemoController {
     }
 
     @GetMapping("/web/demo/pedidos/{idPedido}/preparar")
-    public String formulario(Authentication auth, @PathVariable long idPedido,
-            @RequestParam(name = "confirmada", required = false) Long confirmada, Model model) {
+    public String formulario(Authentication auth, @PathVariable long idPedido, Model model) {
         contexto(auth, idPedido, model);
         model.addAttribute("form", new LinkedHashMap<>(Map.of("idProducto", "", "cantidadPreparada", "")));
         model.addAttribute("aviso", AVISO);
-        if (confirmada != null && confirmada > 0) {
-            model.addAttribute("confirmada", confirmada);
-            model.addAttribute("mensajeExito",
-                    "Preparación registrada con identificador real " + confirmada + " para el Pedido " + idPedido + ".");
-        }
         return "demo/pedido-preparar";
     }
 
     @PostMapping("/web/demo/pedidos/{idPedido}/preparar")
     public Object registrar(Authentication auth, @PathVariable long idPedido,
-            @RequestParam MultiValueMap<String, String> params, Model model, HttpServletResponse response) {
+            @RequestParam MultiValueMap<String, String> params, Model model, HttpServletResponse response,
+            RedirectAttributes redireccion) {
         Map<String, String> datos = EntradaDemo.leer(params, CAMPOS);
         model.addAttribute("form", datos);
         contexto(auth, idPedido, model);
@@ -69,9 +65,14 @@ public class PrepararPedidoDemoController {
             BigDecimal cantidad = new BigDecimal(EntradaDemo.requerido(datos, "cantidadPreparada"));
             var resultado = preparaciones.registrarPreparacionPedido(EntradaDemo.sesion(auth),
                     new DatosPreparacion(idPedido, idProducto, cantidad, null));
-            return ResponseEntity.status(HttpStatus.SEE_OTHER)
-                    .location(URI.create("/web/demo/pedidos/" + idPedido + "/preparar?confirmada=" + resultado.idPreparacion()))
-                    .build();
+            // Mensaje de un solo uso: viaja en la sesión del POST exitoso, nunca en la URL.
+            redireccion.addFlashAttribute("mensajeExito",
+                    "Preparación registrada con identificador real " + resultado.idPreparacion()
+                            + " para el Pedido " + idPedido + ".");
+            RedirectView vista = new RedirectView("/web/demo/pedidos/" + idPedido + "/preparar");
+            vista.setContextRelative(true);
+            vista.setStatusCode(HttpStatus.SEE_OTHER);
+            return new ModelAndView(vista);
         } catch (IllegalArgumentException ex) {
             String codigo = codigo(ex.getMessage());
             response.setStatus(estado(codigo));
