@@ -124,12 +124,18 @@ echo "PASS B2: Flyway V1-V4 = MR5+F01+V3+V4 directa = 59→MR3→MR5+F01+V3+V4 (
 
 # Ensayo de backup/restore en cuarto DB DESCARTABLE; preserva datos sintéticos V1 y G-FIS V4.
 psql -X -v ON_ERROR_STOP=1 -d ale_mr5_flyway_ci -c "
+  BEGIN;
   INSERT INTO ale_gestion.\"UNIDAD_MEDIDA\"(\"codigoUnidad\",\"nombre\")
     VALUES ('B2_PRUEBA','Unidad sintética de respaldo');
+  INSERT INTO ale_gestion.\"ROL\"(\"codigoRol\",\"nombreMostrado\")
+    VALUES ('REPARTIDOR','Repartidor') ON CONFLICT DO NOTHING;
   INSERT INTO ale_gestion.\"USUARIO\"(\"idUsuario\",\"nombreUsuario\",\"credencialProtegida\",\"estado\",\"cambioCredencialPendiente\",\"fechaHoraAlta\")
     VALUES (999001,'b2_repartidor_v4','hash_sintetico_b2','HABILITADO',false,clock_timestamp());
+  INSERT INTO ale_gestion.\"USUARIO_ROL\"(\"idUsuario\",\"codigoRol\",\"fechaHoraAsignacion\")
+    VALUES (999001,'REPARTIDOR',clock_timestamp());
   INSERT INTO ale_gestion.\"RECORRIDO_REPARTO\"(\"idUsuarioRepartidor\",\"fechaHoraCreacion\",\"estadoOperativo\",\"referenciaOperativa\")
     VALUES (999001,clock_timestamp(),'ABIERTO','REC-B2-V4-RESTORE');
+  COMMIT;
 "
 pg_dump -Fc -d ale_mr5_flyway_ci -f b2-logs/ale_mr5_backup.dump
 psql -X -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE ale_mr5_restaurada_ci;'

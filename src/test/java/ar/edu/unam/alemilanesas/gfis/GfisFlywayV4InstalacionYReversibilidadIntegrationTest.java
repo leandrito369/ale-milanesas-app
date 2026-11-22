@@ -173,46 +173,46 @@ class GfisFlywayV4InstalacionYReversibilidadIntegrationTest {
                 .load();
         assertEquals(3, flywayV3.migrate().migrationsExecuted);
 
-        // 2) Poblar datos sinteticos representativos con PKs altas
+        // 2) Poblar datos sinteticos representativos con PKs altas en una sola TX (respeta triggers diferidos MR-5)
         long idCliente = 400_001L;
         long idUsuario = 400_002L;
         long idCobroAlto = 500_001L;
         long idMovCuentaAlto = 600_001L;
         long idMovCajaAlto = 700_001L;
+        UUID claveCobro = UUID.randomUUID();
 
-        jdbcT2.update("""
+        ejecutarSqlEnTransaccion(urlDb, """
+                INSERT INTO ale_gestion."ROL" ("codigoRol","nombreMostrado")
+                VALUES ('ADMINISTRADOR','Administrador') ON CONFLICT DO NOTHING;
                 INSERT INTO ale_gestion."USUARIO" (
                     "idUsuario","nombreUsuario","credencialProtegida","estado",
                     "cambioCredencialPendiente","fechaHoraAlta")
-                VALUES (?,'t2_admin','hash_t2','HABILITADO',false,clock_timestamp())
-                """, idUsuario);
-        jdbcT2.update("""
+                VALUES (%d,'t2_admin','hash_t2','HABILITADO',false,clock_timestamp());
+                INSERT INTO ale_gestion."USUARIO_ROL" ("idUsuario","codigoRol","fechaHoraAsignacion")
+                VALUES (%d,'ADMINISTRADOR',clock_timestamp());
                 INSERT INTO ale_gestion."CLIENTE" (
                     "idCliente","nombres","telefonoPrincipal","estado","categoriaComercial","fechaHoraAlta")
-                VALUES (?,'Cliente T2 Upgrade','3764111222','ACTIVO','CUMPLIDOR',clock_timestamp())
-                """, idCliente);
-        jdbcT2.update("""
+                VALUES (%d,'Cliente T2 Upgrade','3764111222','ACTIVO','CUMPLIDOR',clock_timestamp());
                 INSERT INTO ale_gestion."COBRO" (
                     "idCobro","idCliente","fechaHoraCobro","importe","medioPago","origen",
                     "estadoCobro","claveIdempotenciaOrigen")
-                VALUES (?,?,clock_timestamp(),250.00,'EFECTIVO','ADMINISTRACION','CONFIRMADO',?)
-                """, idCobroAlto, idCliente, UUID.randomUUID());
-        jdbcT2.update("""
+                VALUES (%d,%d,clock_timestamp(),250.00,'EFECTIVO','ADMINISTRACION','CONFIRMADO','%s'::uuid);
                 INSERT INTO ale_gestion."MOVIMIENTO_CUENTA" (
                     "idMovimientoCuenta","idCliente","numeroSecuenciaCliente","tipoMovimiento",
                     "importe","fechaHoraMovimiento","saldoResultante")
-                VALUES (?,?,1,'PAGO',250.00,clock_timestamp(),-250.00)
-                """, idMovCuentaAlto, idCliente);
-        jdbcT2.update("""
+                VALUES (%d,%d,1,'PAGO',250.00,clock_timestamp(),-250.00);
                 INSERT INTO ale_gestion."ORIGEN_MOVIMIENTO_CUENTA" ("idMovimientoCuenta","idCobro")
-                VALUES (?,?)
-                """, idMovCuentaAlto, idCobroAlto);
-        jdbcT2.update("""
+                VALUES (%d,%d);
                 INSERT INTO ale_gestion."MOVIMIENTO_CAJA" (
                     "idMovimientoCaja","tipoMovimiento","importe","fechaHoraMovimiento","origen",
                     "concepto","idUsuarioRegistro","idCobro")
-                VALUES (?,'INGRESO',250.00,clock_timestamp(),'COBRO','Cobro previo T2',?,?)
-                """, idMovCajaAlto, idUsuario, idCobroAlto);
+                VALUES (%d,'INGRESO',250.00,clock_timestamp(),'COBRO','Cobro previo T2',%d,%d);
+                """.formatted(
+                idUsuario, idUsuario, idCliente,
+                idCobroAlto, idCliente, claveCobro,
+                idMovCuentaAlto, idCliente,
+                idMovCuentaAlto, idCobroAlto,
+                idMovCajaAlto, idUsuario, idCobroAlto));
 
         // 3) Ejecutar upgrade real a Flyway V4
         Flyway flywayV4 = Flyway.configure()
