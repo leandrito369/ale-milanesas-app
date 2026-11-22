@@ -26,14 +26,17 @@ public class ImputacionFinancieraService {
     private final NamedParameterJdbcTemplate sql;
     private final AutorizacionSesionInterna autorizacion;
     private final ProtocoloIdentificadoresFinancieros identificadores;
+    private final EvaluadorCategoriaComercialInterno evaluadorCategoria;
 
     public ImputacionFinancieraService(
             NamedParameterJdbcTemplate sql,
             AutorizacionSesionInterna autorizacion,
-            ProtocoloIdentificadoresFinancieros identificadores) {
+            ProtocoloIdentificadoresFinancieros identificadores,
+            EvaluadorCategoriaComercialInterno evaluadorCategoria) {
         this.sql = sql;
         this.autorizacion = autorizacion;
         this.identificadores = identificadores;
+        this.evaluadorCategoria = evaluadorCategoria;
     }
 
     public record EventoImpRegistrado(
@@ -134,6 +137,88 @@ public class ImputacionFinancieraService {
                 .addValue("imp", importeNorm)
                 .addValue("actor", actor)
                 .addValue("obs", obs));
+        evaluadorCategoria.reevaluar(idCliente);
+        return idEvento;
+    }
+
+    @Transactional
+    public long registrarLiberacionAnticipo(
+            UUID sesion,
+            long idCobro,
+            long idPedido,
+            BigDecimal importe,
+            String observacion) {
+        autorizacion.exigirRoles(sesion, Set.of("ADMINISTRADOR", "VENDEDOR"));
+        if (idCobro <= 0 || idPedido <= 0 || importe == null
+                || importe.signum() <= 0 || importe.scale() > 2 || importe.precision() - importe.scale() > 16) {
+            throw new IllegalArgumentException(INVALIDA);
+        }
+        String obs = observacion == null || observacion.isBlank() ? "Liberacion autorizada IMP-B" : observacion.trim();
+        if (obs.indexOf('\0') >= 0) throw new IllegalArgumentException(INVALIDA);
+
+        var cobroRows = sql.queryForList("""
+                SELECT "idCliente","estadoCobro"
+                  FROM "COBRO"
+                 WHERE "idCobro" = :cobro
+                """, Map.of("cobro", idCobro));
+        if (cobroRows.isEmpty()) throw new IllegalArgumentException("COBRO_NO_ENCONTRADO");
+        long idCliente = ((Number) cobroRows.getFirst().get("idCliente")).longValue();
+
+        identificadores.bloquear();
+        identificadores.bloquearClienteA2(idCliente);
+        autorizacion.exigirRoles(sesion, Set.of("ADMINISTRADOR", "VENDEDOR"));
+
+        sql.queryForObject("SELECT \"idCliente\" FROM \"CLIENTE\" WHERE \"idCliente\"=:c FOR UPDATE",
+                Map.of("c", idCliente), Long.class);
+
+        var pedRows = sql.queryForList("""
+                SELECT "idCliente","estado"
+                  FROM "PEDIDO"
+                 WHERE "idPedido" = :pedido
+                 FOR UPDATE
+                """, Map.of("pedido", idPedido));
+        if (pedRows.isEmpty()) throw new IllegalArgumentException("PEDIDO_NO_ENCONTRADO");
+        if (((Number) pedRows.getFirst().get("idCliente")).longValue() != idCliente) {
+            throw new IllegalArgumentException("CLIENTE_COBRO_PEDIDO_NO_COINCIDE");
+        }
+
+        BigDecimal reservaActiva = sql.queryForObject("""
+                SELECT COALESCE(SUM(CASE e."tipoEvento"
+                    WHEN 'RESERVA_ANTICIPO' THEN e."importe"
+                    WHEN 'CONSOLIDACION_ANTICIPO' THEN -e."importe"
+                    WHEN 'LIBERACION_ANTICIPO' THEN -e."importe"
+                    ELSE 0 END), 0)::NUMERIC(18,2)
+                  FROM "EVENTO_IMPUTACION_FINANCIERA" e
+                  JOIN "COBRO" c ON c."idCobro" = e."idCobro"
+                 WHERE e."idCliente" = :cliente
+                   AND e."idCobro" = :cobro
+                   AND e."idPedido" = :pedido
+                   AND c."estadoCobro" = 'CONFIRMADO'
+                """, Map.of("cliente", idCliente, "cobro", idCobro, "pedido", idPedido), BigDecimal.class);
+        BigDecimal reservado = reservaActiva == null ? CERO : reservaActiva.setScale(2, RoundingMode.HALF_UP);
+        BigDecimal importeNorm = importe.setScale(2, RoundingMode.HALF_UP);
+        if (reservado.compareTo(importeNorm) < 0) {
+            throw new IllegalStateException("RESERVA_INSUFICIENTE_PARA_LIBERAR");
+        }
+
+        long actor = Objects.requireNonNull(sql.queryForObject(
+                "SELECT \"idUsuario\" FROM \"SESION_USUARIO\" WHERE \"idSesionUsuario\"=:s",
+                Map.of("s", sesion), Long.class));
+        long idEvento = identificadores.siguienteEventoImp();
+        sql.update("""
+                INSERT INTO "EVENTO_IMPUTACION_FINANCIERA" (
+                    "idEventoImputacion","idCliente","idCobro","idPedido","idCierreRecorrido",
+                    "tipoEvento","importe","idUsuarioOperador","fechaHoraEvento","observacion")
+                VALUES (:id,:cliente,:cobro,:pedido,NULL,'LIBERACION_ANTICIPO',:imp,:actor,clock_timestamp(),:obs)
+                """, new MapSqlParameterSource()
+                .addValue("id", idEvento)
+                .addValue("cliente", idCliente)
+                .addValue("cobro", idCobro)
+                .addValue("pedido", idPedido)
+                .addValue("imp", importeNorm)
+                .addValue("actor", actor)
+                .addValue("obs", obs));
+        evaluadorCategoria.reevaluar(idCliente);
         return idEvento;
     }
 
