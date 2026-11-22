@@ -142,7 +142,7 @@ class GfisC01CompatibilidadLegacyYSeguridadLabIntegrationTest {
                 jdbc, recorrido, ctx.idAdmin(), UUID.randomUUID(), "v1", "h-t3-d7a",
                 new BigDecimal("100.00"), new BigDecimal("100.00"),
                 List.of(new GfisLabSupport.AplicacionPlan(ctx.idCliente(), pedRep, new BigDecimal("100.00"))),
-                true, false));
+                true, true));
         assertNotNull(cierre);
         Long idCobroReparto = jdbc.queryForObject(
                 "SELECT \"idCobro\" FROM \"COBRO_RENDICION_K2\" WHERE \"idCierreRecorrido\"=?",
