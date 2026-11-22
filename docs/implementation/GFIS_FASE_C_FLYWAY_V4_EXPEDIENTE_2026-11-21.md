@@ -22,7 +22,7 @@
 - **Cero cambios en `V1__baseline_mr5.sql`, `V2__f01_cobro_estados.sql` y `V3__trazabilidad_partidas_insumo.sql`.**
 - **Cero cambios en `leandrito369/ale-milanesas`**, PR `#101`, PR `#75` (`UC-07` PROPUESTO), PR `#76`, G0, `source-lock`, Demo o infraestructura.
 - **No se ejecuta sobre bases reales**; toda validación ocurre en PostgreSQL `17.11-alpine` efímero (Testcontainers y GitHub Actions).
-- **`S10` continúa `NO ACREDITADO`** y **Issue `#28` permanece abierto y pausado** hasta cerrar su definición funcional/comercial.
+- **`S10` continúa `NO ACREDITADO`** y **Issue `#28` permanece abierto, con despliegue pausado por decisión del responsable**; faltan autorización para reanudar, infraestructura de aceptación certificada (host/TLS/respaldo) y E2E humanos UC-54. La Fase C no modifica estos gates.
 - **Exclusiones explícitas de V4:** `UC-07` físico (`CR-C`/`CR-F`/`#47`/`#48`), `PE-3` offline, recupero automático post-cierre (`E`), medios distintos de `EFECTIVO` en `PE-2` (`D1`) y cualquier backfill retroactivo de `COBRO`, `PEDIDO` o `ENTREGA` históricos (`RCG-06`).
 
 ---
