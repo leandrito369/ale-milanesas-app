@@ -128,11 +128,11 @@ psql -X -v ON_ERROR_STOP=1 -d ale_mr5_flyway_ci -c "
   INSERT INTO ale_gestion.\"UNIDAD_MEDIDA\"(\"codigoUnidad\",\"nombre\")
     VALUES ('B2_PRUEBA','Unidad sintética de respaldo');
   INSERT INTO ale_gestion.\"ROL\"(\"codigoRol\",\"nombreMostrado\")
-    VALUES ('REPARTIDOR','Repartidor') ON CONFLICT DO NOTHING;
+    VALUES ('ADMINISTRADOR','Administrador'), ('REPARTIDOR','Repartidor') ON CONFLICT DO NOTHING;
   INSERT INTO ale_gestion.\"USUARIO\"(\"idUsuario\",\"nombreUsuario\",\"credencialProtegida\",\"estado\",\"cambioCredencialPendiente\",\"fechaHoraAlta\")
     VALUES (999001,'b2_repartidor_v4','hash_sintetico_b2','HABILITADO',false,clock_timestamp());
   INSERT INTO ale_gestion.\"USUARIO_ROL\"(\"idUsuario\",\"codigoRol\",\"fechaHoraAsignacion\")
-    VALUES (999001,'REPARTIDOR',clock_timestamp());
+    VALUES (999001,'ADMINISTRADOR',clock_timestamp()), (999001,'REPARTIDOR',clock_timestamp());
   INSERT INTO ale_gestion.\"RECORRIDO_REPARTO\"(\"idUsuarioRepartidor\",\"fechaHoraCreacion\",\"estadoOperativo\",\"referenciaOperativa\")
     VALUES (999001,clock_timestamp(),'ABIERTO','REC-B2-V4-RESTORE');
   COMMIT;
