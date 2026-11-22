@@ -2,7 +2,7 @@
 
 - **Proyecto:** Sistema de Gestión para Ale Milanesas
 - **Fecha:** 21/11/2026
-- **Estado normativo del entregable:** `CONSTRUIDO Y EN VALIDACIÓN (PR DRAFT)` — **NO MERGE / NO DESPLIEGUE / NO EJECUCIÓN SOBRE BASES REALES**
+- **Estado normativo/técnico del entregable:** `CONSTRUIDO Y PROBADO EN CI AISLADO (PR DRAFT, NO INTEGRADO)` — **NO MERGE / NO DESPLIEGUE / NO EJECUCIÓN SOBRE BASES REALES**. Acreditación técnica inicial: PR #102 HEAD `ac2a6d0a96e6b027446ce010cb0d2c8a821d36c6` (22/11/2026); la integración continúa sujeta a autorización humana expresa.
 - **Constancia de autorización limitada (construcción y pruebas en nueva rama + PR DRAFT):** [`leandrito369/ale-milanesas-app#101` (comment `7071217116`)](https://github.com/leandrito369/ale-milanesas-app/pull/101#issuecomment-7071217116)
 
 ---
@@ -14,7 +14,7 @@
 | Gobierno (`leandrito369/ale-milanesas`) | `main` (PR `#76` `RD-GFIS-AB-001` MERGED) | `2c74174af7850df5c7cd76f7158c0d729a889122` | **Solo lectura** — autoridad normativa ratificada (`A1`, `FA-1`, `FA-2`, `B1`, `Alternativa A`, `B1-R1`, `B1-R2`) |
 | Aplicación (`leandrito369/ale-milanesas-app`) | `main` | `21db1f536d0d7153e5d4abb721115778dadf14b3` | Base limpia desde la que nace la rama de Fase C |
 | Aplicación (`leandrito369/ale-milanesas-app`) | PR `#101` (OPEN / DRAFT) | `4779519013ed24cef0a642c665e18383fbc50ed9` | **Referencia versionada de laboratorio** (no modificada ni fusionada) |
-| Aplicación (`leandrito369/ale-milanesas-app`) | `feat/gfis-fase-c-flyway-v4-2026-11-21` | Ver commit HEAD de la PR DRAFT | Única rama de escritura de G-FIS Fase C |
+| Aplicación (`leandrito369/ale-milanesas-app`) | PR `#102`, `feat/gfis-fase-c-flyway-v4-2026-11-21` | `ac2a6d0a96e6b027446ce010cb0d2c8a821d36c6` (HEAD acreditado al 22/11/2026) | Única rama de escritura de G-FIS Fase C; DRAFT sin merge |
 
 ### Límites estrictos preservados
 - **Único archivo nuevo bajo `src/main/**`:** `src/main/resources/db/migration/V4__gfis_pe1_pe2_imp01.sql`.
@@ -119,24 +119,33 @@ PostgreSQL ejecuta el DDL de `V4__gfis_pe1_pe2_imp01.sql` dentro de la transacci
 
 | ID | Requisito del plan Fase C | Evidencia / Cobertura | Estado |
 | :--- | :--- | :--- | :--- |
-| **`T1`** | Instalación Flyway `V1–V4` desde cero, checksums `V1–V3` intactos, `0` objetos fuera de `ale_gestion`, `ADAPT-02`/`03`/`05` | `GfisFlywayV4InstalacionYReversibilidadIntegrationTest` (`t1a`, `t1b`) + `B2SchemaMigrationTest` | Pendiente resultado CI (`T8`) |
-| **`T2`** | Upgrade `V4` sobre base `V1–V3` poblada con datos sintéticos previos, `0` backfill retroactivo y `nextval > MAX` (`ADAPT-06`) | `GfisFlywayV4InstalacionYReversibilidadIntegrationTest.t2_UpgradeFlywayV4SobreBaseV1V3PobladaSinBackfillRetroactivoYSeedMayorQueMax` | Pendiente resultado CI (`T8`) |
-| **`T3`** | Servicios legacy reales (`CobroManualService` y `RegistrarMovimientoCajaService`) contra Flyway `V4` (alta, replay, caja, anulación `L02`, `D7-A`, `DC05-07-A`, concurrencia) | `GfisC01CompatibilidadLegacyYSeguridadLabIntegrationTest` (`t3A1`, `t3A2`, `t3A3`) | Pendiente resultado CI (`T8`) |
-| **`T4`** | Seguridad real: ataque `search_path` (`pg_temp` y `public`) directamente contra funciones `V4` reales + rol no-owner `42501` antes/después de `GRANT` mínimo | `GfisC01CompatibilidadLegacyYSeguridadLabIntegrationTest` (`t4B1`, `t4B2`) | Pendiente resultado CI (`T8`) |
-| **`T5`** | Integridad G-FIS completa contra Flyway `V4` real (`A1`, `FA-1`, `FA-2`, `B1`, `Alternativa A`, `B1-R1`, `B1-R2`, `T1-C2`, `K2`, `L02`, `C-04`, `IMP-B/IMP-A`, 5 triggers diferidos, C3, 64-bit) | 5 suites en `src/test/java/ar/edu/unam/alemilanesas/gfis/` (`GfisPreflightEIntegridad`, `GfisRectificacionPendiente`, `GfisConcurrenciaLocksGeneradores`, `GfisL02Anulacion`, `GfisCampanaC3Ampliada`) | Pendiente resultado CI (`T8`) |
-| **`T6`** | Reversibilidad real: fallo preflight, `lock_timeout` `55P03` (`ADAPT-04`), error DDL y no-transaccionalidad `setval`/`nextval` | `GfisFlywayV4InstalacionYReversibilidadIntegrationTest` (`t6a`, `t6b`) | Pendiente resultado CI (`T8`) |
-| **`T7`** | `pg_dump` / `pg_restore` sobre `V1–V4` con estructura, triggers, vista `VW_IMP_A`, `F01 PASS` y datos sintéticos V1+V4 | `scripts/b2/compare_mr6.sh` en workflow `B2` | Pendiente resultado CI (`T8`) |
-| **`T8`** | `B1`, `B2` y `SonarCloud` en `SUCCESS` sobre el HEAD final exacto de la PR DRAFT | Ver §8 tras ejecución de GitHub Actions | En ejecución tras push |
+| **`T1`** | Instalación Flyway `V1–V4` desde cero, checksums `V1–V3` intactos, `0` objetos fuera de `ale_gestion`, `ADAPT-02`/`03`/`05` | `GfisFlywayV4InstalacionYReversibilidadIntegrationTest` (`t1a`, `t1b`) + `B2SchemaMigrationTest` | **PASS en CI** — ver §8 (HEAD `ac2a6d0`) |
+| **`T2`** | Upgrade `V4` sobre base `V1–V3` poblada con datos sintéticos previos, `0` backfill retroactivo y `nextval > MAX` (`ADAPT-06`) | `GfisFlywayV4InstalacionYReversibilidadIntegrationTest.t2_UpgradeFlywayV4SobreBaseV1V3PobladaSinBackfillRetroactivoYSeedMayorQueMax` | **PASS en CI** — ver §8 (HEAD `ac2a6d0`) |
+| **`T3`** | Servicios legacy reales (`CobroManualService` y `RegistrarMovimientoCajaService`) contra Flyway `V4` (alta, replay, caja, anulación `L02`, `D7-A`, `DC05-07-A`, concurrencia) | `GfisC01CompatibilidadLegacyYSeguridadLabIntegrationTest` (`t3A1`, `t3A2`, `t3A3`) | **PASS en CI** — ver §8 (HEAD `ac2a6d0`) |
+| **`T4`** | Seguridad real: ataque `search_path` (`pg_temp` y `public`) directamente contra funciones `V4` reales + rol no-owner `42501` antes/después de `GRANT` mínimo | `GfisC01CompatibilidadLegacyYSeguridadLabIntegrationTest` (`t4B1`, `t4B2`) | **PASS en CI** — ver §8 (HEAD `ac2a6d0`) |
+| **`T5`** | Integridad G-FIS completa contra Flyway `V4` real (`A1`, `FA-1`, `FA-2`, `B1`, `Alternativa A`, `B1-R1`, `B1-R2`, `T1-C2`, `K2`, `L02`, `C-04`, `IMP-B/IMP-A`, 5 triggers diferidos, C3, 64-bit) | 5 suites en `src/test/java/ar/edu/unam/alemilanesas/gfis/` (`GfisPreflightEIntegridad`, `GfisRectificacionPendiente`, `GfisConcurrenciaLocksGeneradores`, `GfisL02Anulacion`, `GfisCampanaC3Ampliada`) | **PASS en CI** — ver §8 (HEAD `ac2a6d0`) |
+| **`T6`** | Reversibilidad real: fallo preflight, `lock_timeout` `55P03` (`ADAPT-04`), error DDL y no-transaccionalidad `setval`/`nextval` | `GfisFlywayV4InstalacionYReversibilidadIntegrationTest` (`t6a`, `t6b`) | **PASS en CI** — ver §8 (HEAD `ac2a6d0`) |
+| **`T7`** | `pg_dump` / `pg_restore` sobre `V1–V4` con estructura, triggers, vista `VW_IMP_A`, `F01 PASS` y datos sintéticos V1+V4 | `scripts/b2/compare_mr6.sh` en workflow `B2` | **PASS en CI** — ver §8 (HEAD `ac2a6d0`) |
+| **`T8`** | `B1`, `B2` y `SonarCloud` en `SUCCESS` sobre el HEAD final exacto de la PR DRAFT | Ver §8 tras ejecución de GitHub Actions | **PASS** — B1, B2 y SonarCloud sobre `ac2a6d0` (ver §8) |
 
 ---
 
-## 8. Evidencia de ejecución CI (`T8`)
+## 8. Evidencia de ejecución CI (`T8`) — verificación final del 22/11/2026
 
-*(Se completa automáticamente con las URLs y conteos verificados una vez que `B1`, `B2` y `SonarCloud` finalicen sobre el HEAD de esta PR DRAFT.)*
+**HEAD acreditado:** `ac2a6d0a96e6b027446ce010cb0d2c8a821d36c6` en [PR #102](https://github.com/leandrito369/ale-milanesas-app/pull/102), **OPEN / DRAFT / NO MERGE**. Los resultados siguientes corresponden a ese commit, **antes de este ajuste exclusivamente editorial**; los checks del nuevo commit documental deberán verificarse por separado y no se presumen exitosos.
 
----
+| Control | Resultado confirmado en `ac2a6d0` | Evidencia |
+| :--- | :--- | :--- |
+| **B1 — Maven / Testcontainers PostgreSQL 17.11** | **SUCCESS**; Surefire: **765 tests, 0 failures, 0 errors, 0 skipped**; **49/49 G-FIS**, incluidas las 5 pruebas de instalación/reversibilidad Flyway V4. | [Run 44969108465](https://github.com/leandrito369/ale-milanesas-app/actions/runs/44969108465) / [Job 137044729690](https://github.com/leandrito369/ale-milanesas-app/actions/runs/44969108465/job/137044729690) |
+| **B2 — MR5/F01, MR6, Flyway V1–V4** | **SUCCESS**; `PASS source fidelity` V1/V2, `PASS B2 histórico` (MR5+F01 directa = incremental); `migraciones=4`, `tablas=75`, `columnas=606`, `fk=168`; huella de esquema directa = incremental. | [Run 44969108552](https://github.com/leandrito369/ale-milanesas-app/actions/runs/44969108552) / [Job 137044729770](https://github.com/leandrito369/ale-milanesas-app/actions/runs/44969108552/job/137044729770) |
+| **T7 — Restauración sintética en B2** | **PASS**: `1587 objects`, `1541 exact definitions`, `46 CHECK ANY(ARRAY)` variantes del deparser; **0 diferencias no identificadas**; F01 y datos sintéticos V1+V4 preservados. | [Log B2, run 44969108552](https://github.com/leandrito369/ale-milanesas-app/actions/runs/44969108552) |
+| **SonarCloud PR #102** | **SUCCESS — Quality Gate passed**; 0 bugs y 0 vulnerabilidades reportadas, 0 Security Hotspots; **25 Code Smells** en tests y **0,0 % de cobertura informada para código nuevo** (esta métrica no acredita cobertura de SQL/PLpgSQL). | [Check 137044867464](https://github.com/leandrito369/ale-milanesas-app/runs/137044867464) · [Panel SonarCloud](https://sonarcloud.io/dashboard?id=leandrito369_ale-milanesas-app&pullRequest=102) |
 
-## 9. Riesgos remanentes y dictamen técnico preliminar para futura autorización de merge
+**Alcance de las pruebas:** T1–T7 se ejecutaron contra PostgreSQL 17.11 efímero y migraciones Flyway de la **rama de PR #102**, no contra una base operativa real. B1/B2 verifican regresión y restauración sintética; no constituyen E2E humano, autorización de cambio, certificación de infraestructura, acreditación S10 ni cierre del Issue #28.
+
+**Higiene no bloqueante:** el log de CI registra la advertencia de cierre del JVM fork de Surefire tras completar satisfactoriamente los tests; permanece como deuda técnica del harness. Las observaciones de estilo de SonarCloud no se convierten en fallos funcionales.
+
+## 9. Riesgos remanentes y dictamen técnico para futura autorización de merge
 
 ### Riesgos remanentes (fuera del alcance de Fase C)
 1. **Convivencia temporal `MAX+1` (legacy) vs secuencias B2 (`seq_gfis_*`):** mientras `CobroManualService` y `RegistrarMovimientoCajaService` no migren sus generadores de PK en `R09.1` (fuera de alcance aquí porque `src/main/java/**` no se modifica), el re-seed bajo `pg_advisory_xact_lock(2929001)` + `LOCK TABLE ... IN SHARE MODE` será requisito obligatorio en la ventana de cutover de `R09.1`.
@@ -144,5 +153,5 @@ PostgreSQL ejecuta el DDL de `V4__gfis_pe1_pe2_imp01.sql` dentro de la transacci
 3. **Límites funcionales vigentes:** `S10` sigue `NO ACREDITADO`, Issue `#28` sigue pausado y `UC-07` físico (`PR #75`) sigue `PROPUESTO` — ninguno de ellos está habilitado por `V4`.
 
 ### Condición de GO / NO-GO para futura solicitud de autorización de merge
-- **GO técnico condicionado exclusivamente** a que `T1..T8` resulten `PASS` (`B1`, `B2` y `SonarCloud` en `SUCCESS` sobre el HEAD exacto de esta PR DRAFT) y a que el responsable emita una **nueva autorización explícita y separada de merge**.
+- **GO técnico para someter a revisión de merge:** `T1..T8` se acreditaron en el HEAD `ac2a6d0` de la PR #102 con B1, B2 y SonarCloud `SUCCESS` (evidencia §8). Esta valoración no sustituye la revisión del diff/ACL/cutover, los checks del nuevo HEAD documental, ni la **autorización explícita y separada del responsable para fusionar**.
 - **Esta PR permanece `DRAFT` y NO autoriza merge, despliegue, `G-DEV/R09.1` ni `UC-07` físico.**
