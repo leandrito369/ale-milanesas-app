@@ -13,7 +13,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** B2: estructura MR-5/F01 real en PostgreSQL 17; no certifica operaciones de negocio. */
+/** B2: estructura MR-5/F01/V3/V4 real en PostgreSQL 17; no certifica operaciones de negocio. */
 @Testcontainers
 @SpringBootTest
 class B2SchemaMigrationTest {
@@ -38,17 +38,17 @@ class B2SchemaMigrationTest {
     }
 
     @Test
-    void exactMr5CatalogAndF01Constraints() {
-        assertEquals(62, query("""
+    void exactMr5CatalogF01V3AndGfisV4Constraints() {
+        assertEquals(75, query("""
             SELECT count(*) FROM information_schema.tables
             WHERE table_schema='ale_gestion' AND table_type='BASE TABLE'
               AND table_name <> 'flyway_schema_history'
             """));
-        assertEquals(467, query("""
+        assertEquals(606, query("""
             SELECT count(*) FROM information_schema.columns
             WHERE table_schema='ale_gestion' AND table_name <> 'flyway_schema_history'
             """));
-        assertEquals(129, query("""
+        assertEquals(168, query("""
             SELECT count(*) FROM pg_constraint c
             JOIN pg_namespace n ON n.oid = c.connamespace
             WHERE n.nspname='ale_gestion' AND c.contype='f'
@@ -65,16 +65,28 @@ class B2SchemaMigrationTest {
             WHERE n.nspname='ale_gestion' AND t.tgname='tg_f01_transicion_cobro'
               AND NOT t.tgisinternal
             """));
+        assertEquals(1, query("""
+            SELECT count(*) FROM information_schema.views
+            WHERE table_schema='ale_gestion' AND table_name='VW_IMP_A_DISPONIBILIDAD_COBRO'
+            """));
+        assertEquals(18, query("""
+            SELECT count(*) FROM pg_trigger t
+            JOIN pg_class c ON c.oid=t.tgrelid
+            JOIN pg_namespace n ON n.oid=c.relnamespace
+            WHERE n.nspname='ale_gestion'
+              AND (t.tgname LIKE 'tg_gfis_%' OR t.tgname LIKE 'ct_gfis_%')
+              AND NOT t.tgisinternal
+            """));
     }
 
     @Test
-    void twoMigrationsCompleteAndRerunDoesNotRepeat() {
-        assertEquals(3, query("""
+    void fourMigrationsCompleteAndRerunDoesNotRepeat() {
+        assertEquals(4, query("""
             SELECT count(*) FROM ale_gestion.flyway_schema_history
             WHERE success = true AND type = 'SQL'
             """));
         assertEquals(0, flyway.migrate().migrationsExecuted);
-        assertEquals(3, query("""
+        assertEquals(4, query("""
             SELECT count(*) FROM ale_gestion.flyway_schema_history
             WHERE success = true AND type = 'SQL'
             """));

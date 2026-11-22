@@ -28,10 +28,6 @@ psql -X -v ON_ERROR_STOP=1 -d ale_mr5_referencia_ci \
   -f b2-logs/f01-pruebas-schema-app.sql \
   > b2-logs/referencia-f01-pruebas.log 2>&1
 grep -q 'F01 PASS' b2-logs/referencia-f01-pruebas.log
-psql -X -v ON_ERROR_STOP=1 -d ale_mr5_referencia_ci \
-  -c 'SET search_path TO ale_gestion, public;' \
-  -f src/main/resources/db/migration/V3__trazabilidad_partidas_insumo.sql \
-  > b2-logs/referencia-v3.log 2>&1
 
 # Ruta heredada 59 -> MR3 -> MR5 -> F01, sobre otra DB descartable.
 for rel in \
@@ -45,12 +41,33 @@ do
     -f "g0-source/docs/05-modelo-relacional/$rel" \
     >> b2-logs/incremental.log 2>&1
 done
-psql -X -v ON_ERROR_STOP=1 -d ale_mr5_incremental_ci \
-  -c 'SET search_path TO ale_gestion, public;' \
-  -f src/main/resources/db/migration/V3__trazabilidad_partidas_insumo.sql \
-  >> b2-logs/incremental.log 2>&1
 
-# Ejecutar Flyway REAL mediante Spring Boot arrancado en la tercera base.
+# Huella MR6 exacta histórica (MR5+F01 directa = 59->MR3->MR5+F01) antes de aplicar V3 y V4.
+python3 scripts/b2/adapt_mr6_fingerprint.py \
+  g0-source/docs/05-modelo-relacional/sql/mr6/huella-estructural.sql \
+  b2-logs/huella-b2.sql
+export PGOPTIONS="-c search_path=ale_gestion,public"
+for db in ale_mr5_referencia_ci ale_mr5_incremental_ci; do
+  psql -X -v ON_ERROR_STOP=1 -At -d "$db" \
+    -f b2-logs/huella-b2.sql > "b2-logs/${db}.mr6.huella"
+done
+diff -u b2-logs/ale_mr5_referencia_ci.mr6.huella b2-logs/ale_mr5_incremental_ci.mr6.huella \
+  > b2-logs/diff-directa-incremental-mr6.txt
+echo "PASS B2 histórico: MR5+F01 directa = 59→MR3→MR5+F01 (huella MR6 intacta)."
+
+# Aplicar V3 y V4 sobre las bases de referencia e incremental (ADAPT-07).
+for db in ale_mr5_referencia_ci ale_mr5_incremental_ci; do
+  psql -X -v ON_ERROR_STOP=1 -d "$db" \
+    -c 'SET search_path TO ale_gestion, public;' \
+    -f src/main/resources/db/migration/V3__trazabilidad_partidas_insumo.sql \
+    >> "b2-logs/${db}-v3.log" 2>&1
+  psql -X -v ON_ERROR_STOP=1 -d "$db" \
+    -c 'SET search_path TO ale_gestion, public;' \
+    -f src/main/resources/db/migration/V4__gfis_pe1_pe2_imp01.sql \
+    >> "b2-logs/${db}-v4.log" 2>&1
+done
+
+# Ejecutar Flyway REAL mediante Spring Boot arrancado en la tercera base (aplica V1..V4).
 export ALE_DB_HOST=127.0.0.1
 export ALE_DB_PORT=5432
 export ALE_DB_NAME=ale_mr5_flyway_ci
@@ -72,20 +89,29 @@ kill "$app_pid" 2>/dev/null || true
 wait "$app_pid" 2>/dev/null || true
 trap - EXIT
 
-# Verificar Flyway versión 1, 2 y 3, datos del catálogo y restricción F01.
+# Verificar Flyway versiones 1..4, datos del catálogo, objetos G-FIS V4 y endurecimiento ADAPT-02.
 psql -X -v ON_ERROR_STOP=1 -d ale_mr5_flyway_ci -At -c "
  SELECT 'migraciones='||count(*) FROM ale_gestion.flyway_schema_history WHERE success = true AND type = 'SQL';
  SELECT 'tablas='||count(*) FROM information_schema.tables WHERE table_schema='ale_gestion' AND table_type='BASE TABLE' AND table_name <> 'flyway_schema_history';
  SELECT 'columnas='||count(*) FROM information_schema.columns WHERE table_schema='ale_gestion' AND table_name <> 'flyway_schema_history';
  SELECT 'fk='||count(*) FROM pg_constraint c JOIN pg_namespace n ON n.oid=c.connamespace WHERE n.nspname='ale_gestion' AND c.contype='f';
+ SELECT 'vistas_gfis='||count(*) FROM information_schema.views WHERE table_schema='ale_gestion' AND table_name='VW_IMP_A_DISPONIBILIDAD_COBRO';
+ SELECT 'triggers_gfis='||count(*) FROM pg_trigger t JOIN pg_class c ON c.oid=t.tgrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='ale_gestion' AND (t.tgname LIKE 'tg_gfis_%' OR t.tgname LIKE 'ct_gfis_%') AND NOT t.tgisinternal;
+ SELECT 'funciones_v4_blindadas='||count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='ale_gestion' AND (p.proname LIKE 'fn_gfis_%' OR p.proname='fn_mr3_anular_cobro_manual') AND array_to_string(p.proconfig, ',') LIKE '%search_path=pg_catalog, ale_gestion, pg_temp%';
 " | tee b2-logs/flyway-catalogo.txt
-for expected in "migraciones=3" "tablas=62" "columnas=467" "fk=129"; do grep -qx "$expected" b2-logs/flyway-catalogo.txt; done
+for expected in \
+  "migraciones=4" \
+  "tablas=75" \
+  "columnas=606" \
+  "fk=168" \
+  "vistas_gfis=1" \
+  "triggers_gfis=18" \
+  "funciones_v4_blindadas=17"
+do
+  grep -qx "$expected" b2-logs/flyway-catalogo.txt
+done
 
-# Huella MR6 exacta: trasladar schema filtro y EXCLUIR solamente metadata Flyway.
-python3 scripts/b2/adapt_mr6_fingerprint.py \
-  g0-source/docs/05-modelo-relacional/sql/mr6/huella-estructural.sql \
-  b2-logs/huella-b2.sql
-export PGOPTIONS="-c search_path=ale_gestion,public"
+# Huella estructural completa V1..V4: referencia == incremental == flyway.
 for db in ale_mr5_referencia_ci ale_mr5_incremental_ci ale_mr5_flyway_ci; do
   psql -X -v ON_ERROR_STOP=1 -At -d "$db" \
     -f b2-logs/huella-b2.sql > "b2-logs/${db}.huella"
@@ -94,11 +120,17 @@ diff -u b2-logs/ale_mr5_referencia_ci.huella b2-logs/ale_mr5_incremental_ci.huel
   > b2-logs/diff-directa-incremental.txt
 diff -u b2-logs/ale_mr5_referencia_ci.huella b2-logs/ale_mr5_flyway_ci.huella \
   > b2-logs/diff-directa-flyway.txt
-echo "PASS B2: Flyway V1/V2 = MR5+F01 directa = 59→MR3→MR5+F01 (huella MR6)."
+echo "PASS B2: Flyway V1-V4 = MR5+F01+V3+V4 directa = 59→MR3→MR5+F01+V3+V4 (huella estructural exacta)."
 
-# Ensayo de backup/restore en cuarto DB DESCARTABLE; preserva un dato sintético.
-psql -X -v ON_ERROR_STOP=1 -d ale_mr5_flyway_ci \
-  -c "INSERT INTO ale_gestion.\"UNIDAD_MEDIDA\"(\"codigoUnidad\",\"nombre\") VALUES ('B2_PRUEBA','Unidad sintética de respaldo');"
+# Ensayo de backup/restore en cuarto DB DESCARTABLE; preserva datos sintéticos V1 y G-FIS V4.
+psql -X -v ON_ERROR_STOP=1 -d ale_mr5_flyway_ci -c "
+  INSERT INTO ale_gestion.\"UNIDAD_MEDIDA\"(\"codigoUnidad\",\"nombre\")
+    VALUES ('B2_PRUEBA','Unidad sintética de respaldo');
+  INSERT INTO ale_gestion.\"USUARIO\"(\"idUsuario\",\"nombreUsuario\",\"credencialProtegida\",\"estado\",\"cambioCredencialPendiente\",\"fechaHoraAlta\")
+    VALUES (999001,'b2_repartidor_v4','hash_sintetico_b2','HABILITADO',false,clock_timestamp());
+  INSERT INTO ale_gestion.\"RECORRIDO_REPARTO\"(\"idUsuarioRepartidor\",\"fechaHoraCreacion\",\"estadoOperativo\",\"referenciaOperativa\")
+    VALUES (999001,clock_timestamp(),'ABIERTO','REC-B2-V4-RESTORE');
+"
 pg_dump -Fc -d ale_mr5_flyway_ci -f b2-logs/ale_mr5_backup.dump
 psql -X -v ON_ERROR_STOP=1 -d postgres -c 'CREATE DATABASE ale_mr5_restaurada_ci;'
 pg_restore --no-owner --no-privileges -d ale_mr5_restaurada_ci \
@@ -106,6 +138,12 @@ pg_restore --no-owner --no-privileges -d ale_mr5_restaurada_ci \
 psql -X -v ON_ERROR_STOP=1 -d ale_mr5_restaurada_ci -At -c \
   "SELECT count(*) FROM ale_gestion.\"UNIDAD_MEDIDA\" WHERE \"codigoUnidad\"='B2_PRUEBA' AND \"nombre\"='Unidad sintética de respaldo';" \
   | grep -qx '1'
+psql -X -v ON_ERROR_STOP=1 -d ale_mr5_restaurada_ci -At -c \
+  "SELECT count(*) FROM ale_gestion.\"RECORRIDO_REPARTO\" WHERE \"idUsuarioRepartidor\"=999001 AND \"referenciaOperativa\"='REC-B2-V4-RESTORE' AND \"estadoOperativo\"='ABIERTO';" \
+  | grep -qx '1'
+psql -X -v ON_ERROR_STOP=1 -d ale_mr5_restaurada_ci -At -c \
+  "SELECT count(*) FROM ale_gestion.\"VW_IMP_A_DISPONIBILIDAD_COBRO\";" \
+  | grep -qx '0'
 psql -X -v ON_ERROR_STOP=1 -At -d ale_mr5_restaurada_ci \
   -f b2-logs/huella-b2.sql > b2-logs/ale_mr5_restaurada_ci.huella
 # PostgreSQL reserializa algunos CHECK ANY(ARRAY) al restaurar: diff informativo.
@@ -114,13 +152,13 @@ diff -u b2-logs/ale_mr5_referencia_ci.huella b2-logs/ale_mr5_restaurada_ci.huell
 python3 scripts/b2/compare_restored_fingerprint.py \
   b2-logs/ale_mr5_referencia_ci.huella b2-logs/ale_mr5_restaurada_ci.huella \
   | tee b2-logs/restore-comparison.txt
-# Validar reglas F01 sobre la base RESTAURADA, además de los datos de prueba.
+# Validar reglas F01 sobre la base RESTAURADA, además de los datos de prueba V1 y V4.
 psql -X -v ON_ERROR_STOP=1 -d ale_mr5_restaurada_ci \
   -f b2-logs/f01-pruebas-schema-app.sql \
   > b2-logs/restaurada-f01-pruebas.log 2>&1
 grep -q 'F01 PASS' b2-logs/restaurada-f01-pruebas.log
 psql -X -v ON_ERROR_STOP=1 -d ale_mr5_restaurada_ci -At -c \
   "SELECT count(*) FROM ale_gestion.flyway_schema_history WHERE success=true AND type='SQL';" \
-  | grep -qx '3'
-echo "PASS B2 backup/restore: objetos/columnas invariantes, CHECK normalizados, F01 y dato sintético preservados."
+  | grep -qx '4'
+echo "PASS B2 backup/restore V1-V4: objetos/columnas/triggers/vista invariantes, CHECK normalizados, F01 y datos sintéticos V1+V4 preservados."
 
