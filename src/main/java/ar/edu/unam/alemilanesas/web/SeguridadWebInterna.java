@@ -45,6 +45,7 @@ public class SeguridadWebInterna {
         boolean demo = !env.matchesProfiles("prod");
         boolean uc03 = demo && env.getProperty("ale.http.writes.pedidos-uc03-enabled", Boolean.class, false);
         boolean uc43 = demo && env.getProperty("ale.http.writes.pedidos-uc43-enabled", Boolean.class, false);
+        boolean uc28 = demo && env.getProperty("ale.http.writes.preparaciones-uc28-enabled", Boolean.class, false);
         http.securityMatcher("/web/**", "/demo/demo.css");
         http.httpBasic(AbstractHttpConfigurer::disable);
         http.formLogin(AbstractHttpConfigurer::disable);
@@ -71,6 +72,12 @@ public class SeguridadWebInterna {
                     .access((auth, ctx) -> permiso(auth.get(), uc43, "VENDEDOR"))
                 .requestMatchers(HttpMethod.POST, "/web/demo/pedidos/*/asignar")
                     .access((auth, ctx) -> permiso(auth.get(), uc43, "VENDEDOR"))
+                // Vertical UC-28: sola lectura/escritura de Producción, con el mismo flag
+                // no-prod de la API. ADMIN y VENDEDOR no obtienen acceso por inferencia.
+                .requestMatchers(HttpMethod.GET, "/web/demo/pedidos/*/preparar")
+                    .access((auth, ctx) -> permiso(auth.get(), uc28, "RESPONSABLE_PRODUCCION"))
+                .requestMatchers(HttpMethod.POST, "/web/demo/pedidos/*/preparar")
+                    .access((auth, ctx) -> permiso(auth.get(), uc28, "RESPONSABLE_PRODUCCION"))
                 .requestMatchers(HttpMethod.GET, "/web/demo/clientes", "/web/demo/productos", "/web/demo/pedidos")
                     .access((auth, ctx) -> permiso(auth.get(), demo, "ADMINISTRADOR", "VENDEDOR"))
                 .requestMatchers(HttpMethod.GET, "/web/demo/mis-entregas")
