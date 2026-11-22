@@ -82,6 +82,7 @@ public class PrecondicionesDespliegue implements BeanFactoryPostProcessor, Envir
         vetarPreparacionesUc28();
         vetarCajaManualUc22();
         vetarEntregasUc05();
+        vetarRecorridosUc43();
         String origen=env.getProperty("ale.web.allowed-origin","");
         URI parsed;
         try {parsed=URI.create(origen);}
@@ -117,6 +118,12 @@ public class PrecondicionesDespliegue implements BeanFactoryPostProcessor, Envir
     private void vetarEntregasUc05() {
         if (Boolean.TRUE.equals(env.getProperty("ale.http.writes.entregas-uc05-enabled", Boolean.class))) {
             throw new IllegalStateException("R09.2 UC-05 (entregas) HTTP bloqueado en produccion");
+        }
+    }
+
+    private void vetarRecorridosUc43() {
+        if (Boolean.TRUE.equals(env.getProperty("ale.http.writes.recorridos-uc43-enabled", Boolean.class))) {
+            throw new IllegalStateException("R09.2 UC-43 (recorridos) HTTP bloqueado en produccion");
         }
     }
 

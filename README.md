@@ -188,24 +188,32 @@ Issue #28 abierta; sin despliegue.
 
 ## R09.1b / R09.2 — UC05: primer vertical de Entrega (solo originales) sobre Flyway V4
 
-- **Endpoint y seguridad:** `POST /api/v1/pedidos/{idPedido}/entrega` (`RegistrarEntregaHttpController`),
-  exclusivo `REPARTIDOR` (sobre asignación vigente y `RECORRIDO_ASIGNACION` en estado `'ACTIVA'`),
-  bajo triple gate no-prod (`@Profile("!prod")`, `ale.http.writes.entregas-uc05-enabled=false`,
-  veto explícito en `PrecondicionesDespliegue`). Proyección BC-07 sin exposición de costos históricos,
-  márgenes ni deuda previa del Cliente.
+- **Endpoints y seguridad:**
+  - `POST /api/v1/recorridos`, `POST /api/v1/recorridos/{idRecorrido}/asignaciones`,
+    `POST /api/v1/recorridos/{idRecorrido}/vinculaciones` y `POST /api/v1/recorridos/{idRecorrido}/cierre`
+    (`RecorridoRepartoHttpController`), exclusivos `VENDEDOR` bajo triple gate no-prod
+    (`@Profile("!prod")`, `ale.http.writes.recorridos-uc43-enabled=false` y veto en `PrecondicionesDespliegue`),
+    preservando `UC-43` clásico en `POST /api/v1/pedidos/{idPedido}/asignacion-reparto`.
+  - `POST /api/v1/pedidos/{idPedido}/entrega` (`RegistrarEntregaHttpController`),
+    exclusivo `REPARTIDOR` (sobre asignación vigente y `RECORRIDO_ASIGNACION` en estado `'ACTIVA'`),
+    bajo triple gate no-prod (`@Profile("!prod")`, `ale.http.writes.entregas-uc05-enabled=false`,
+    veto explícito en `PrecondicionesDespliegue`). Proyección BC-07 sin exposición de costos históricos,
+    márgenes ni deuda previa del Cliente.
 - **Matriz CU → servicio → DB → API → test:**
-  - `Recorrido` (`A1`, `FA-1`, `FA-2`, `C1-EXPLICITO`): `GestionarRecorridoRepartoService` + sobrecarga explícita
-    `asignarYVincularRecorrido` (preservando `UC-43` `asignarOReasignar`) → `seq_gfis_recorrido`,
+  - `Recorrido` (`A1`, `FA-1`, `FA-2`, `C1-EXPLICITO`): `GestionarRecorridoRepartoService` + `RecorridoRepartoHttpController`
+    (preservando `UC-43` `asignarOReasignar`) → `seq_gfis_recorrido`,
     `seq_gfis_recorrido_asignacion`, `RECORRIDO_REPARTO`, `RECORRIDO_ASIGNACION`.
-  - Cobertura `IMP-B` / contención `IMP-C`: `ImputacionFinancieraService` → `seq_gfis_evento_imp`,
-    `EVENTO_IMPUTACION_FINANCIERA`, `VW_IMP_A_DISPONIBILIDAD_COBRO`, `REEMBOLSO`, `MOVIMIENTO_CUENTA`
-    (sin usar `COBRO.idPedido` como prueba de reserva ni fabricar backfill).
+  - Cobertura `IMP-B` / contención `IMP-C` + `UC-15`: `ImputacionFinancieraService` +
+    `EvaluadorCategoriaComercialInterno` (primero aplicaciones explícitas `CONSOLIDACION_ANTICIPO` /
+    `APLICACION_FIFO_LIBRE` / `APLICACION_RENDICION_K2` sobre cargos existentes y luego FIFO solo del remanente
+    confirmado libre excluyendo reservas activas, reembolsos pendientes/procesados y anulaciones) → `seq_gfis_evento_imp`,
+    `EVENTO_IMPUTACION_FINANCIERA`, `VW_IMP_A_DISPONIBILIDAD_COBRO`, `REEMBOLSO`, `MOVIMIENTO_CUENTA`.
   - Entrega atómica (`UC-05` originales + `UC-15`): `RegistrarEntregaService` → `ENTREGA`,
     `DETALLE_ENTREGA`, `EXCEDENTE`, `PRODUCTO.stockActualReventa`, `MOVIMIENTO_STOCK_REVENTA`,
     `MOVIMIENTO_CUENTA(CARGO_POR_VENTA)`, `ORIGEN_MOVIMIENTO_CUENTA`, `RECONOCIMIENTO_ENTREGA_PE1`,
     `RECORRIDO_ENTREGA`, `PEDIDO`, `EvaluadorCategoriaComercialInterno` (0 `COBRO`, 0 `PAGO`, 0 `MOVIMIENTO_CAJA`).
   - Pruebas reproducibles en PostgreSQL 17.11: `RegistrarEntregaServiceIntegrationTest`,
-    `RegistrarEntregaHttpExternoTest`, `Uc05ConcurrenciaIntegrationTest` (concurrencia contra `UC-28`, `UC-43` y `UC-29` alta/anulación L02),
-    `PrecondicionesDespliegueTest`, `PrecondicionesDespliegueContextTest`.
+    `RegistrarEntregaHttpExternoTest`, `RecorridoEntregaCircuitoHttpExternoTest`, `Uc05ConcurrenciaIntegrationTest`,
+    `EvaluadorCategoriaImpBIntegrationTest`, `PrecondicionesDespliegueTest`, `PrecondicionesDespliegueContextTest`.
 - **Pendiente fuera de este corte:** rendición administrativa `PE-2` (`T1-C2`), adicionales `UC-07`
   (`SOLO_ORIGINALES` fail-closed activo), sincronización offline (`PE-3`), `H3` y `H5`.

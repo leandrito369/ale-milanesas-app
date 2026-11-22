@@ -71,7 +71,8 @@ public class SeguridadHttpInterna {
             @Value("${ale.http.writes.usuarios-uc18-enabled:false}") boolean habilitarGestionRoles,
             @Value("${ale.http.writes.usuarios-uc55-enabled:false}") boolean habilitarEstadoUsuario,
             @Value("${ale.http.writes.finanzas-uc22-enabled:false}") boolean habilitarCajaManualUc22,
-            @Value("${ale.http.writes.entregas-uc05-enabled:false}") boolean habilitarEntregasUc05) {
+            @Value("${ale.http.writes.entregas-uc05-enabled:false}") boolean habilitarEntregasUc05,
+            @Value("${ale.http.writes.recorridos-uc43-enabled:false}") boolean habilitarRecorridosUc43) {
         http.securityMatcher("/api/v1/**");
         // La API no autentica cookies. El sitio web (otra cadena) conserva CSRF.
         http.csrf(csrf -> csrf.ignoringRequestMatchers("/api/v1/**"));
@@ -245,6 +246,10 @@ public class SeguridadHttpInterna {
                 .requestMatchers(HttpMethod.POST, "/api/v1/pedidos/*/entrega")
                     .access((auth, context) -> new org.springframework.security.authorization.AuthorizationDecision(
                             repartidorAutenticado(habilitarEntregasUc05, auth)))
+                // H1 UC43 / C1-EXPLICITO: apertura, asignacion+vinculacion y cierre Recorrido solo VENDEDOR y gate independiente.
+                .requestMatchers(HttpMethod.POST, "/api/v1/recorridos", "/api/v1/recorridos/**")
+                    .access((auth, context) -> new org.springframework.security.authorization.AuthorizationDecision(
+                            vendedorAutenticado(habilitarRecorridosUc43, auth)))
                 .anyRequest().denyAll());
         http.exceptionHandling(e->e
                 .authenticationEntryPoint((req,res,ex)->rechazar(res))

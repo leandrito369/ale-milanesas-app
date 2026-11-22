@@ -3,9 +3,7 @@ package ar.edu.unam.alemilanesas.web;
 import ar.edu.unam.alemilanesas.acceso.TokenSesionInterna;
 import ar.edu.unam.alemilanesas.produccioninventario.PreparacionFixture;
 import ar.edu.unam.alemilanesas.produccioninventario.RegistrarPreparacionService;
-import ar.edu.unam.alemilanesas.ventas.AsignarRepartoService;
 import ar.edu.unam.alemilanesas.ventas.CargarPedidoService;
-import ar.edu.unam.alemilanesas.ventas.GestionarRecorridoRepartoService;
 import java.math.BigDecimal;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -33,9 +31,10 @@ import tools.jackson.databind.json.JsonMapper;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** UC-05 HTTP externo: BEARER auth, RBAC REPARTIDOR, proyeccion BC-07, idempotencia, concurrencia y gate flag. */
+/** UC-05 HTTP externo: apertura y vinculacion de Recorrido por HTTP, BEARER auth, RBAC REPARTIDOR, proyeccion BC-07, idempotencia, concurrencia y gate flag. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "ale.http.writes.entregas-uc05-enabled=true")
+        properties = {"ale.http.writes.entregas-uc05-enabled=true",
+                      "ale.http.writes.recorridos-uc43-enabled=true"})
 @Testcontainers(disabledWithoutDocker = true)
 class RegistrarEntregaHttpExternoTest {
     @Container
@@ -55,13 +54,12 @@ class RegistrarEntregaHttpExternoTest {
     @Autowired TransactionTemplate tx;
     @Autowired CargarPedidoService pedidos;
     @Autowired RegistrarPreparacionService preparaciones;
-    @Autowired GestionarRecorridoRepartoService recorridos;
 
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8)).build();
 
-    private HttpResponse<String> post(long idPedido, String token, String body) throws Exception {
+    private HttpResponse<String> postRuta(String ruta, String token, String body) throws Exception {
         var req = HttpRequest.newBuilder()
-                .uri(URI.create("http://localhost:" + puerto + "/api/v1/pedidos/" + idPedido + "/entrega"))
+                .uri(URI.create("http://localhost:" + puerto + ruta))
                 .timeout(Duration.ofSeconds(10))
                 .header("Content-Type", "application/json");
         if (token != null) req.header("Authorization", "Bearer " + token);
@@ -69,14 +67,28 @@ class RegistrarEntregaHttpExternoTest {
                 HttpResponse.BodyHandlers.ofString());
     }
 
+    private HttpResponse<String> post(long idPedido, String token, String body) throws Exception {
+        return postRuta("/api/v1/pedidos/" + idPedido + "/entrega", token, body);
+    }
+
+    private long abrirYAsignarPorHttp(String vendedorToken, long idRep, long idPedido, String ref) throws Exception {
+        HttpResponse<String> rRec = postRuta("/api/v1/recorridos", vendedorToken,
+                "{\"idUsuarioRepartidor\":" + idRep + ",\"referenciaOperativa\":\"" + ref + "\"}");
+        assertEquals(201, rRec.statusCode(), rRec.body());
+        long idRecorrido = JSON.readTree(rRec.body()).path("idRecorrido").asLong();
+
+        HttpResponse<String> rAsig = postRuta("/api/v1/recorridos/" + idRecorrido + "/asignaciones", vendedorToken,
+                "{\"idPedido\":" + idPedido + ",\"idUsuarioRepartidor\":" + idRep + "}");
+        assertEquals(201, rAsig.statusCode(), rAsig.body());
+        return idRecorrido;
+    }
+
     @Test
     void autorizacionRbacProyeccionBc07IdempotenciaYErroresHttpReales() throws Exception {
         var f = new PreparacionFixture(jdbc, tx, pedidos);
         long rep1 = f.actores.base + 3;
         preparaciones.registrarPreparacionPedido(f.produccion(), f.datos("4"));
-        var rec = recorridos.abrirRecorrido(f.actores.vendedor(), rep1, "REC-HTTP");
-        recorridos.asignarYVincularRecorrido(f.actores.vendedor(),
-                new AsignarRepartoService.DatosAsignacion(f.pedido, rep1, null), rec.idRecorrido());
+        abrirYAsignarPorHttp(f.actores.tokens.get("VENDEDOR"), rep1, f.pedido, "REC-HTTP");
 
         // Otro REPARTIDOR no asignado al Pedido
         String tokRep2 = tx.execute(s -> {
@@ -159,9 +171,7 @@ class RegistrarEntregaHttpExternoTest {
         var f = new PreparacionFixture(jdbc, tx, pedidos);
         long rep1 = f.actores.base + 3;
         preparaciones.registrarPreparacionPedido(f.produccion(), f.datos("2"));
-        var rec = recorridos.abrirRecorrido(f.actores.vendedor(), rep1, "REC-HTTP-CONC");
-        recorridos.asignarYVincularRecorrido(f.actores.vendedor(),
-                new AsignarRepartoService.DatosAsignacion(f.pedido, rep1, null), rec.idRecorrido());
+        abrirYAsignarPorHttp(f.actores.tokens.get("VENDEDOR"), rep1, f.pedido, "REC-HTTP-CONC");
 
         String repToken = f.actores.tokens.get("REPARTIDOR");
         String body = """
@@ -176,13 +186,14 @@ class RegistrarEntregaHttpExternoTest {
         }
         assertEquals(1, jdbc.queryForObject("SELECT count(*) FROM \"ENTREGA\" WHERE \"idPedido\"=?", Integer.class, f.pedido));
 
-        // Gate desactivado por defecto => 403 en el endpoint
+        // Gate desactivado por defecto => 403 en ambos endpoints (entregas UC-05 y recorridos)
         try (var ctx = SpringApplication.run(ar.edu.unam.alemilanesas.AleMilanesasApplication.class,
                 "--server.port=0",
                 "--spring.datasource.url=" + db.getJdbcUrl(),
                 "--spring.datasource.username=" + db.getUsername(),
                 "--spring.datasource.password=" + db.getPassword(),
-                "--ale.http.writes.entregas-uc05-enabled=false")) {
+                "--ale.http.writes.entregas-uc05-enabled=false",
+                "--ale.http.writes.recorridos-uc43-enabled=false")) {
             int p2 = ctx.getEnvironment().getProperty("local.server.port", Integer.class);
             var req = HttpRequest.newBuilder()
                     .uri(URI.create("http://localhost:" + p2 + "/api/v1/pedidos/" + f.pedido + "/entrega"))
@@ -191,6 +202,14 @@ class RegistrarEntregaHttpExternoTest {
                     .POST(HttpRequest.BodyPublishers.ofString(body))
                     .build();
             assertEquals(403, http.send(req, HttpResponse.BodyHandlers.ofString()).statusCode());
+
+            var reqRec = HttpRequest.newBuilder()
+                    .uri(URI.create("http://localhost:" + p2 + "/api/v1/recorridos"))
+                    .header("Authorization", "Bearer " + f.actores.tokens.get("VENDEDOR"))
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"idUsuarioRepartidor\":" + rep1 + "}"))
+                    .build();
+            assertEquals(403, http.send(reqRec, HttpResponse.BodyHandlers.ofString()).statusCode());
         }
     }
 }
