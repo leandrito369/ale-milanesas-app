@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Preparar Pedido (UC-28) · Ale Milanesas</title>
+    <link rel="stylesheet" th:href="@{/demo/demo.css}" th:replace="~{demo/fragments :: cssDemo}">
+</head>
+<body>
+<div th:replace="~{demo/fragments :: cabecera('pedidos')}"></div>
+
+<main id="contenido" class="container">
+    <section class="card" aria-labelledby="titulo-preparar">
+        <h1 id="titulo-preparar">Registrar Preparación (UC-28)</h1>
+        <p class="muted">
+            Pedido #<strong th:text="${idPedido}">0</strong> · Escritura reservada a Responsable de Producción.
+        </p>
+
+        <div th:replace="~{demo/fragments :: mensajes}"></div>
+
+        <div class="alert alert-warning" th:if="${aviso != null}">
+            <p th:text="${aviso}">Aviso operativo sobre la preparación del pedido.</p>
+        </div>
+
+        <section th:if="${pedido != null}" aria-labelledby="contexto-pedido">
+            <h2 id="contexto-pedido">Pedido contextual (UC-34)</h2>
+            <dl>
+                <dt>Pedido</dt><dd th:text="${pedido.idPedido()}"></dd>
+                <dt>Cliente</dt><dd th:text="${pedido.idCliente()}"></dd>
+                <dt>Fecha de reparto</dt><dd th:text="${pedido.fechaReparto()}"></dd>
+                <dt>Estado</dt><dd th:text="${pedido.estado()}"></dd>
+                <dt>Canal</dt><dd th:text="${pedido.canalOrigen()}"></dd>
+            </dl>
+        </section>
+
+        <form th:action="@{/web/demo/pedidos/{idPedido}/preparar(idPedido=${idPedido})}" method="post">
+            <input type="hidden" th:if="${_csrf != null}" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+
+            <div class="form-grid">
+                <div class="field">
+                    <label for="p-producto">idProducto original *</label>
+                    <input id="p-producto" name="idProducto" type="number" min="1" step="1" required
+                           aria-describedby="hint-producto"
+                           th:value="${form != null ? form.idProducto : ''}">
+                    <span id="hint-producto" class="field-hint">
+                        UC-34 no expone el detalle del Pedido: informe el identificador del producto original.
+                    </span>
+                </div>
+                <div class="field">
+                    <label for="p-cantidad">Cantidad a preparar *</label>
+                    <input id="p-cantidad" name="cantidadPreparada" type="number" min="0.001" step="0.001" required
+                           aria-describedby="hint-cantidad"
+                           th:value="${form != null ? form.cantidadPreparada : ''}">
+                    <span id="hint-cantidad" class="field-hint">
+                        No puede superar la cantidad original pendiente de preparar. El servicio valida stock, partidas, receta y costo histórico.
+                    </span>
+                </div>
+            </div>
+
+            <div class="actions">
+                <button type="submit" class="btn btn-primary">Registrar preparación</button>
+                <a class="btn btn-secondary" th:href="@{/web/demo/pedidos(idPedido=${idPedido})}">Volver a Pedidos</a>
+            </div>
+        </form>
+    </section>
+</main>
+</body>
+</html>
