@@ -57,8 +57,8 @@ class GfisPreflightEIntegridadV4LabIntegrationTest {
         List<String> versionesFlyway = jdbc.queryForList(
                 "SELECT version FROM flyway_schema_history WHERE version IS NOT NULL AND success = true ORDER BY installed_rank",
                 String.class);
-        assertEquals(List.of("1", "2", "3"), versionesFlyway,
-                "Flyway de aplicacion debe ejecutar exclusivamente V1-V3");
+        assertEquals(List.of("1", "2", "3", "4"), versionesFlyway,
+                "Flyway de aplicacion debe ejecutar V1-V4 en orden");
 
         Integer nuevasTablas = jdbc.queryForObject("""
                 SELECT count(*) FROM information_schema.tables

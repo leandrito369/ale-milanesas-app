@@ -56,10 +56,10 @@ class GfisFlywayV4InstalacionYReversibilidadIntegrationTest {
     @Autowired Flyway flyway;
 
     /**
-     * T1: Instalacion limpia Flyway V1..V4 desde cero.
+     * T1a: Instalacion limpia Flyway V1..V4 desde cero, catalogo exacto e invariancia V1..V3.
      */
     @Test
-    void t1_FlywayV1AV4DesdeCeroSinAlterarV1V3NiObjetosFueraDeAleGestion() throws Exception {
+    void t1a_FlywayV1AV4DesdeCeroCatalogoExactoYChecksumsIntactos() throws Exception {
         assertTrue(flyway.validateWithResult().validationSuccessful);
         assertEquals(0, flyway.migrate().migrationsExecuted);
 
@@ -80,6 +80,18 @@ class GfisFlywayV4InstalacionYReversibilidadIntegrationTest {
                  WHERE n.nspname = 'ale_gestion' AND c.contype = 'f'
                 """));
 
+        assertNotNull(sha256Classpath("db/migration/V1__baseline_mr5.sql"));
+        assertNotNull(sha256Classpath("db/migration/V2__f01_cobro_estados.sql"));
+        assertNotNull(sha256Classpath("db/migration/V3__trazabilidad_partidas_insumo.sql"));
+        assertNotNull(sha256Classpath("db/migration/V4__gfis_pe1_pe2_imp01.sql"));
+    }
+
+    /**
+     * T1b: Endurecimiento ADAPT-02 (search_path), ADAPT-05 (indices), ADAPT-03 (REVOKE PUBLIC)
+     * y cero objetos G-FIS fuera de ale_gestion.
+     */
+    @Test
+    void t1b_FlywayV4EndurecimientoSearchPathIndicesAclsYCeroObjetosFueraDeAleGestion() {
         // ADAPT-02: las 17 funciones V4 (16 fn_gfis_* + fn_mr3_anular_cobro_manual) fijan search_path seguro
         assertEquals(17, contar(jdbc, """
                 SELECT count(*) FROM pg_proc p
@@ -119,7 +131,7 @@ class GfisFlywayV4InstalacionYReversibilidadIntegrationTest {
                  WHERE n.nspname <> 'ale_gestion' AND p.proname LIKE 'fn_gfis_%'
                 """));
 
-        // ADAPT-03: cero privilegios PUBLIC sobre las 13 tablas nuevas, 1 vista, 12 secuencias y 16 fn_gfis_*
+        // ADAPT-03: cero privilegios PUBLIC sobre las 13 tablas nuevas, 1 vista y 16 fn_gfis_*
         assertEquals(0, contar(jdbc, """
                 SELECT count(*) FROM information_schema.role_table_grants
                  WHERE grantee = 'PUBLIC' AND table_schema = 'ale_gestion'
@@ -138,12 +150,6 @@ class GfisFlywayV4InstalacionYReversibilidadIntegrationTest {
                  WHERE n.nspname = 'ale_gestion' AND p.proname LIKE 'fn_gfis_%'
                    AND has_function_privilege('public', p.oid, 'EXECUTE')
                 """));
-
-        // V1, V2 y V3 permanecen presentes e intactas (checksums Flyway no nulos y hash SHA-256 legible)
-        assertNotNull(sha256Classpath("db/migration/V1__baseline_mr5.sql"));
-        assertNotNull(sha256Classpath("db/migration/V2__f01_cobro_estados.sql"));
-        assertNotNull(sha256Classpath("db/migration/V3__trazabilidad_partidas_insumo.sql"));
-        assertNotNull(sha256Classpath("db/migration/V4__gfis_pe1_pe2_imp01.sql"));
     }
 
     /**
@@ -250,55 +256,64 @@ class GfisFlywayV4InstalacionYReversibilidadIntegrationTest {
      */
     @Test
     void t6a_RollbackTransaccionalAntePreflightFallidoYLockTimeoutReal() throws Exception {
-        String dbName = "ale_gfis_t6_rollback";
-        crearBaseAislada(dbName);
-        String urlDb = jdbcUrlParaBase(dbName);
-        DriverManagerDataSource ds = crearDataSource(urlDb);
-        JdbcTemplate jdbcT6 = new JdbcTemplate(ds);
+        // 1) Preflight fallido en base aislada: inyectar COBRO con idCobro <= 0 -> Flyway V4 falla y revierte
+        String dbPreflight = "ale_gfis_t6_preflight";
+        crearBaseAislada(dbPreflight);
+        DriverManagerDataSource dsPre = crearDataSource(jdbcUrlParaBase(dbPreflight));
+        JdbcTemplate jdbcPre = new JdbcTemplate(dsPre);
 
         Flyway.configure()
-                .dataSource(ds)
+                .dataSource(dsPre)
                 .defaultSchema("ale_gestion")
                 .schemas("ale_gestion")
                 .target("3")
                 .load()
                 .migrate();
 
-        // 1) Preflight fallido: inyectar COBRO con idCobro <= 0 -> Flyway V4 falla y revierte atomica e integramente
-        jdbcT6.update("""
+        jdbcPre.update("""
                 INSERT INTO ale_gestion."CLIENTE" (
                     "idCliente","nombres","telefonoPrincipal","estado","categoriaComercial","fechaHoraAlta")
                 VALUES (800001,'Cliente T6','3764000800','ACTIVO','CUMPLIDOR',clock_timestamp())
                 """);
-        jdbcT6.update("""
+        jdbcPre.update("""
                 INSERT INTO ale_gestion."COBRO" (
                     "idCobro","idCliente","fechaHoraCobro","importe","medioPago","origen","estadoCobro")
                 VALUES (-1,800001,clock_timestamp(),10.00,'EFECTIVO','ADMINISTRACION','CONFIRMADO')
                 """);
 
-        Flyway flywayV4 = Flyway.configure()
-                .dataSource(ds)
+        Flyway flywayPreV4 = Flyway.configure()
+                .dataSource(dsPre)
                 .defaultSchema("ale_gestion")
                 .schemas("ale_gestion")
                 .target("4")
                 .load();
-        FlywayException exPreflight = assertThrows(FlywayException.class, flywayV4::migrate);
+        FlywayException exPreflight = assertThrows(FlywayException.class, flywayPreV4::migrate);
         assertTrue(exPreflight.getMessage().contains("GFIS-PREFLIGHT-B2"));
-        assertEquals(62, contar(jdbcT6, """
+        assertEquals(62, contar(jdbcPre, """
                 SELECT count(*) FROM information_schema.tables
                  WHERE table_schema = 'ale_gestion' AND table_type = 'BASE TABLE'
                    AND table_name <> 'flyway_schema_history'
                 """));
-        assertEquals(0, contar(jdbcT6, """
+        assertEquals(0, contar(jdbcPre, """
                 SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
                  WHERE n.nspname = 'ale_gestion' AND c.relkind = 'S' AND c.relname LIKE 'seq_gfis_%'
                 """));
 
-        // Limpiar dato invalido y reparar historial Flyway antes de probar lock_timeout
-        jdbcT6.update("DELETE FROM ale_gestion.\"COBRO\" WHERE \"idCobro\" = -1");
-        flywayV4.repair();
+        // 2) Lock timeout (ADAPT-04) en segunda base limpia V1..V3: ACCESS EXCLUSIVE sobre COBRO -> 55P03
+        String dbLock = "ale_gfis_t6_locktimeout";
+        crearBaseAislada(dbLock);
+        String urlLock = jdbcUrlParaBase(dbLock);
+        DriverManagerDataSource dsLock = crearDataSource(urlLock);
+        JdbcTemplate jdbcLock = new JdbcTemplate(dsLock);
 
-        // 2) Lock timeout (ADAPT-04): otra sesion retiene ACCESS EXCLUSIVE sobre COBRO -> V4 aborta con 55P03
+        Flyway.configure()
+                .dataSource(dsLock)
+                .defaultSchema("ale_gestion")
+                .schemas("ale_gestion")
+                .target("3")
+                .load()
+                .migrate();
+
         String sqlV4 = new ClassPathResource("db/migration/V4__gfis_pe1_pe2_imp01.sql")
                 .getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
         CountDownLatch lockTomado = new CountDownLatch(1);
@@ -306,7 +321,7 @@ class GfisFlywayV4InstalacionYReversibilidadIntegrationTest {
 
         try (ExecutorService pool = Executors.newSingleThreadExecutor()) {
             Future<Void> bloqueador = pool.submit(() -> {
-                try (Connection cLock = DriverManager.getConnection(urlDb, db.getUsername(), db.getPassword());
+                try (Connection cLock = DriverManager.getConnection(urlLock, db.getUsername(), db.getPassword());
                      Statement st = cLock.createStatement()) {
                     cLock.setAutoCommit(false);
                     st.execute("LOCK TABLE ale_gestion.\"COBRO\" IN ACCESS EXCLUSIVE MODE");
@@ -318,13 +333,13 @@ class GfisFlywayV4InstalacionYReversibilidadIntegrationTest {
             });
 
             assertTrue(lockTomado.await(5, TimeUnit.SECONDS));
-            SQLException exTimeout = assertThrows(SQLException.class, () -> ejecutarSqlEnTransaccion(urlDb, sqlV4));
+            SQLException exTimeout = assertThrows(SQLException.class, () -> ejecutarSqlEnTransaccion(urlLock, sqlV4));
             soltarLock.countDown();
             bloqueador.get(10, TimeUnit.SECONDS);
 
             assertEquals("55P03", exTimeout.getSQLState(),
                     "ADAPT-04: lock_timeout='10s' debe abortar limpiamente con SQLSTATE 55P03");
-            assertEquals(62, contar(jdbcT6, """
+            assertEquals(62, contar(jdbcLock, """
                     SELECT count(*) FROM information_schema.tables
                      WHERE table_schema = 'ale_gestion' AND table_type = 'BASE TABLE'
                        AND table_name <> 'flyway_schema_history'
@@ -332,8 +347,14 @@ class GfisFlywayV4InstalacionYReversibilidadIntegrationTest {
         }
 
         // 3) Una vez liberado el lock, Flyway V4 aplica limpio a la primera y queda valido
-        assertEquals(1, flywayV4.migrate().migrationsExecuted);
-        assertEquals(75, contar(jdbcT6, """
+        Flyway flywayLockV4 = Flyway.configure()
+                .dataSource(dsLock)
+                .defaultSchema("ale_gestion")
+                .schemas("ale_gestion")
+                .target("4")
+                .load();
+        assertEquals(1, flywayLockV4.migrate().migrationsExecuted);
+        assertEquals(75, contar(jdbcLock, """
                 SELECT count(*) FROM information_schema.tables
                  WHERE table_schema = 'ale_gestion' AND table_type = 'BASE TABLE'
                    AND table_name <> 'flyway_schema_history'
@@ -385,7 +406,11 @@ class GfisFlywayV4InstalacionYReversibilidadIntegrationTest {
         String prefix = idxParams >= 0 ? baseUrl.substring(0, idxParams) : baseUrl;
         String suffix = idxParams >= 0 ? baseUrl.substring(idxParams) : "";
         int lastSlash = prefix.lastIndexOf('/');
-        return prefix.substring(0, lastSlash + 1) + dbName + suffix;
+        String target = prefix.substring(0, lastSlash + 1) + dbName + suffix;
+        if (target.contains("currentSchema=")) {
+            return target;
+        }
+        return target + (target.contains("?") ? "&" : "?") + "currentSchema=ale_gestion";
     }
 
     private DriverManagerDataSource crearDataSource(String url) {

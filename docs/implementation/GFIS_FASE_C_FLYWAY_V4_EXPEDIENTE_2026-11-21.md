@@ -119,7 +119,7 @@ PostgreSQL ejecuta el DDL de `V4__gfis_pe1_pe2_imp01.sql` dentro de la transacci
 
 | ID | Requisito del plan Fase C | Evidencia / Cobertura | Estado |
 | :--- | :--- | :--- | :--- |
-| **`T1`** | Instalación Flyway `V1–V4` desde cero, checksums `V1–V3` intactos, `0` objetos fuera de `ale_gestion`, `ADAPT-02`/`03`/`05` | `GfisFlywayV4InstalacionYReversibilidadIntegrationTest.t1_FlywayV1AV4DesdeCeroSinAlterarV1V3NiObjetosFueraDeAleGestion` + `B2SchemaMigrationTest` | Pendiente resultado CI (`T8`) |
+| **`T1`** | Instalación Flyway `V1–V4` desde cero, checksums `V1–V3` intactos, `0` objetos fuera de `ale_gestion`, `ADAPT-02`/`03`/`05` | `GfisFlywayV4InstalacionYReversibilidadIntegrationTest` (`t1a`, `t1b`) + `B2SchemaMigrationTest` | Pendiente resultado CI (`T8`) |
 | **`T2`** | Upgrade `V4` sobre base `V1–V3` poblada con datos sintéticos previos, `0` backfill retroactivo y `nextval > MAX` (`ADAPT-06`) | `GfisFlywayV4InstalacionYReversibilidadIntegrationTest.t2_UpgradeFlywayV4SobreBaseV1V3PobladaSinBackfillRetroactivoYSeedMayorQueMax` | Pendiente resultado CI (`T8`) |
 | **`T3`** | Servicios legacy reales (`CobroManualService` y `RegistrarMovimientoCajaService`) contra Flyway `V4` (alta, replay, caja, anulación `L02`, `D7-A`, `DC05-07-A`, concurrencia) | `GfisC01CompatibilidadLegacyYSeguridadLabIntegrationTest` (`t3A1`, `t3A2`, `t3A3`) | Pendiente resultado CI (`T8`) |
 | **`T4`** | Seguridad real: ataque `search_path` (`pg_temp` y `public`) directamente contra funciones `V4` reales + rol no-owner `42501` antes/después de `GRANT` mínimo | `GfisC01CompatibilidadLegacyYSeguridadLabIntegrationTest` (`t4B1`, `t4B2`) | Pendiente resultado CI (`T8`) |

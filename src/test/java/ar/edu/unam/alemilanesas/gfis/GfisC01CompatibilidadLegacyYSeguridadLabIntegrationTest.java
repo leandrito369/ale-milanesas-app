@@ -327,7 +327,8 @@ class GfisC01CompatibilidadLegacyYSeguridadLabIntegrationTest {
         try (Connection appConn = DriverManager.getConnection(db.getJdbcUrl(), rol, pass);
              Statement st = appConn.createStatement()) {
             assertTrue(consultarLong(st, "SELECT count(*) FROM ale_gestion.\"VW_IMP_A_DISPONIBILIDAD_COBRO\"") >= 0);
-            assertNotNull(consultarLong(st, "SELECT ale_gestion.\"fn_gfis_advisory_lock_key\"(42)::bigint"));
+            long hashKey = consultarLong(st, "SELECT ale_gestion.\"fn_gfis_advisory_lock_key\"(42)::bigint");
+            assertEquals(consultarLong(st, "SELECT pg_catalog.hashtext('42')::bigint"), hashKey);
             long idRec = consultarLong(st,
                     "INSERT INTO ale_gestion.\"RECORRIDO_REPARTO\" "
                             + "(\"idUsuarioRepartidor\",\"fechaHoraCreacion\",\"estadoOperativo\",\"referenciaOperativa\") "
