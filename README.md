@@ -217,6 +217,28 @@ Issue #28 abierta; sin despliegue.
   - Pruebas reproducibles en PostgreSQL 17.11: `RegistrarEntregaServiceIntegrationTest`,
     `RegistrarEntregaHttpExternoTest`, `RecorridoEntregaCircuitoHttpExternoTest`, `Uc05ConcurrenciaIntegrationTest`,
     `EvaluadorCategoriaImpBIntegrationTest`, `PrecondicionesDespliegueTest`, `PrecondicionesDespliegueContextTest`.
-- **Pendiente fuera de este corte:** rendición administrativa `PE-2` (`T1-C2`), definición contractual de cierre de
+- **Pendiente fuera de este corte:** rendición administrativa `PE-2` (confirmación `T1-C2` y rectificaciones `B1-R1`/`B1-R2`), definición contractual de cierre de
   Recorrido vacío/desvinculado sin entregas (`G_ARQ_N2_01 §3.2`), adicionales `UC-07`
   (`SOLO_ORIGINALES` fail-closed activo), sincronización offline (`PE-3`) y `H5`.
+
+## R09.3b-A — UC29 (subflujo): rendición administrativa preliminar PE-2 (`PENDIENTE_CONCILIACION`)
+
+- **Servicio y seguridad:** `RendicionPreliminarPe2Service` (`finanzas`), exclusivo de `ADMINISTRADOR`
+  habilitado con revalidación post-espera bajo lock `A2(NS_RECORRIDO = 4100)` (`ProtocoloIdentificadoresFinancieros`),
+  incluyendo revalidación estricta en replay idempotente (`C1-a` / `RCG-05`) y proyección contextual de solo
+  lectura `consultarExposicionRecorrido` (`BC-07` `D9`, sin acceso a `UC-14`).
+- **Matriz CU → servicio → DB → test:**
+  - `UC-29` (subflujo preliminar `PE-2` / `B1` / `Alternativa A` / `FA-2` / `B1-R1` inicial):
+    `RendicionPreliminarPe2Service` → `RECORRIDO_REPARTO` (`ABIERTO → PENDIENTE_CONCILIACION`),
+    `RECORRIDO_ASIGNACION` (guard `FA-2`), `RECORRIDO_ENTREGA`, `ENTREGA`, `RECONOCIMIENTO_ENTREGA_PE1`
+    (solo lectura/share; `V_e^vig` intacto), `CIERRE_RECORRIDO_PE2` (cabecera única por Recorrido,
+    `importeImputadoConfirmado = 0`), `REVISION_CONCILIACION_PE2` (`numeroRevision = 1`, `VIGENTE`,
+    `claveIdempotenciaRevision` + huella canónica SHA-256 `v1`), `PROPUESTA_APLICACION_PENDIENTE` y
+    `CUSTODIA_DIFERENCIA_RENDICION` (`FALTANTE_EFECTIVO`, `CUSTODIA_NO_IMPUTADA`, `SOBRANTE_DECLARADO_EX01`).
+  - Rechazo fail-closed de conciliación inicial `0/0` (`DIFERENCIA_POSITIVA_REQUERIDA`), cobertura excedida
+    (`COBERTURA_NO_ACREDITADA` 422), pedidos pendientes `FA-2`, recorridos sin entregas y conflictos de clave/ámbito/payload.
+  - **Cero efectos financieros definitivos:** `0` `COBRO`, `0` `COBRO_RENDICION_K2`, `0` `APLICACION_RENDICION_K2`,
+    `0` `MOVIMIENTO_CUENTA(PAGO)`, `0` `MOVIMIENTO_CAJA`, `0` `EGRESO_CUSTODIA_RENDICION` y sin cierre terminal `CERRADO`.
+  - Pruebas reproducibles PostgreSQL 17.11: `RendicionPreliminarPe2ServiceIntegrationTest`.
+- **Pendiente para cortes siguientes:** rectificaciones/invalidación `B1-R1`/`B1-R2`, confirmación financiera
+  `T1-C2` (`K2` + `EGRESO_CUSTODIA_RENDICION` + recibo histórico y cierre `CERRADO`) y exposición HTTP `UC-29`.
