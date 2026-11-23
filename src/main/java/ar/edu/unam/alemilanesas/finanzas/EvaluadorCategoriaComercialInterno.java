@@ -61,21 +61,37 @@ public class EvaluadorCategoriaComercialInterno {
         }
         var rows = sql.query("""
                 SELECT m."tipoMovimiento", m."importe",
-                       COALESCE(e."fechaHoraEntrega",m."fechaHoraMovimiento") AS fecha_deuda
+                       COALESCE(e."fechaHoraEntrega", m."fechaHoraMovimiento") AS fecha_deuda,
+                       o."idPedidoEntrega", o."idReembolso"
                   FROM "MOVIMIENTO_CUENTA" m
                   LEFT JOIN "ORIGEN_MOVIMIENTO_CUENTA" o
-                    ON o."idMovimientoCuenta"=m."idMovimientoCuenta"
-                  LEFT JOIN "ENTREGA" e ON e."idPedido"=o."idPedidoEntrega"
-                 WHERE m."idCliente"=:cliente
-                 ORDER BY m."fechaHoraMovimiento",m."numeroSecuenciaCliente"
-                """, Map.of("cliente", idCliente), (rs, i) ->
-                new Movimiento(rs.getString("tipoMovimiento"),rs.getBigDecimal("importe"),
-                        rs.getTimestamp("fecha_deuda").toInstant()));
+                    ON o."idMovimientoCuenta" = m."idMovimientoCuenta"
+                  LEFT JOIN "ENTREGA" e ON e."idPedido" = o."idPedidoEntrega"
+                 WHERE m."idCliente" = :cliente
+                 ORDER BY m."fechaHoraMovimiento", m."numeroSecuenciaCliente"
+                """, Map.of("cliente", idCliente), (rs, i) -> {
+            Number ped = (Number) rs.getObject("idPedidoEntrega");
+            Number reemb = (Number) rs.getObject("idReembolso");
+            return new Movimiento(
+                    rs.getString("tipoMovimiento"),
+                    rs.getBigDecimal("importe"),
+                    rs.getTimestamp("fecha_deuda").toInstant(),
+                    ped == null ? null : ped.longValue(),
+                    reemb != null);
+        });
+
         BigDecimal creditos = BigDecimal.ZERO;
-        var deudas = new java.util.ArrayList<Movimiento>();
+        var deudas = new java.util.ArrayList<DeudaPendiente>();
         for (var m : rows) {
             switch (m.tipo()) {
-                case "CARGO_POR_VENTA", "AJUSTE_DEBITO" -> deudas.add(m);
+                case "CARGO_POR_VENTA" -> deudas.add(new DeudaPendiente(m.idPedido(), m.importe(), m.fecha()));
+                case "AJUSTE_DEBITO" -> {
+                    if (m.esReembolso()) {
+                        creditos = creditos.subtract(m.importe());
+                    } else {
+                        deudas.add(new DeudaPendiente(m.idPedido(), m.importe(), m.fecha()));
+                    }
+                }
                 case "PAGO", "AJUSTE_CREDITO" -> creditos = creditos.add(m.importe());
                 case "ANULACION_COBRO" -> creditos = creditos.subtract(m.importe());
                 default -> throw new IllegalStateException("Movimiento de Cuenta no reconocido");
@@ -84,11 +100,22 @@ public class EvaluadorCategoriaComercialInterno {
         if (creditos.signum() < 0) {
             throw new IllegalStateException("Contraasientos superiores a creditos historicos");
         }
-        deudas.sort(java.util.Comparator.comparing(Movimiento::fecha));
+
+        var porPedidoImp = consultarAplicacionesExplicitaPorPedido(idCliente);
+        aplicarExplicitasADeudas(deudas, porPedidoImp);
+        BigDecimal totalAplicadoImpB = porPedidoImp.values().stream()
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal comprometidoNoLibre = calcularTotalComprometidoFueraFifo(idCliente, totalAplicadoImpB);
+        BigDecimal creditoLibre = creditos.subtract(comprometidoNoLibre).max(BigDecimal.ZERO);
+
+        deudas.sort(java.util.Comparator.comparing(DeudaPendiente::fecha));
         Instant primeraImpaga = null;
         for (var deuda : deudas) {
-            if (creditos.compareTo(deuda.importe()) >= 0) {
-                creditos = creditos.subtract(deuda.importe());
+            if (deuda.pendiente().signum() <= 0) {
+                continue;
+            }
+            if (creditoLibre.compareTo(deuda.pendiente()) >= 0) {
+                creditoLibre = creditoLibre.subtract(deuda.pendiente());
             } else {
                 primeraImpaga = deuda.fecha();
                 break;
@@ -107,6 +134,92 @@ public class EvaluadorCategoriaComercialInterno {
         return categoria;
     }
 
+    private Map<Long, BigDecimal> consultarAplicacionesExplicitaPorPedido(long idCliente) {
+        var filas = sql.queryForList("""
+                SELECT e."idPedido",
+                       COALESCE(SUM(e."importe"), 0)::NUMERIC(18,2) AS aplicado
+                  FROM "EVENTO_IMPUTACION_FINANCIERA" e
+                  JOIN "COBRO" c ON c."idCobro" = e."idCobro"
+                 WHERE e."idCliente" = :cliente
+                   AND c."estadoCobro" = 'CONFIRMADO'
+                   AND e."tipoEvento" IN ('CONSOLIDACION_ANTICIPO', 'APLICACION_FIFO_LIBRE', 'APLICACION_RENDICION_K2')
+                 GROUP BY e."idPedido"
+                """, Map.of("cliente", idCliente));
+        var mapa = new java.util.HashMap<Long, BigDecimal>();
+        for (var row : filas) {
+            BigDecimal app = (BigDecimal) row.get("aplicado");
+            if (app != null && app.signum() > 0) {
+                mapa.put(((Number) row.get("idPedido")).longValue(), app);
+            }
+        }
+        return mapa;
+    }
+
+    private static void aplicarExplicitasADeudas(
+            List<DeudaPendiente> deudas, Map<Long, BigDecimal> porPedidoImp) {
+        if (porPedidoImp.isEmpty()) {
+            return;
+        }
+        for (var deuda : deudas) {
+            if (deuda.idPedido() == null) {
+                continue;
+            }
+            BigDecimal disponiblePedido = porPedidoImp.get(deuda.idPedido());
+            if (disponiblePedido == null || disponiblePedido.signum() <= 0) {
+                continue;
+            }
+            BigDecimal aplicado = deuda.pendiente().min(disponiblePedido);
+            deuda.descontar(aplicado);
+        }
+    }
+
+    private BigDecimal calcularTotalComprometidoFueraFifo(
+            long idCliente, BigDecimal totalAplicadoExistentes) {
+        BigDecimal reservasActivas = sql.queryForObject("""
+                SELECT COALESCE(SUM(CASE e."tipoEvento"
+                    WHEN 'RESERVA_ANTICIPO' THEN e."importe"
+                    WHEN 'CONSOLIDACION_ANTICIPO' THEN -e."importe"
+                    WHEN 'LIBERACION_ANTICIPO' THEN -e."importe"
+                    ELSE 0 END), 0)::NUMERIC(18,2)
+                  FROM "EVENTO_IMPUTACION_FINANCIERA" e
+                  JOIN "COBRO" c ON c."idCobro" = e."idCobro"
+                 WHERE e."idCliente" = :cliente
+                   AND c."estadoCobro" = 'CONFIRMADO'
+                """, Map.of("cliente", idCliente), BigDecimal.class);
+        BigDecimal resNorm = reservasActivas == null ? BigDecimal.ZERO : reservasActivas.max(BigDecimal.ZERO);
+
+        BigDecimal reembolsosPendientes = sql.queryForObject("""
+                SELECT COALESCE(SUM(r."importeReembolso"), 0)::NUMERIC(18,2)
+                  FROM "REEMBOLSO" r
+                  JOIN "COBRO" c ON c."idCobro" = r."idCobro"
+                 WHERE c."idCliente" = :cliente
+                   AND c."estadoCobro" = 'CONFIRMADO'
+                   AND r."estado" = 'PENDIENTE'
+                """, Map.of("cliente", idCliente), BigDecimal.class);
+        BigDecimal reembNorm = reembolsosPendientes == null ? BigDecimal.ZERO : reembolsosPendientes.max(BigDecimal.ZERO);
+
+        return totalAplicadoExistentes.add(resNorm).add(reembNorm);
+    }
+
+    private record Movimiento(String tipo, BigDecimal importe, Instant fecha, Long idPedido, boolean esReembolso) {}
+
+    private static final class DeudaPendiente {
+        private final Long idPedido;
+        private final Instant fecha;
+        private BigDecimal pendiente;
+
+        private DeudaPendiente(Long idPedido, BigDecimal importe, Instant fecha) {
+            this.idPedido = idPedido;
+            this.pendiente = importe;
+            this.fecha = fecha;
+        }
+
+        private Long idPedido() { return idPedido; }
+        private Instant fecha() { return fecha; }
+        private BigDecimal pendiente() { return pendiente; }
+        private void descontar(BigDecimal monto) { this.pendiente = this.pendiente.subtract(monto); }
+    }
+
     /**
      * Antiguedad = dias COMPLETOS transcurridos (bloques de 24 h).
      * Igualdad con tolerancia no genera mora; 0 dias tolerados requiere
@@ -121,6 +234,4 @@ public class EvaluadorCategoriaComercialInterno {
         }
         return ChronoUnit.DAYS.between(primeraImpaga, instanteDb) > diasTolerancia;
     }
-
-    private record Movimiento(String tipo, BigDecimal importe, Instant fecha) {}
 }

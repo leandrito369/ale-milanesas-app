@@ -185,3 +185,38 @@ partidas automáticas D4 u override, apertura implícita y evaluación PRA-01.
 UC-34 admite ahora Producción contextual, sin costos/ajustes en su proyección.
 [Decisiones, matriz de trazabilidad, pruebas y limitación de idempotencia](docs/implementation/I3_01c_UC28_PREPARACION_B4_HTTP_2026-11-08.md).
 Issue #28 abierta; sin despliegue.
+
+## R09.1b / R09.2 — UC05: primer vertical de Entrega (solo originales) sobre Flyway V4
+
+- **Endpoints y seguridad:**
+  - `POST /api/v1/recorridos`, `POST /api/v1/recorridos/{idRecorrido}/asignaciones`,
+    `POST /api/v1/recorridos/{idRecorrido}/vinculaciones` y `POST /api/v1/recorridos/{idRecorrido}/cierre`
+    (`RecorridoRepartoHttpController`), exclusivos `VENDEDOR` bajo triple gate no-prod
+    (`@Profile("!prod")`, `ale.http.writes.recorridos-uc43-enabled=false` y veto en `PrecondicionesDespliegue`),
+    preservando `UC-43` clásico en `POST /api/v1/pedidos/{idPedido}/asignacion-reparto`.
+  - `POST /api/v1/pedidos/{idPedido}/entrega` (`RegistrarEntregaHttpController`),
+    exclusivo `REPARTIDOR` (sobre asignación vigente y `RECORRIDO_ASIGNACION` en estado `'ACTIVA'`),
+    bajo triple gate no-prod (`@Profile("!prod")`, `ale.http.writes.entregas-uc05-enabled=false`,
+    veto explícito en `PrecondicionesDespliegue`). Proyección BC-07 sin exposición de costos históricos,
+    márgenes ni deuda previa del Cliente.
+- **Matriz CU → servicio → DB → API → test:**
+  - `Recorrido` (`A1`, `FA-1`, `FA-2`, `C1-EXPLICITO`): `GestionarRecorridoRepartoService` + `RecorridoRepartoHttpController`
+    (preservando `UC-43` `asignarOReasignar` y bloqueando todo cierre terminal sin `PE-2`: `FA2_PEDIDOS_PENDIENTES_ACTIVOS`,
+    `RENDICION_PE2_PENDIENTE` con Entregas/`PE-1`, y `CIERRE_SIN_PE2_NO_AUTORIZADO` en recorridos vacíos/desvinculados sin contrato
+    ratificado de cierre con cero aplicaciones) → `seq_gfis_recorrido`, `seq_gfis_recorrido_asignacion`, `RECORRIDO_REPARTO`,
+    `RECORRIDO_ASIGNACION`.
+  - Cobertura `IMP-B` / contención `IMP-C` + `UC-15`: `ImputacionFinancieraService` +
+    `EvaluadorCategoriaComercialInterno` (primero aplicaciones explícitas `CONSOLIDACION_ANTICIPO` /
+    `APLICACION_FIFO_LIBRE` / `APLICACION_RENDICION_K2` sobre cargos existentes y luego FIFO solo del remanente
+    confirmado libre excluyendo reservas activas, reembolsos pendientes/procesados y anulaciones) → `seq_gfis_evento_imp`,
+    `EVENTO_IMPUTACION_FINANCIERA`, `VW_IMP_A_DISPONIBILIDAD_COBRO`, `REEMBOLSO`, `MOVIMIENTO_CUENTA`.
+  - Entrega atómica (`UC-05` originales + `UC-15`): `RegistrarEntregaService` → `ENTREGA`,
+    `DETALLE_ENTREGA`, `EXCEDENTE`, `PRODUCTO.stockActualReventa`, `MOVIMIENTO_STOCK_REVENTA`,
+    `MOVIMIENTO_CUENTA(CARGO_POR_VENTA)`, `ORIGEN_MOVIMIENTO_CUENTA`, `RECONOCIMIENTO_ENTREGA_PE1`,
+    `RECORRIDO_ENTREGA`, `PEDIDO`, `EvaluadorCategoriaComercialInterno` (0 `COBRO`, 0 `PAGO`, 0 `MOVIMIENTO_CAJA`).
+  - Pruebas reproducibles en PostgreSQL 17.11: `RegistrarEntregaServiceIntegrationTest`,
+    `RegistrarEntregaHttpExternoTest`, `RecorridoEntregaCircuitoHttpExternoTest`, `Uc05ConcurrenciaIntegrationTest`,
+    `EvaluadorCategoriaImpBIntegrationTest`, `PrecondicionesDespliegueTest`, `PrecondicionesDespliegueContextTest`.
+- **Pendiente fuera de este corte:** rendición administrativa `PE-2` (`T1-C2`), definición contractual de cierre de
+  Recorrido vacío/desvinculado sin entregas (`G_ARQ_N2_01 §3.2`), adicionales `UC-07`
+  (`SOLO_ORIGINALES` fail-closed activo), sincronización offline (`PE-3`) y `H5`.

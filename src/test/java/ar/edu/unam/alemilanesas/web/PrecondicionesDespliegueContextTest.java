@@ -56,7 +56,7 @@ class PrecondicionesDespliegueContextTest {
         "productos-uc47","productos-uc48","usuarios-uc17","usuarios-uc18","usuarios-uc55",
         "compras-uc08-insumo","compras-uc08-reventa","compras-uc42","precios-uc19",
         "categorias-uc57","insumos-uc50","insumos-uc51","insumos-uc52",
-        "pedidos-uc03","pedidos-uc43","recetas-uc10","preparaciones-uc28"})
+        "pedidos-uc03","pedidos-uc43","recetas-uc10","preparaciones-uc28","entregas-uc05","recorridos-uc43"})
     void cadaBanderaProhibidaAbortaContexto(String flag) {
         var props=base();props.put("ale.http.writes."+flag+"-enabled","true");rejects(props);
     }

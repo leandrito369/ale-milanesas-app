@@ -48,7 +48,9 @@ class PrecondicionesDespliegueTest {
             "ale.http.writes.usuarios-uc17-enabled",
             "ale.http.writes.usuarios-uc18-enabled",
             "ale.http.writes.usuarios-uc55-enabled",
-            "ale.http.writes.finanzas-uc22-enabled"})
+            "ale.http.writes.finanzas-uc22-enabled",
+            "ale.http.writes.entregas-uc05-enabled",
+            "ale.http.writes.recorridos-uc43-enabled"})
     void rechazaCualquierEscrituraExperimentalEnProduccion(String propiedad) {
         var validador=new PrecondicionesDespliegue(base().withProperty(propiedad,"true"));
         assertThrows(IllegalStateException.class,
@@ -132,6 +134,46 @@ class PrecondicionesDespliegueTest {
             ctx.register(RegistrarMovimientoCajaHttpController.class);
             ctx.refresh();
             assertTrue(ctx.getBeansOfType(RegistrarMovimientoCajaHttpController.class).isEmpty());
+        }
+    }
+
+    @Test void controladorUc05NoExisteEnProdAunqueSeSoliciteSuBandera() {
+        try(var ctx=new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
+            ctx.getEnvironment().setActiveProfiles("prod");
+            ctx.getEnvironment().getPropertySources().addFirst(
+                    new org.springframework.core.env.MapPropertySource("flag-uc05",
+                        java.util.Map.of("ale.http.writes.entregas-uc05-enabled","true")));
+            ctx.register(RegistrarEntregaHttpController.class);
+            ctx.refresh();
+            assertTrue(ctx.getBeansOfType(RegistrarEntregaHttpController.class).isEmpty());
+        }
+    }
+
+    @Test void controladorUc05NoExisteConBanderaDesactivada() {
+        try(var ctx=new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
+            ctx.register(RegistrarEntregaHttpController.class);
+            ctx.refresh();
+            assertTrue(ctx.getBeansOfType(RegistrarEntregaHttpController.class).isEmpty());
+        }
+    }
+
+    @Test void controladorRecorridoNoExisteEnProdAunqueSeSoliciteSuBandera() {
+        try(var ctx=new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
+            ctx.getEnvironment().setActiveProfiles("prod");
+            ctx.getEnvironment().getPropertySources().addFirst(
+                    new org.springframework.core.env.MapPropertySource("flag-rec",
+                        java.util.Map.of("ale.http.writes.recorridos-uc43-enabled","true")));
+            ctx.register(RecorridoRepartoHttpController.class);
+            ctx.refresh();
+            assertTrue(ctx.getBeansOfType(RecorridoRepartoHttpController.class).isEmpty());
+        }
+    }
+
+    @Test void controladorRecorridoNoExisteConBanderaDesactivada() {
+        try(var ctx=new org.springframework.context.annotation.AnnotationConfigApplicationContext()) {
+            ctx.register(RecorridoRepartoHttpController.class);
+            ctx.refresh();
+            assertTrue(ctx.getBeansOfType(RecorridoRepartoHttpController.class).isEmpty());
         }
     }
 }
