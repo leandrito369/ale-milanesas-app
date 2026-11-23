@@ -203,9 +203,22 @@ class RendicionPreliminarPe2ServiceIntegrationTest {
         assertTrue(res.creado());
         assertEquals("PENDIENTE_CONCILIACION", res.estadoCierre());
 
-        // Deshabilitar ADMIN -> incluso el replay idempotente debe rechazarse (C1-a / RCG-05)
-        tx.executeWithoutResult(s -> jdbc.update(
-                "UPDATE \"USUARIO\" SET \"estado\"='INHABILITADO' WHERE \"idUsuario\"=?", e.idAdmin()));
+        // Deshabilitar ADMIN (conservando otro ADMINISTRADOR habilitado por invariante MR5)
+        // -> incluso el replay idempotente debe rechazarse (C1-a / RCG-05)
+        long adminRespaldo = e.f().actores.base + 54;
+        tx.executeWithoutResult(s -> {
+            jdbc.update("""
+                    INSERT INTO "USUARIO" ("idUsuario","nombreUsuario","credencialProtegida","estado","cambioCredencialPendiente","fechaHoraAlta")
+                    VALUES (?,?,'HASH','HABILITADO',false,clock_timestamp())
+                    """, adminRespaldo, "admin_respaldo_pe2_" + adminRespaldo);
+            jdbc.update("INSERT INTO \"USUARIO_ROL\" VALUES (?,'ADMINISTRADOR',clock_timestamp())", adminRespaldo);
+            jdbc.update("""
+                    UPDATE "USUARIO"
+                       SET "estado" = 'DESHABILITADO',
+                           "fechaHoraDeshabilitacion" = clock_timestamp()
+                     WHERE "idUsuario" = ?
+                    """, e.idAdmin());
+        });
         assertThrows(SecurityException.class, () -> servicio.registrarConciliacionPreliminar(sesionAdmin, cmd));
         assertThrows(SecurityException.class, () -> servicio.consultarExposicionRecorrido(sesionAdmin, idRec));
         assertEquals(antes, capturarContadoresFinancieros());
