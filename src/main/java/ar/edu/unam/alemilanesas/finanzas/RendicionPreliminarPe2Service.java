@@ -35,6 +35,15 @@ public class RendicionPreliminarPe2Service {
     private static final String UBICACION_DEFAULT = "CAJA_CUSTODIA_ADMIN";
     private static final String ESTADO_PENDIENTE_CONCILIACION = "PENDIENTE_CONCILIACION";
     private static final String INVALIDA = "SOLICITUD_INVALIDA";
+    private static final String COL_ESTADO_CIERRE = "estadoCierre";
+    private static final String COL_ID_PEDIDO = "idPedido";
+    private static final String COL_ID_CLIENTE = "idCliente";
+    private static final String PARAM_CLAVE = "clave";
+    private static final String PARAM_CIERRE = "cierre";
+    private static final String PARAM_IMPORTE = "importe";
+    private static final String PARAM_ADMIN = "admin";
+    private static final String PARAM_AHORA = "ahora";
+    private static final String PARAM_MOTIVO = "motivo";
     private static final BigDecimal CERO = BigDecimal.ZERO.setScale(2, RoundingMode.UNNECESSARY);
     private static final int MAX_MOTIVO = 1000;
     private static final int MAX_UBICACION = 80;
@@ -197,6 +206,33 @@ public class RendicionPreliminarPe2Service {
             BigDecimal importeDiferenciaFaltante,
             BigDecimal importeCustodiaNoImputada) {}
 
+    private record RevisionInicialRow(
+            long idRevisionConciliacion,
+            int numeroRevision,
+            String estadoRevision,
+            UUID claveIdempotenciaRevision,
+            String versionHuella,
+            String huellaCanonica,
+            long idUsuarioAdmin,
+            OffsetDateTime fechaHoraRevision,
+            BigDecimal importeEsperado,
+            BigDecimal importeEfectivoRecibido,
+            BigDecimal importeImputadoPropuesto,
+            BigDecimal importeDiferenciaFaltante,
+            BigDecimal importeCustodiaNoImputada,
+            String motivoRevision,
+            String estadoCierre,
+            BigDecimal importeImputadoConfirmado,
+            String estadoOperativo) {}
+
+    private record ContextoCustodia(
+            long idCierre,
+            long idRev,
+            long idAdmin,
+            String ubicacion,
+            String motivo,
+            OffsetDateTime ahora) {}
+
     /**
      * Proyeccion contextual UC-29 de solo lectura para ADMINISTRADOR habilitado (BC-07 D9).
      * No accede a saldos generales UC-14 ni muta estado.
@@ -233,7 +269,7 @@ public class RendicionPreliminarPe2Service {
                  WHERE "idRecorrido" = :rec
                 """, Map.of("rec", idRecorrido));
         Long idCierre = cierres.isEmpty() ? null : ((Number) cierres.getFirst().get("idCierreRecorrido")).longValue();
-        String estadoCierre = cierres.isEmpty() ? null : (String) cierres.getFirst().get("estadoCierre");
+        String estadoCierre = cierres.isEmpty() ? null : (String) cierres.getFirst().get(COL_ESTADO_CIERRE);
 
         return new ExposicionRecorrido(
                 idRecorrido,
@@ -467,8 +503,8 @@ public class RendicionPreliminarPe2Service {
                 throw new IllegalStateException("REPARTIDOR_ENTREGA_INCONSISTENTE");
             }
             resultado.add(new EntregaPe1(
-                    ((Number) row.get("idPedido")).longValue(),
-                    ((Number) row.get("idCliente")).longValue(),
+                    ((Number) row.get(COL_ID_PEDIDO)).longValue(),
+                    ((Number) row.get(COL_ID_CLIENTE)).longValue(),
                     idRepEntrega,
                     escala2((BigDecimal) row.get("cargoRealCe")),
                     escala2((BigDecimal) row.get("coberturaTotalKe")),
@@ -485,12 +521,11 @@ public class RendicionPreliminarPe2Service {
             EntradaNormalizada entrada,
             String huellaCanonica,
             long idRepartidor) {
-        // 1) Clave reutilizada en otro Recorrido o en otra revision existente
         var porClaveCierre = sql.queryForList("""
                 SELECT "idCierreRecorrido","idRecorrido"
                   FROM "CIERRE_RECORRIDO_PE2"
                  WHERE "claveIdempotenciaPropuesta" = :clave
-                """, Map.of("clave", entrada.claveIdempotencia()));
+                """, Map.of(PARAM_CLAVE, entrada.claveIdempotencia()));
         if (!porClaveCierre.isEmpty()) {
             long recExistente = ((Number) porClaveCierre.getFirst().get("idRecorrido")).longValue();
             if (recExistente != entrada.idRecorrido()) {
@@ -503,7 +538,7 @@ public class RendicionPreliminarPe2Service {
                   FROM "REVISION_CONCILIACION_PE2" r
                   JOIN "CIERRE_RECORRIDO_PE2" c ON c."idCierreRecorrido" = r."idCierreRecorrido"
                  WHERE r."claveIdempotenciaRevision" = :clave
-                """, Map.of("clave", entrada.claveIdempotencia()));
+                """, Map.of(PARAM_CLAVE, entrada.claveIdempotencia()));
         if (!porClaveRev.isEmpty()) {
             var revRow = porClaveRev.getFirst();
             long recRev = ((Number) revRow.get("idRecorrido")).longValue();
@@ -513,7 +548,6 @@ public class RendicionPreliminarPe2Service {
             }
         }
 
-        // 2) Cabecera existente para este Recorrido
         var cierres = sql.queryForList("""
                 SELECT "idCierreRecorrido","estadoCierre","claveIdempotenciaPropuesta"
                   FROM "CIERRE_RECORRIDO_PE2"
@@ -526,7 +560,7 @@ public class RendicionPreliminarPe2Service {
 
         var cabecera = cierres.getFirst();
         long idCierre = ((Number) cabecera.get("idCierreRecorrido")).longValue();
-        String estadoCierre = (String) cabecera.get("estadoCierre");
+        String estadoCierre = (String) cabecera.get(COL_ESTADO_CIERRE);
         UUID claveExistente = (UUID) cabecera.get("claveIdempotenciaPropuesta");
 
         if (entrada.claveIdempotencia().equals(claveExistente)) {
@@ -537,25 +571,6 @@ public class RendicionPreliminarPe2Service {
         }
         throw new IllegalStateException("RECORRIDO_YA_CERRADO");
     }
-
-    private record RevisionInicialRow(
-            long idRevisionConciliacion,
-            int numeroRevision,
-            String estadoRevision,
-            UUID claveIdempotenciaRevision,
-            String versionHuella,
-            String huellaCanonica,
-            long idUsuarioAdmin,
-            OffsetDateTime fechaHoraRevision,
-            BigDecimal importeEsperado,
-            BigDecimal importeEfectivoRecibido,
-            BigDecimal importeImputadoPropuesto,
-            BigDecimal importeDiferenciaFaltante,
-            BigDecimal importeCustodiaNoImputada,
-            String motivoRevision,
-            String estadoCierre,
-            BigDecimal importeImputadoConfirmado,
-            String estadoOperativo) {}
 
     private ConciliacionPreliminarRegistrada cargarYValidarReplay(
             long idCierre,
@@ -576,7 +591,7 @@ public class RendicionPreliminarPe2Service {
                   JOIN "RECORRIDO_REPARTO" rec ON rec."idRecorrido" = c."idRecorrido"
                  WHERE r."idCierreRecorrido" = :cierre
                    AND r."numeroRevision" = 1
-                """, Map.of("cierre", idCierre), (rs, i) -> new RevisionInicialRow(
+                """, Map.of(PARAM_CIERRE, idCierre), (rs, i) -> new RevisionInicialRow(
                 rs.getLong("idRevisionConciliacion"),
                 rs.getInt("numeroRevision"),
                 rs.getString("estadoRevision"),
@@ -591,7 +606,7 @@ public class RendicionPreliminarPe2Service {
                 escala2(rs.getBigDecimal("importeDiferenciaFaltante")),
                 escala2(rs.getBigDecimal("importeCustodiaNoImputada")),
                 rs.getString("motivoRevision"),
-                rs.getString("estadoCierre"),
+                rs.getString(COL_ESTADO_CIERRE),
                 escala2(rs.getBigDecimal("importeImputadoConfirmado")),
                 rs.getString("estadoOperativo")));
         if (revRows.isEmpty()) {
@@ -610,8 +625,8 @@ public class RendicionPreliminarPe2Service {
                  WHERE "idRevisionConciliacion" = :rev
                  ORDER BY "idPedido" ASC
                 """, Map.of("rev", idRev), (rs, i) -> new PropuestaAplicacion(
-                rs.getLong("idCliente"),
-                rs.getLong("idPedido"),
+                rs.getLong(COL_ID_CLIENTE),
+                rs.getLong(COL_ID_PEDIDO),
                 escala2(rs.getBigDecimal("importePropuesto"))));
 
         List<EventoCustodiaRegistrado> eventos = sql.query("""
@@ -622,9 +637,9 @@ public class RendicionPreliminarPe2Service {
                 """, Map.of("rev", idRev), (rs, i) -> new EventoCustodiaRegistrado(
                 rs.getLong("idEventoCustodia"),
                 rs.getString("tipoEvento"),
-                rs.getObject("idPedido", Long.class),
-                rs.getObject("idCliente", Long.class),
-                escala2(rs.getBigDecimal("importe")),
+                rs.getObject(COL_ID_PEDIDO, Long.class),
+                rs.getObject(COL_ID_CLIENTE, Long.class),
+                escala2(rs.getBigDecimal(PARAM_IMPORTE)),
                 rs.getString("ubicacionFisica")));
 
         BigDecimal declaradoTotal = Objects.requireNonNull(sql.queryForObject("""
@@ -664,7 +679,7 @@ public class RendicionPreliminarPe2Service {
     private TotalesConciliacion validarPropuestasYCalcularTotales(
             EntradaNormalizada entrada,
             List<EntregaPe1> entregas) {
-        Map<Long, EntregaPe1> porPedido = new HashMap<>(entregas.size());
+        Map<Long, EntregaPe1> porPedido = HashMap.newHashMap(entregas.size());
         BigDecimal esperado = CERO;
         BigDecimal declaradoTotal = CERO;
         for (EntregaPe1 e : entregas) {
@@ -724,15 +739,15 @@ public class RendicionPreliminarPe2Service {
                 RETURNING "idCierreRecorrido"
                 """, new MapSqlParameterSource()
                 .addValue("rec", entrada.idRecorrido())
-                .addValue("clave", entrada.claveIdempotencia())
-                .addValue("admin", idAdmin)
-                .addValue("ahora", ahora)
+                .addValue(PARAM_CLAVE, entrada.claveIdempotencia())
+                .addValue(PARAM_ADMIN, idAdmin)
+                .addValue(PARAM_AHORA, ahora)
                 .addValue("esperado", totales.importeEsperado())
                 .addValue("recibido", entrada.efectivoRecibido())
                 .addValue("propuesto", totales.importeImputadoPropuesto())
                 .addValue("faltante", totales.importeDiferenciaFaltante())
                 .addValue("custodia", totales.importeCustodiaNoImputada())
-                .addValue("motivo", entrada.motivo()), Long.class));
+                .addValue(PARAM_MOTIVO, entrada.motivo()), Long.class));
 
         long idRev = Objects.requireNonNull(sql.queryForObject("""
                 INSERT INTO "REVISION_CONCILIACION_PE2" (
@@ -746,24 +761,24 @@ public class RendicionPreliminarPe2Service {
                     :esperado,:recibido,:propuesto,:faltante,:custodia,:motivo)
                 RETURNING "idRevisionConciliacion"
                 """, new MapSqlParameterSource()
-                .addValue("cierre", idCierre)
-                .addValue("clave", entrada.claveIdempotencia())
+                .addValue(PARAM_CIERRE, idCierre)
+                .addValue(PARAM_CLAVE, entrada.claveIdempotencia())
                 .addValue("ver", VERSION_HUELLA)
                 .addValue("huella", huellaCanonica)
-                .addValue("admin", idAdmin)
-                .addValue("ahora", ahora)
+                .addValue(PARAM_ADMIN, idAdmin)
+                .addValue(PARAM_AHORA, ahora)
                 .addValue("esperado", totales.importeEsperado())
                 .addValue("recibido", entrada.efectivoRecibido())
                 .addValue("propuesto", totales.importeImputadoPropuesto())
                 .addValue("faltante", totales.importeDiferenciaFaltante())
                 .addValue("custodia", totales.importeCustodiaNoImputada())
-                .addValue("motivo", entrada.motivo()), Long.class));
+                .addValue(PARAM_MOTIVO, entrada.motivo()), Long.class));
 
         sql.update("""
                 UPDATE "CIERRE_RECORRIDO_PE2"
                    SET "idRevisionVigente" = :rev
                  WHERE "idCierreRecorrido" = :cierre
-                """, Map.of("rev", idRev, "cierre", idCierre));
+                """, Map.of("rev", idRev, PARAM_CIERRE, idCierre));
 
         for (PropuestaAplicacion p : entrada.propuestasOrdenadas()) {
             sql.update("""
@@ -772,16 +787,16 @@ public class RendicionPreliminarPe2Service {
                         "importePropuesto","fechaHoraRegistro")
                     VALUES (:cierre,:rev,:cliente,:pedido,:importe,:ahora)
                     """, new MapSqlParameterSource()
-                    .addValue("cierre", idCierre)
+                    .addValue(PARAM_CIERRE, idCierre)
                     .addValue("rev", idRev)
                     .addValue("cliente", p.idCliente())
                     .addValue("pedido", p.idPedido())
-                    .addValue("importe", p.importePropuesto())
-                    .addValue("ahora", ahora));
+                    .addValue(PARAM_IMPORTE, p.importePropuesto())
+                    .addValue(PARAM_AHORA, ahora));
         }
 
-        List<EventoCustodiaRegistrado> eventos = registrarEventosCustodia(
-                idCierre, idRev, idAdmin, entrada, entregas, totales, ahora);
+        ContextoCustodia ctx = new ContextoCustodia(idCierre, idRev, idAdmin, entrada.ubicacion(), entrada.motivo(), ahora);
+        List<EventoCustodiaRegistrado> eventos = registrarEventosCustodia(ctx, entregas, totales);
 
         sql.update("""
                 UPDATE "RECORRIDO_REPARTO"
@@ -817,46 +832,34 @@ public class RendicionPreliminarPe2Service {
     }
 
     private List<EventoCustodiaRegistrado> registrarEventosCustodia(
-            long idCierre,
-            long idRev,
-            long idAdmin,
-            EntradaNormalizada entrada,
+            ContextoCustodia ctx,
             List<EntregaPe1> entregas,
-            TotalesConciliacion totales,
-            OffsetDateTime ahora) {
+            TotalesConciliacion totales) {
         List<EventoCustodiaRegistrado> eventos = new ArrayList<>();
         if (totales.importeDiferenciaFaltante().signum() > 0) {
-            eventos.add(insertarEventoCustodia(
-                    idCierre, idRev, null, null, "FALTANTE_EFECTIVO",
-                    totales.importeDiferenciaFaltante(), entrada.ubicacion(), entrada.motivo(), idAdmin, ahora));
+            eventos.add(insertarEventoCustodia(ctx, null, null, "FALTANTE_EFECTIVO",
+                    totales.importeDiferenciaFaltante()));
         }
         if (totales.importeCustodiaNoImputada().signum() > 0) {
-            eventos.add(insertarEventoCustodia(
-                    idCierre, idRev, null, null, "CUSTODIA_NO_IMPUTADA",
-                    totales.importeCustodiaNoImputada(), entrada.ubicacion(), entrada.motivo(), idAdmin, ahora));
+            eventos.add(insertarEventoCustodia(ctx, null, null, "CUSTODIA_NO_IMPUTADA",
+                    totales.importeCustodiaNoImputada()));
         }
         for (EntregaPe1 e : entregas) {
             BigDecimal sobranteEx01 = e.sobranteEx01();
             if (sobranteEx01.signum() > 0) {
-                eventos.add(insertarEventoCustodia(
-                        idCierre, idRev, e.idPedido(), e.idCliente(), "SOBRANTE_DECLARADO_EX01",
-                        sobranteEx01, entrada.ubicacion(), entrada.motivo(), idAdmin, ahora));
+                eventos.add(insertarEventoCustodia(ctx, e.idPedido(), e.idCliente(),
+                        "SOBRANTE_DECLARADO_EX01", sobranteEx01));
             }
         }
         return eventos;
     }
 
     private EventoCustodiaRegistrado insertarEventoCustodia(
-            long idCierre,
-            long idRev,
+            ContextoCustodia ctx,
             Long idPedido,
             Long idCliente,
             String tipoEvento,
-            BigDecimal importe,
-            String ubicacion,
-            String motivo,
-            long idAdmin,
-            OffsetDateTime ahora) {
+            BigDecimal importe) {
         long idEvento = Objects.requireNonNull(sql.queryForObject("""
                 INSERT INTO "CUSTODIA_DIFERENCIA_RENDICION" (
                     "idCierreRecorrido","idRevisionConciliacion","idPedido","idCliente",
@@ -864,17 +867,17 @@ public class RendicionPreliminarPe2Service {
                 VALUES (:cierre,:rev,:pedido,:cliente,:tipo,:importe,:ubic,:motivo,:admin,:ahora)
                 RETURNING "idEventoCustodia"
                 """, new MapSqlParameterSource()
-                .addValue("cierre", idCierre)
-                .addValue("rev", idRev)
+                .addValue(PARAM_CIERRE, ctx.idCierre())
+                .addValue("rev", ctx.idRev())
                 .addValue("pedido", idPedido)
                 .addValue("cliente", idCliente)
                 .addValue("tipo", tipoEvento)
-                .addValue("importe", importe)
-                .addValue("ubic", ubicacion)
-                .addValue("motivo", motivo)
-                .addValue("admin", idAdmin)
-                .addValue("ahora", ahora), Long.class));
-        return new EventoCustodiaRegistrado(idEvento, tipoEvento, idPedido, idCliente, importe, ubicacion);
+                .addValue(PARAM_IMPORTE, importe)
+                .addValue("ubic", ctx.ubicacion())
+                .addValue(PARAM_MOTIVO, ctx.motivo())
+                .addValue(PARAM_ADMIN, ctx.idAdmin())
+                .addValue(PARAM_AHORA, ctx.ahora()), Long.class));
+        return new EventoCustodiaRegistrado(idEvento, tipoEvento, idPedido, idCliente, importe, ctx.ubicacion());
     }
 
     private static BigDecimal escala2(BigDecimal v) {
