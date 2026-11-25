@@ -837,12 +837,11 @@ public class ConfirmarRendicionPe2Service {
 
     private String validarResolucionYDeterminarEstadoDestino(
             CabeceraPendiente cabecera, EntradaConciliacion entrada, boolean esB1R1Cero) {
-        boolean hayFaltante = cabecera.importeDiferenciaFaltante().signum() > 0;
-        boolean hayCustodia = cabecera.importeCustodiaNoImputada().signum() > 0;
         String tipo = entrada.tipoResolucionAdmin();
+        boolean tieneEgreso = entrada.egresoNormalizado() != null;
 
         if (esB1R1Cero) {
-            if (!RES_B1_R1.equals(tipo) || entrada.egresoNormalizado() != null || entrada.numeroRevisionEsperado() <= 1) {
+            if (!RES_B1_R1.equals(tipo) || tieneEgreso || entrada.numeroRevisionEsperado() <= 1) {
                 throw new IllegalArgumentException(ERR_TIPO_INCOHERENTE);
             }
             return ESTADO_CONFIRMADO;
@@ -850,18 +849,21 @@ public class ConfirmarRendicionPe2Service {
         if (RES_B1_R1.equals(tipo)) {
             throw new IllegalStateException("BLANQUEAMIENTO_NO_AUTORIZADO");
         }
-        if (hayFaltante && !hayCustodia) {
-            if (!RES_FALTANTE.equals(tipo) || entrada.egresoNormalizado() != null) {
-                throw new IllegalArgumentException(ERR_TIPO_INCOHERENTE);
-            }
-        } else if (!hayFaltante && hayCustodia) {
-            if (!RES_CUSTODIA.equals(tipo) || entrada.egresoNormalizado() == null) {
-                throw new IllegalArgumentException(ERR_TIPO_INCOHERENTE);
-            }
-        } else if (!RES_MIXTA.equals(tipo) || entrada.egresoNormalizado() == null) {
+
+        boolean hayFaltante = cabecera.importeDiferenciaFaltante().signum() > 0;
+        boolean hayCustodia = cabecera.importeCustodiaNoImputada().signum() > 0;
+        String tipoEsperado = resolverTipoEsperadoConDiferencia(hayFaltante, hayCustodia);
+        if (!tipoEsperado.equals(tipo) || tieneEgreso != hayCustodia) {
             throw new IllegalArgumentException(ERR_TIPO_INCOHERENTE);
         }
         return ESTADO_RESUELTA;
+    }
+
+    private static String resolverTipoEsperadoConDiferencia(boolean hayFaltante, boolean hayCustodia) {
+        if (hayFaltante && hayCustodia) {
+            return RES_MIXTA;
+        }
+        return hayFaltante ? RES_FALTANTE : RES_CUSTODIA;
     }
 
     private List<PropuestaAplicacion> cargarPropuestasRevision(long idRevision) {
