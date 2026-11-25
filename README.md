@@ -221,6 +221,14 @@ Issue #28 abierta; sin despliegue.
   Recorrido vacío/desvinculado sin entregas (`G_ARQ_N2_01 §3.2`), adicionales `UC-07`
   (`SOLO_ORIGINALES` fail-closed activo), sincronización offline (`PE-3`) y `H5`.
 
+### B5 / R09 — conexión web H5 (original-only, no-prod)
+
+- G0: `1263ffc17bd0eb7f3c69faaa9ff5ae556cf9de7e`, gobierno `27738b089afdd2698cdae915f75c0e8089a6248a`; manifiesto 67 operaciones y RBAC/BC07. UC-05/43/28: REV04B/REV04A, RD-GFIS-AB-001, servicios existentes; UC-14: REV05. No se modifica la fuente bloqueada.
+- VENDEDOR: `/web/demo/recorridos` abre/vincula/asigna con `GestionarRecorridoRepartoService` (RECORRIDO_REPARTO, RECORRIDO_ASIGNACION, ASIGNACION_REPARTO); `/web/demo/cuenta-corriente` consulta `ConsultarCuentaCorrienteService` (MOVIMIENTO_CUENTA, PE-1) con snapshot y tres saldos separados.
+- REPARTIDOR: `/web/demo/entregar` usa `RegistrarEntregaService` (ENTREGA, inventario, cargo y PE-1/IMP-B); formulario manual de hasta tres originales, clave idempotente conservada ante errores; sin consulta UC-04, sin mostrar DTO financiero. La declaración no genera Cobro ni Caja.
+- RESPONSABLE_PRODUCCION: `/web/demo/preparaciones` abre el formulario UC-28 contextual existente. Los enlaces respetan flags ya integrados y RBAC; sin ampliar CSP/CSRF, sin exponer rutas productivas. No se ofrece cierre de Recorrido ni PE-2.
+- Prueba `H5WebVerticalIntegrationTest`: HTTP real, PostgreSQL efímero; los checks del HEAD y aceptación humana son puertas separadas. No declara H5 acreditado ni autoriza despliegue.
+
 ## R09.3b-A — UC29 (subflujo): rendición administrativa preliminar PE-2 (`PENDIENTE_CONCILIACION`)
 
 - **Servicio y seguridad:** `RendicionPreliminarPe2Service` (`finanzas`), exclusivo de `ADMINISTRADOR`

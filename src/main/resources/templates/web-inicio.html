@@ -43,6 +43,10 @@
             <li th:if="${demoDisponible == true and esRepartidor == true}">
                 <a class="nav-link" th:href="@{/web/demo/mis-entregas}">Mis entregas</a>
             </li>
+            <li th:if="${recorridoDisponible == true}"><a class="nav-link" th:href="@{/web/demo/recorridos}">Recorridos (UC-43)</a></li>
+            <li th:if="${demoDisponible == true and esVendedor == true}"><a class="nav-link" th:href="@{/web/demo/cuenta-corriente}">Cuenta Corriente (UC-14)</a></li>
+            <li th:if="${entregaDisponible == true}"><a class="nav-link" th:href="@{/web/demo/entregar}">Registrar Entrega (UC-05)</a></li>
+            <li th:if="${preparacionDisponible == true}"><a class="nav-link" th:href="@{/web/demo/preparaciones}">Preparar Pedido (UC-28)</a></li>
         </ul>
     </nav>
 </header>
@@ -56,7 +60,7 @@
             <p><output class="status-output">Acceso autenticado. En el perfil actual no hay operaciones de negocio web habilitadas.</output></p>
         </div>
 
-        <div class="alert alert-info" th:if="${demoDisponible == true and esAdmin != true and esVendedor != true and esRepartidor != true}">
+        <div class="alert alert-info" th:if="${demoDisponible == true and esAdmin != true and esVendedor != true and esRepartidor != true and preparacionDisponible != true}">
             <p><output class="status-output">Tu perfil actual no cuenta con operaciones web de negocio habilitadas en esta demostración.</output></p>
         </div>
 
@@ -65,7 +69,7 @@
         </div>
     </section>
 
-    <section th:if="${demoDisponible == true and (esAdmin == true or esVendedor == true or esRepartidor == true)}" aria-labelledby="titulo-operaciones">
+    <section th:if="${demoDisponible == true and (esAdmin == true or esVendedor == true or esRepartidor == true or preparacionDisponible == true)}" aria-labelledby="titulo-operaciones">
         <h2 id="titulo-operaciones">Operaciones habilitadas</h2>
         <div class="form-grid">
             <article class="card" th:if="${esAdmin == true or esVendedor == true}">
@@ -101,6 +105,21 @@
                 </div>
             </article>
 
+            <article class="card" th:if="${recorridoDisponible == true}">
+                <h3>Recorridos (UC-43)</h3><p class="muted">Apertura y vinculación explícita de pedidos.</p>
+                <a class="btn btn-primary" th:href="@{/web/demo/recorridos}">Gestionar Recorrido</a>
+            </article>
+            <article class="card" th:if="${esVendedor == true}">
+                <h3>Cuenta Corriente (UC-14)</h3><p class="muted">Saldo confirmado, tránsito y exigible provisional.</p>
+                <a class="btn btn-primary" th:href="@{/web/demo/cuenta-corriente}">Consultar cuenta</a>
+            </article>
+            <article class="card" th:if="${preparacionDisponible == true}">
+                <h3>Preparación (UC-28)</h3><a class="btn btn-primary" th:href="@{/web/demo/preparaciones}">Seleccionar Pedido</a>
+            </article>
+            <article class="card" th:if="${entregaDisponible == true}">
+                <h3>Entrega de originales (UC-05)</h3><p class="muted">Confirmar cantidades y declarar efectivo de un pedido asignado.</p>
+                <a class="btn btn-primary" th:href="@{/web/demo/entregar}">Registrar Entrega</a>
+            </article>
             <article class="card" th:if="${esRepartidor == true}">
                 <h3>Mis entregas</h3>
                 <p><span class="status-badge status-warn">Vista ilustrativa · Sin UC-04</span></p>

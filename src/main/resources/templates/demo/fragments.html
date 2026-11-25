@@ -46,6 +46,10 @@
                     <a th:class="${activo == 'mis-entregas' ? 'nav-link nav-link-active' : 'nav-link'}"
                        th:href="@{/web/demo/mis-entregas}">Mis entregas</a>
                 </li>
+            <li th:if="${recorridoDisponible == true}"><a class="nav-link" th:href="@{/web/demo/recorridos}">Recorridos (UC-43)</a></li>
+            <li th:if="${esVendedor == true}"><a class="nav-link" th:href="@{/web/demo/cuenta-corriente}">Cuenta Corriente (UC-14)</a></li>
+            <li th:if="${entregaDisponible == true}"><a class="nav-link" th:href="@{/web/demo/entregar}">Registrar Entrega (UC-05)</a></li>
+            <li th:if="${preparacionDisponible == true}"><a class="nav-link" th:href="@{/web/demo/preparaciones}">Preparar Pedido (UC-28)</a></li>
             </ul>
         </nav>
     </header>
