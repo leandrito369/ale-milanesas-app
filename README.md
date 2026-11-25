@@ -243,5 +243,26 @@ Issue #28 abierta; sin despliegue.
   - **Cero efectos financieros definitivos:** `0` `COBRO`, `0` `COBRO_RENDICION_K2`, `0` `APLICACION_RENDICION_K2`,
     `0` `MOVIMIENTO_CUENTA(PAGO)`, `0` `MOVIMIENTO_CAJA`, `0` `EGRESO_CUSTODIA_RENDICION` y sin cierre terminal `CERRADO`.
   - Pruebas reproducibles PostgreSQL 17.11: `RendicionPreliminarPe2ServiceIntegrationTest`.
-- **Pendiente para cortes siguientes:** rectificaciones/invalidación `B1-R1`/`B1-R2`, confirmación financiera
-  `T1-C2` (`K2` + `EGRESO_CUSTODIA_RENDICION` + recibo histórico y cierre `CERRADO`) y exposición HTTP `UC-29`.
+- **Pendiente para cortes siguientes:** rectificaciones/invalidación `R09.3b-C` (`B1-R1`/`B1-R2`),
+  cierre de Recorrido vacío/cero aplicaciones (`G_ARQ_N2_01 §3.2`) y exposición HTTP/UI `UC-29`.
+
+## R09.3b-B — UC29 (subflujo): confirmación financiera definitiva PE-2 (`T1-C2 / K2 / C1-a / E-04`)
+
+- **Servicio y seguridad:** `ConfirmarRendicionPe2Service` (`finanzas`), exclusivo de `ADMINISTRADOR`
+  habilitado con revalidación post-espera bajo locks `A2(NS_RECORRIDO = 4100) → A1(2929001) → A2(NS_CLIENTE = 3202)`
+  (`ProtocoloIdentificadoresFinancieros`), incluyendo revalidación estricta en replay idempotente (`C1-a`).
+- **Matriz CU → servicio → DB → test:**
+  - `UC-29` (confirmación definitiva `PE-2` / `T1-C2` / `K2` / `C1-a` / `E-04`, sin HTTP):
+    `ConfirmarRendicionPe2Service` (`confirmarCierreLimpio` y `confirmarConciliacionResuelta`) →
+    `CIERRE_RECORRIDO_PE2` (`CONFIRMADO` o `CERRADO_CON_DIFERENCIA_RESUELTA`, `claveIdempotenciaCierre`,
+    huella canónica SHA-256 `v1` inyectiva con longitud prefijada 4 bytes BE + UTF-8, `reciboHistoricoJson` inmutable),
+    `REVISION_CONCILIACION_PE2` (`VIGENTE → CONFIRMADA_T1` preservando historial append-only),
+    `COBRO` (`origen='REPARTO'`, `medioPago='EFECTIVO'`, `estadoCobro='CONFIRMADO'`, máx. 1 por Cliente/cierre, protegido por `D7-A`),
+    `COBRO_RENDICION_K2`, `APLICACION_RENDICION_K2`, `EVENTO_IMPUTACION_FINANCIERA(APLICACION_RENDICION_K2)`,
+    `MOVIMIENTO_CUENTA(PAGO)` + `ORIGEN_MOVIMIENTO_CUENTA`, `MOVIMIENTO_CAJA(INGRESO, origen='COBRO')`,
+    extinción exacta en `RECONOCIMIENTO_ENTREGA_PE1.reconocimientoVigenteVvig` ($A_e + V_e^{\text{vig}} = V_e^0$),
+    `EGRESO_CUSTODIA_RENDICION` (`DEVOLUCION_FISICA_CON_RECIBO` sin asiento de Caja de ventas),
+    reevaluación `UC-15` (`EvaluadorCategoriaComercialInterno`) y cierre `RECORRIDO_REPARTO = 'CERRADO'` en un único `COMMIT`.
+  - Pruebas reproducibles PostgreSQL 17.11: `ConfirmarRendicionPe2ServiceIntegrationTest`.
+- **Pendiente fuera de este corte:** rectificación e invalidación append-only `R09.3b-C` (`B1-R1`/`B1-R2`),
+  exposición HTTP/UI `UC-29`, cierre de Recorrido vacío/cero aplicaciones (`G_ARQ_N2_01 §3.2`) y anulación de Cobro `REPARTO` (`D7-B` diferida).
