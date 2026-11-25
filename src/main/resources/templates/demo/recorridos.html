@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recorridos (UC-43) · Ale Milanesas</title><link rel="stylesheet" th:href="@{/demo/demo.css}" th:replace="~{demo/fragments :: cssDemo}"></head>
+<body><div th:replace="~{demo/fragments :: cabecera('recorridos')}"></div>
+<main id="contenido" class="container">
+<div th:replace="~{demo/fragments :: mensajes}"></div>
+<section class="card"><h1>Recorridos (UC-43)</h1>
+<p class="muted">Abrí un Recorrido explícito para un Repartidor habilitado. Conservá el ID que devuelve el servidor. Solo Vendedor. El cierre terminal corresponde a la rendición administrativa PE-2 y todavía no está disponible.</p>
+<h2>Abrir Recorrido</h2>
+<form method="post" th:action="@{/web/demo/recorridos/abrir}"><input type="hidden" th:if="${_csrf != null}" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><div class="form-grid"><div class="field"><label>ID Repartidor<input name="idUsuarioRepartidor" type="number" min="1" step="1" required></label></div><div class="field"><label>Referencia operativa (opcional)<input name="referenciaOperativa" maxlength="120"></label></div></div><div class="actions"><button class="btn btn-primary" type="submit">Abrir Recorrido</button></div></form>
+</section>
+<section class="card"><h2>Asignar o reasignar y vincular</h2><p class="muted">Primera asignación sin motivo; reasignación exige motivo. La pertenencia se registra en la misma transacción.</p>
+<form method="post" th:action="@{/web/demo/recorridos/asignar}"><input type="hidden" th:if="${_csrf != null}" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><div class="form-grid"><div class="field"><label>ID Recorrido<input name="idRecorrido" type="number" min="1" step="1" required></label></div><div class="field"><label>ID Pedido<input name="idPedido" type="number" min="1" step="1" required></label></div><div class="field"><label>ID Repartidor<input name="idUsuarioRepartidor" type="number" min="1" step="1" required></label></div><div class="field"><label>Motivo de reasignación<input name="motivoReasignacion" maxlength="250"></label></div></div><div class="actions"><button class="btn btn-primary" type="submit">Asignar y vincular</button></div></form>
+</section>
+<section class="card"><h2>Vincular asignación vigente</h2>
+<form method="post" th:action="@{/web/demo/recorridos/vincular}"><input type="hidden" th:if="${_csrf != null}" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"><div class="form-grid"><div class="field"><label>ID Recorrido<input name="idRecorrido" type="number" min="1" step="1" required></label></div><div class="field"><label>ID Pedido<input name="idPedido" type="number" min="1" step="1" required></label></div></div><div class="actions"><button class="btn btn-primary" type="submit">Vincular</button></div></form>
+<div class="actions"><a class="btn btn-secondary" th:href="@{/web/demo/pedidos}">Buscar Pedidos (UC-34)</a></div></section>
+</main></body></html>

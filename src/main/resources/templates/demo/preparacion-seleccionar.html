@@ -1,0 +1,11 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preparación (UC-28) · Ale Milanesas</title><link rel="stylesheet" th:href="@{/demo/demo.css}" th:replace="~{demo/fragments :: cssDemo}"></head>
+<body><div th:replace="~{demo/fragments :: cabecera('preparaciones')}"></div>
+<main id="contenido" class="container">
+<div th:replace="~{demo/fragments :: mensajes}"></div>
+<section class="card"><h1>Seleccionar Pedido para preparar (UC-28)</h1>
+<p class="muted">Ingresá el ID. La vista contextual valida que el Pedido esté disponible para Producción.</p>
+<form method="get" th:action="@{/web/demo/preparaciones}" class="form-grid"><div class="field"><label>ID Pedido<input name="idPedido" type="number" min="1" step="1" required></label></div><div class="actions"><button class="btn btn-primary" type="submit">Abrir Preparación</button></div></form></section>
+</main></body></html>

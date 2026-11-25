@@ -84,6 +84,12 @@ public class AccesoWebController {
                 && env.getProperty("ale.http.writes.pedidos-uc03-enabled",Boolean.class,false));
         model.addAttribute("uc43Disponible",demo && vendedor
                 && env.getProperty("ale.http.writes.pedidos-uc43-enabled",Boolean.class,false));
+        model.addAttribute("recorridoDisponible",demo && vendedor
+                && env.getProperty("ale.http.writes.recorridos-uc43-enabled",Boolean.class,false));
+        model.addAttribute("entregaDisponible",demo && roles.contains("REPARTIDOR")
+                && env.getProperty("ale.http.writes.entregas-uc05-enabled",Boolean.class,false));
+        model.addAttribute("preparacionDisponible",demo && roles.contains("RESPONSABLE_PRODUCCION")
+                && env.getProperty("ale.http.writes.preparaciones-uc28-enabled",Boolean.class,false));
         return "web-inicio";
     }
 

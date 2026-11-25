@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Registrar Entrega (UC-05) · Ale Milanesas</title><link rel="stylesheet" th:href="@{/demo/demo.css}" th:replace="~{demo/fragments :: cssDemo}"></head>
+<body><div th:replace="~{demo/fragments :: cabecera('entregar')}"></div>
+<main id="contenido" class="container">
+<div th:replace="~{demo/fragments :: mensajes}"></div>
+<section class="card"><h1>Registrar Entrega (UC-05)</h1>
+<p class="muted">Solo cantidades originales. Ingresá el ID del Pedido asignado y hasta tres renglones (límite de la carga web de Pedido). El servidor comprueba la asignación vigente, el Recorrido, la preparación y las cantidades. No es una consulta de UC-04.</p>
+<p class="alert alert-warning">El efectivo declarado no es un Cobro confirmado ni un ingreso de Caja. La rendición corresponde al Administrador.</p>
+<form method="post" th:action="@{/web/demo/entregar}"><input type="hidden" th:if="${_csrf != null}" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+<input type="hidden" name="claveIdempotencia" th:value="${form.claveIdempotencia}">
+<div class="form-grid"><div class="field"><label>ID Pedido<input name="idPedido" type="number" min="1" step="1" required th:value="${form.idPedido}"></label></div><div class="field"><label>Efectivo declarado recibido (opcional)<input name="efectivoDeclaradoRecibido" type="number" min="0" step="0.01" th:value="${form.efectivoDeclaradoRecibido}"></label></div></div>
+<h2>Productos originales entregados</h2><p class="muted">Dejá ambos campos en blanco si no utilizás un renglón.</p>
+<div class="form-grid"><div class="field"><label>ID Producto 1<input name="items[0].idProducto" type="number" min="1" step="1" th:value="${form['items[0].idProducto']}"></label></div><div class="field"><label>Cantidad entregada 1<input name="items[0].cantidadEntregada" type="number" min="0" step="0.001" th:value="${form['items[0].cantidadEntregada']}"></label></div></div>
+<div class="form-grid"><div class="field"><label>ID Producto 2<input name="items[1].idProducto" type="number" min="1" step="1" th:value="${form['items[1].idProducto']}"></label></div><div class="field"><label>Cantidad entregada 2<input name="items[1].cantidadEntregada" type="number" min="0" step="0.001" th:value="${form['items[1].cantidadEntregada']}"></label></div></div>
+<div class="form-grid"><div class="field"><label>ID Producto 3<input name="items[2].idProducto" type="number" min="1" step="1" th:value="${form['items[2].idProducto']}"></label></div><div class="field"><label>Cantidad entregada 3<input name="items[2].cantidadEntregada" type="number" min="0" step="0.001" th:value="${form['items[2].cantidadEntregada']}"></label></div></div>
+<div class="actions"><button type="submit" class="btn btn-primary">Confirmar Entrega</button><a class="btn btn-secondary" th:href="@{/web/inicio}">Volver al inicio</a></div>
+</form></section>
+</main></body></html>

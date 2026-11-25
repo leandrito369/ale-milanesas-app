@@ -11,6 +11,12 @@ import org.springframework.web.servlet.ModelAndView;
 @ControllerAdvice(basePackageClasses=ConsultasDemoController.class)
 @Profile("!prod")
 public class ErroresDemoAdvice {
+    @org.springframework.beans.factory.annotation.Value("${ale.http.writes.recorridos-uc43-enabled:false}")
+    private boolean recorridos;
+    @org.springframework.beans.factory.annotation.Value("${ale.http.writes.entregas-uc05-enabled:false}")
+    private boolean entregas;
+    @org.springframework.beans.factory.annotation.Value("${ale.http.writes.preparaciones-uc28-enabled:false}")
+    private boolean preparaciones;
     @ModelAttribute
     public void roles(org.springframework.security.core.Authentication auth,org.springframework.ui.Model model) {
         var roles=auth==null?java.util.Set.<String>of():auth.getAuthorities().stream()
@@ -19,6 +25,9 @@ public class ErroresDemoAdvice {
         model.addAttribute("esAdmin",operativo && roles.contains("ADMINISTRADOR"));
         model.addAttribute("esVendedor",operativo && roles.contains("VENDEDOR"));
         model.addAttribute("esRepartidor",operativo && roles.contains("REPARTIDOR"));
+        model.addAttribute("recorridoDisponible",operativo && recorridos && roles.contains("VENDEDOR"));
+        model.addAttribute("entregaDisponible",operativo && entregas && roles.contains("REPARTIDOR"));
+        model.addAttribute("preparacionDisponible",operativo && preparaciones && roles.contains("RESPONSABLE_PRODUCCION"));
     }
     private static ModelAndView error(HttpStatus status,String codigo) {
         var vista=new ModelAndView("demo/error");
