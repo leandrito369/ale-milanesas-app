@@ -3,12 +3,12 @@ package ar.edu.unam.alemilanesas.finanzas;
 import ar.edu.unam.alemilanesas.acceso.AutorizacionSesionInterna;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.OffsetDateTime;
 import java.util.*;
-import java.util.stream.Collectors;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -397,23 +397,37 @@ public class RendicionPreliminarPe2Service {
         return norm;
     }
 
+    /**
+     * Huella canonica SHA-256 v1 con codificacion inyectiva de longitud prefijada
+     * (4 bytes big-endian de longitud UTF-8 + bytes UTF-8 por cada campo), eliminando
+     * toda ambiguedad por delimitadores en textos libres (motivo/ubicacion).
+     * Los cortes futuros (B1-R1/B1-R2/T1-C2) deben reutilizar este encuadre inyectivo.
+     */
     private static String construirHuellaCanonica(EntradaNormalizada entrada) {
-        String propuestasCanon = entrada.propuestasOrdenadas().stream()
-                .map(p -> p.idCliente() + ":" + p.idPedido() + ":" + p.importePropuesto().toPlainString())
-                .collect(Collectors.joining(";"));
-        String payload = "PE2_PRELIM:" + VERSION_HUELLA
-                + "|" + entrada.idRecorrido()
-                + "|" + entrada.efectivoRecibido().toPlainString()
-                + "|" + entrada.motivo()
-                + "|" + entrada.ubicacion()
-                + "|" + propuestasCanon;
         try {
-            byte[] hash = MessageDigest.getInstance("SHA-256")
-                    .digest(payload.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            actualizarCampo(md, "PE2_PRELIM");
+            actualizarCampo(md, VERSION_HUELLA);
+            actualizarCampo(md, Long.toString(entrada.idRecorrido()));
+            actualizarCampo(md, entrada.efectivoRecibido().toPlainString());
+            actualizarCampo(md, entrada.motivo());
+            actualizarCampo(md, entrada.ubicacion());
+            actualizarCampo(md, Integer.toString(entrada.propuestasOrdenadas().size()));
+            for (PropuestaAplicacion p : entrada.propuestasOrdenadas()) {
+                actualizarCampo(md, Long.toString(p.idCliente()));
+                actualizarCampo(md, Long.toString(p.idPedido()));
+                actualizarCampo(md, p.importePropuesto().toPlainString());
+            }
+            return HexFormat.of().formatHex(md.digest());
         } catch (NoSuchAlgorithmException ex) {
             throw new IllegalStateException("SHA-256 no disponible", ex);
         }
+    }
+
+    private static void actualizarCampo(MessageDigest md, String valor) {
+        byte[] bytes = valor.getBytes(StandardCharsets.UTF_8);
+        md.update(ByteBuffer.allocate(Integer.BYTES).putInt(bytes.length).array());
+        md.update(bytes);
     }
 
     private long resolverIdUsuarioSesion(UUID sesion) {

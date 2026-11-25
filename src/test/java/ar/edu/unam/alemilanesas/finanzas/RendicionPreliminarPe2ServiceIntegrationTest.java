@@ -577,6 +577,57 @@ class RendicionPreliminarPe2ServiceIntegrationTest {
     }
 
     @Test
+    void huellaCanonicaInequivocaRechazaAmbiguedadPorDelimitadoresYPreservaReplay() {
+        var e = crearRecorridoConDosEntregas("PE2-HUELLA-INJ", new BigDecimal("270.00"), new BigDecimal("180.00"), true);
+        UUID clave = UUID.randomUUID();
+        UUID sesionAdmin = e.sesionAdmin();
+        List<PropuestaAplicacion> propuestas = List.of(
+                new PropuestaAplicacion(e.clienteA(), e.pedA1(), new BigDecimal("270.00")),
+                new PropuestaAplicacion(e.clienteB(), e.pedB1(), new BigDecimal("130.00")));
+        var finAntes = capturarContadoresFinancieros();
+
+        // Payload 1: motivo = "a|b", ubicacion = "c"
+        ConciliacionPreliminarRegistrada original = servicio.registrarConciliacionPreliminar(sesionAdmin,
+                new DatosConciliacionPreliminar(
+                        e.idRecorrido(), clave, new BigDecimal("400.00"), "a|b", "c", propuestas));
+        assertTrue(original.creado());
+
+        int cierresAntes = count("SELECT count(*) FROM \"CIERRE_RECORRIDO_PE2\"");
+        int revsAntes = count("SELECT count(*) FROM \"REVISION_CONCILIACION_PE2\"");
+        int propsAntes = count("SELECT count(*) FROM \"PROPUESTA_APLICACION_PENDIENTE\"");
+        int custAntes = count("SELECT count(*) FROM \"CUSTODIA_DIFERENCIA_RENDICION\"");
+
+        // Payload 2 (mismo Recorrido, importe, propuestas y clave): motivo = "a", ubicacion = "b|c"
+        // Debe rechazarse con CLAVE_IDEMPOTENCIA_CONFLICTO_PAYLOAD y 0 nuevas escrituras
+        var cmdAmbiguo = new DatosConciliacionPreliminar(
+                e.idRecorrido(), clave, new BigDecimal("400.00"), "a", "b|c", propuestas);
+        IllegalStateException ex = assertThrows(IllegalStateException.class,
+                () -> servicio.registrarConciliacionPreliminar(sesionAdmin, cmdAmbiguo));
+        assertEquals("CLAVE_IDEMPOTENCIA_CONFLICTO_PAYLOAD", ex.getMessage());
+
+        assertEquals(cierresAntes, count("SELECT count(*) FROM \"CIERRE_RECORRIDO_PE2\""));
+        assertEquals(revsAntes, count("SELECT count(*) FROM \"REVISION_CONCILIACION_PE2\""));
+        assertEquals(propsAntes, count("SELECT count(*) FROM \"PROPUESTA_APLICACION_PENDIENTE\""));
+        assertEquals(custAntes, count("SELECT count(*) FROM \"CUSTODIA_DIFERENCIA_RENDICION\""));
+
+        // Replay del payload original (incluso con orden inverso de propuestas y espacios) debe seguir devolviendo el registro historico
+        ConciliacionPreliminarRegistrada replay = servicio.registrarConciliacionPreliminar(sesionAdmin,
+                new DatosConciliacionPreliminar(
+                        e.idRecorrido(), clave, new BigDecimal("400.0"), "  a|b  ", " c ",
+                        List.of(
+                                new PropuestaAplicacion(e.clienteB(), e.pedB1(), new BigDecimal("130.0")),
+                                new PropuestaAplicacion(e.clienteA(), e.pedA1(), new BigDecimal("270")))));
+        assertFalse(replay.creado());
+        assertEquals(original.idCierreRecorrido(), replay.idCierreRecorrido());
+        assertEquals(original.idRevisionConciliacion(), replay.idRevisionConciliacion());
+        assertEquals(original.huellaCanonica(), replay.huellaCanonica());
+        assertEquals("a|b", replay.motivoDiferencia());
+        assertEquals("c", replay.eventosCustodia().getFirst().ubicacionFisica());
+        assertEquals(cierresAntes, count("SELECT count(*) FROM \"CIERRE_RECORRIDO_PE2\""));
+        assertEquals(finAntes, capturarContadoresFinancieros());
+    }
+
+    @Test
     void concurrenciaA2PorRecorridoMismaClaveClavesDistintasEIntercaladoUc05SinDeadlock() throws Exception {
         // 1) Carrera misma clave: 2 hilos concurrentes -> 1 creado=true, 1 replay creado=false, 0 errores
         var e1 = crearRecorridoConDosEntregas("PE2-CONC-SAME", new BigDecimal("270.00"), new BigDecimal("180.00"), true);

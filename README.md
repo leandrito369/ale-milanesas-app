@@ -233,8 +233,11 @@ Issue #28 abierta; sin despliegue.
     `RECORRIDO_ASIGNACION` (guard `FA-2`), `RECORRIDO_ENTREGA`, `ENTREGA`, `RECONOCIMIENTO_ENTREGA_PE1`
     (solo lectura/share; `V_e^vig` intacto), `CIERRE_RECORRIDO_PE2` (cabecera única por Recorrido,
     `importeImputadoConfirmado = 0`), `REVISION_CONCILIACION_PE2` (`numeroRevision = 1`, `VIGENTE`,
-    `claveIdempotenciaRevision` + huella canónica SHA-256 `v1`), `PROPUESTA_APLICACION_PENDIENTE` y
-    `CUSTODIA_DIFERENCIA_RENDICION` (`FALTANTE_EFECTIVO`, `CUSTODIA_NO_IMPUTADA`, `SOBRANTE_DECLARADO_EX01`).
+    `claveIdempotenciaRevision` + huella canónica SHA-256 `v1` con serialización inyectiva de longitud
+    prefijada UTF-8 en 4 bytes big-endian por campo; sin migración por tratarse de corte pre-merge y
+    diseñada para reutilizarse sin delimitadores ambiguos en `B1-R1`/`B1-R2`/`T1-C2`),
+    `PROPUESTA_APLICACION_PENDIENTE` y `CUSTODIA_DIFERENCIA_RENDICION`
+    (`FALTANTE_EFECTIVO`, `CUSTODIA_NO_IMPUTADA`, `SOBRANTE_DECLARADO_EX01`).
   - Rechazo fail-closed de conciliación inicial `0/0` (`DIFERENCIA_POSITIVA_REQUERIDA`), cobertura excedida
     (`COBERTURA_NO_ACREDITADA` 422), pedidos pendientes `FA-2`, recorridos sin entregas y conflictos de clave/ámbito/payload.
   - **Cero efectos financieros definitivos:** `0` `COBRO`, `0` `COBRO_RENDICION_K2`, `0` `APLICACION_RENDICION_K2`,
