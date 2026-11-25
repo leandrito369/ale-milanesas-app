@@ -45,6 +45,14 @@ public class PrepararPedidoDemoController {
         this.pedidos = pedidos;
     }
 
+    @GetMapping("/web/demo/preparaciones")
+    public String seleccionar(@RequestParam MultiValueMap<String, String> params) {
+        var datos = EntradaDemo.leer(params, Set.of("idPedido"));
+        Long id = EntradaDemo.id(datos, "idPedido");
+        // El GET contextual existente vuelve a validar ámbito en BuscarPedidoService.
+        return id == null ? "demo/preparacion-seleccionar" : "redirect:/web/demo/pedidos/" + id + "/preparar";
+    }
+
     @GetMapping("/web/demo/pedidos/{idPedido}/preparar")
     public String formulario(Authentication auth, @PathVariable long idPedido, Model model) {
         contexto(auth, idPedido, model);

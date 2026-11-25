@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cuenta Corriente (UC-14) · Ale Milanesas</title><link rel="stylesheet" th:href="@{/demo/demo.css}" th:replace="~{demo/fragments :: cssDemo}"></head>
+<body><div th:replace="~{demo/fragments :: cabecera('cuenta')}"></div>
+<main id="contenido" class="container">
+<div th:replace="~{demo/fragments :: mensajes}"></div>
+<section class="card"><h1>Cuenta Corriente (UC-14)</h1><p class="muted">Consulta exclusiva de Vendedor. Las fechas filtran el historial, no los tres saldos actuales.</p>
+<form method="get" th:action="@{/web/demo/cuenta-corriente}" class="form-grid form-grid-3">
+<div class="field"><label>ID Cliente<input name="idCliente" type="number" min="1" step="1" required th:value="${filtro.idCliente}"></label></div><div class="field"><label>Desde<input name="fechaDesde" type="date" th:value="${filtro.fechaDesde}"></label></div><div class="field"><label>Hasta<input name="fechaHasta" type="date" th:value="${filtro.fechaHasta}"></label></div>
+<div class="actions"><button type="submit" class="btn btn-primary">Consultar</button><a class="btn btn-secondary" th:href="@{/web/demo/clientes}">Buscar Cliente (UC-33)</a></div></form></section>
+<section class="card" th:if="${cuenta != null}"><h2>Cliente #<span th:text="${cuenta.idCliente}"></span></h2>
+<dl class="summary-dl"><dt>Saldo confirmado</dt><dd class="num" th:text="${cuenta.saldoConfirmado}"></dd>
+<dt>Tránsito validado vigente (PE-1)</dt><dd class="num" th:text="${cuenta.importeTransitoValidado}"></dd>
+<dt>Saldo exigible provisional</dt><dd class="num" th:text="${cuenta.saldoExigibleProvisional}"></dd>
+<dt>Fecha de corte</dt><dd th:text="${cuenta.fechaHoraCorte}"></dd></dl>
+<p class="muted">Saldo negativo: a favor. El tránsito no equivale a un pago confirmado.</p>
+<h2>Historial de movimientos</h2><p class="empty-state" th:if="${#lists.isEmpty(cuenta.movimientos)}">No hay movimientos para el intervalo seleccionado.</p>
+<div class="table-wrap" th:unless="${#lists.isEmpty(cuenta.movimientos)}"><table><caption>Movimientos confirmados y origen</caption><thead><tr><th scope="col">Secuencia</th><th scope="col">Fecha</th><th scope="col">Tipo</th><th scope="col">Importe</th><th scope="col">Saldo histórico</th><th scope="col">Origen</th></tr></thead><tbody>
+<tr th:each="m : ${cuenta.movimientos}"><td th:text="${m.numeroSecuenciaCliente}"></td><td th:text="${m.fechaHoraMovimiento}"></td><td th:text="${m.tipoMovimiento}"></td><td class="num" th:text="${m.importe}"></td><td class="num" th:text="${m.saldoHistorico}"></td><td><span th:if="${m.origen != null}" th:text="${m.origen.tipo + ' #' + m.origen.idReferencia}"></span></td></tr>
+</tbody></table></div></section>
+</main></body></html>

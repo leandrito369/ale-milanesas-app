@@ -46,6 +46,8 @@ public class SeguridadWebInterna {
         boolean uc03 = demo && env.getProperty("ale.http.writes.pedidos-uc03-enabled", Boolean.class, false);
         boolean uc43 = demo && env.getProperty("ale.http.writes.pedidos-uc43-enabled", Boolean.class, false);
         boolean uc28 = demo && env.getProperty("ale.http.writes.preparaciones-uc28-enabled", Boolean.class, false);
+        boolean recorrido = demo && env.getProperty("ale.http.writes.recorridos-uc43-enabled", Boolean.class, false);
+        boolean entrega = demo && env.getProperty("ale.http.writes.entregas-uc05-enabled", Boolean.class, false);
         http.securityMatcher("/web/**", "/demo/demo.css");
         http.httpBasic(AbstractHttpConfigurer::disable);
         http.formLogin(AbstractHttpConfigurer::disable);
@@ -77,6 +79,20 @@ public class SeguridadWebInterna {
                 .requestMatchers(HttpMethod.GET, "/web/demo/pedidos/*/preparar")
                     .access((auth, ctx) -> permiso(auth.get(), uc28, "RESPONSABLE_PRODUCCION"))
                 .requestMatchers(HttpMethod.POST, "/web/demo/pedidos/*/preparar")
+                    .access((auth, ctx) -> permiso(auth.get(), uc28, "RESPONSABLE_PRODUCCION"))
+                // H5: adaptadores web de servicios integrados, sin ampliar permisos ni flags.
+                .requestMatchers(HttpMethod.GET, "/web/demo/recorridos")
+                    .access((auth, ctx) -> permiso(auth.get(), recorrido, "VENDEDOR"))
+                .requestMatchers(HttpMethod.POST, "/web/demo/recorridos/abrir", "/web/demo/recorridos/asignar",
+                        "/web/demo/recorridos/vincular")
+                    .access((auth, ctx) -> permiso(auth.get(), recorrido, "VENDEDOR"))
+                .requestMatchers(HttpMethod.GET, "/web/demo/entregar")
+                    .access((auth, ctx) -> permiso(auth.get(), entrega, "REPARTIDOR"))
+                .requestMatchers(HttpMethod.POST, "/web/demo/entregar")
+                    .access((auth, ctx) -> permiso(auth.get(), entrega, "REPARTIDOR"))
+                .requestMatchers(HttpMethod.GET, "/web/demo/cuenta-corriente")
+                    .access((auth, ctx) -> permiso(auth.get(), demo, "VENDEDOR"))
+                .requestMatchers(HttpMethod.GET, "/web/demo/preparaciones")
                     .access((auth, ctx) -> permiso(auth.get(), uc28, "RESPONSABLE_PRODUCCION"))
                 .requestMatchers(HttpMethod.GET, "/web/demo/clientes", "/web/demo/productos", "/web/demo/pedidos")
                     .access((auth, ctx) -> permiso(auth.get(), demo, "ADMINISTRADOR", "VENDEDOR"))
